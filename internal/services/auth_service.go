@@ -28,6 +28,7 @@ type authUserStore interface {
 
 type revokedTokenStore interface {
 	SaveRevokedToken(ctx context.Context, tokenHash string, userID int64, expiresAt time.Time) error
+	RevokeActiveUserTokens(ctx context.Context, userID int64) error
 }
 
 type userSessionStore interface {
@@ -98,6 +99,13 @@ func (s *AuthService) Login(ctx context.Context, request dto.LoginRequest) (*dto
 
 	if !security.CheckPassword(password, user.PasswordHash) {
 		return nil, ErrInvalidCredentials
+	}
+
+	// A banking API should not leave older JWTs alive after a fresh login.
+	// Revoking active sessions before issuing a new token keeps the model simple:
+	// one user has one currently valid session.
+	if err := s.tokenRepository.RevokeActiveUserTokens(ctx, user.ID); err != nil {
+		return nil, fmt.Errorf("revoke previous user sessions: %w", err)
 	}
 
 	token, err := security.GenerateJWT(user.ID, s.jwtSecret)
