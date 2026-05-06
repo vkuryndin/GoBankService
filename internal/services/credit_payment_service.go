@@ -11,15 +11,24 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type creditPaymentStore interface {
+	FindDuePayments(ctx context.Context, limit int) ([]repositories.DueCreditPayment, error)
+	ProcessPayment(ctx context.Context, payment repositories.DueCreditPayment) (*repositories.CreditPaymentProcessResult, error)
+}
+
+type creditPaymentNotifier interface {
+	SendCreditPaymentEmail(ctx context.Context, userID int64, amount string, status string) error
+}
+
 type CreditPaymentService struct {
-	creditPaymentRepository *repositories.CreditPaymentRepository
-	notificationService     *NotificationService
+	creditPaymentRepository creditPaymentStore
+	notificationService     creditPaymentNotifier
 	logger                  *logrus.Logger
 }
 
 func NewCreditPaymentService(
-	creditPaymentRepository *repositories.CreditPaymentRepository,
-	notificationService *NotificationService,
+	creditPaymentRepository creditPaymentStore,
+	notificationService creditPaymentNotifier,
 	logger *logrus.Logger,
 ) *CreditPaymentService {
 	return &CreditPaymentService{

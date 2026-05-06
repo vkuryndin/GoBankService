@@ -10,11 +10,16 @@ import (
 
 var ErrInvalidPredictionDays = errors.New("invalid prediction days")
 
-type AnalyticsService struct {
-	analyticsRepository *repositories.AnalyticsRepository
+type analyticsStore interface {
+	GetMonthlyAnalytics(ctx context.Context, userID int64) (*repositories.MonthlyAnalytics, error)
+	PredictBalance(ctx context.Context, userID int64, accountID int64, days int) (*repositories.BalancePrediction, error)
 }
 
-func NewAnalyticsService(analyticsRepository *repositories.AnalyticsRepository) *AnalyticsService {
+type AnalyticsService struct {
+	analyticsRepository analyticsStore
+}
+
+func NewAnalyticsService(analyticsRepository analyticsStore) *AnalyticsService {
 	return &AnalyticsService{
 		analyticsRepository: analyticsRepository,
 	}

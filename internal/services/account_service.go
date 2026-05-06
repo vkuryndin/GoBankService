@@ -21,17 +21,26 @@ var (
 	ErrAccountBlocked     = errors.New("account is blocked")
 )
 
-type AccountService struct {
-	accountRepository *repositories.AccountRepository
+type accountStore interface {
+	Create(ctx context.Context, userID int64, accountNumber string) (*models.Account, error)
+	FindByUserID(ctx context.Context, userID int64) ([]models.Account, error)
+	FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error)
+	Deposit(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
+	Withdraw(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
 }
 
-func NewAccountService(accountRepository *repositories.AccountRepository) *AccountService {
+type AccountService struct {
+	accountRepository accountStore
+}
+
+func NewAccountService(accountRepository accountStore) *AccountService {
 	return &AccountService{
 		accountRepository: accountRepository,
 	}
 }
 
 func (s *AccountService) CreateAccount(ctx context.Context, userID int64) (*dto.AccountResponse, error) {
+	// Account numbers are generated server-side so clients cannot choose predictable or conflicting identifiers.
 	accountNumber, err := generateAccountNumber()
 	if err != nil {
 		return nil, fmt.Errorf("generate account number: %w", err)

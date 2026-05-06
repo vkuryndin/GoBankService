@@ -13,11 +13,17 @@ var (
 	ErrAccountAlreadyUnblocked = errors.New("account already unblocked")
 )
 
-type AdminService struct {
-	adminRepository *repositories.AdminRepository
+type adminStore interface {
+	FindUsers(ctx context.Context) ([]repositories.AdminUser, error)
+	FindActiveSessions(ctx context.Context) ([]repositories.AdminActiveSession, error)
+	SetAccountBlocked(ctx context.Context, accountID int64, blocked bool) (*repositories.AdminAccountStatus, error)
 }
 
-func NewAdminService(adminRepository *repositories.AdminRepository) *AdminService {
+type AdminService struct {
+	adminRepository adminStore
+}
+
+func NewAdminService(adminRepository adminStore) *AdminService {
 	return &AdminService{
 		adminRepository: adminRepository,
 	}

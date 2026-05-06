@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -10,18 +11,18 @@ import (
 )
 
 var (
-	registerErrors = errorMap{
-		services.ErrInvalidRegisterData: {statusCode: http.StatusBadRequest, message: "invalid register data"},
-		services.ErrEmailAlreadyUsed:    {statusCode: http.StatusConflict, message: "email or username already used"},
+	registerErrorRules = errorRules{
+		{target: services.ErrInvalidRegisterData, statusCode: http.StatusBadRequest, message: "invalid register data"},
+		{target: services.ErrEmailAlreadyUsed, statusCode: http.StatusConflict, message: "email or username already used"},
 	}
 
-	loginErrors = errorMap{
-		services.ErrInvalidLoginData:   {statusCode: http.StatusBadRequest, message: "invalid login data"},
-		services.ErrInvalidCredentials: {statusCode: http.StatusUnauthorized, message: "invalid login or password"},
+	loginErrorRules = errorRules{
+		{target: services.ErrInvalidLoginData, statusCode: http.StatusBadRequest, message: "invalid login data"},
+		{target: services.ErrInvalidCredentials, statusCode: http.StatusUnauthorized, message: "invalid login or password"},
 	}
 
-	logoutErrors = errorMap{
-		services.ErrInvalidToken: {statusCode: http.StatusUnauthorized, message: "invalid token"},
+	logoutErrorRules = errorRules{
+		{target: services.ErrInvalidToken, statusCode: http.StatusUnauthorized, message: "invalid token"},
 	}
 )
 
@@ -30,39 +31,23 @@ type AuthHandler struct {
 }
 
 func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{
-		authService: authService,
-	}
+	return &AuthHandler{authService: authService}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var request dto.RegisterRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-
-	response, err := h.authService.Register(r.Context(), request)
-	if err != nil {
-		writeMappedError(w, err, registerErrors, "registration failed")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, response)
+	handleJSON[dto.RegisterRequest](w, r, registerErrorRules, "registration failed",
+		func(ctx context.Context, request dto.RegisterRequest) (int, any, error) {
+			response, err := h.authService.Register(ctx, request)
+			return http.StatusCreated, response, err
+		})
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var request dto.LoginRequest
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-
-	response, err := h.authService.Login(r.Context(), request)
-	if err != nil {
-		writeMappedError(w, err, loginErrors, "login failed")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, response)
+	handleJSON[dto.LoginRequest](w, r, loginErrorRules, "login failed",
+		func(ctx context.Context, request dto.LoginRequest) (int, any, error) {
+			response, err := h.authService.Login(ctx, request)
+			return http.StatusOK, response, err
+		})
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -73,25 +58,18 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.Logout(r.Context(), tokenString); err != nil {
-		writeMappedError(w, err, logoutErrors, "logout failed")
+		writeMappedError(w, err, logoutErrorRules, "logout failed")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, dto.MessageResponse{
-		Message: "logout successful",
-	})
+	writeJSON(w, http.StatusOK, dto.MessageResponse{Message: "logout successful"})
 }
 
 func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
-	userID, ok := requireUserID(w, r)
-	if !ok {
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"authenticated": true,
-		"user_id":       userID,
-	})
+	handleAuthed(w, r, nil, "auth check failed",
+		func(ctx context.Context, userID int64) (int, any, error) {
+			return http.StatusOK, map[string]any{"authenticated": true, "user_id": userID}, nil
+		})
 }
 
 func extractBearerToken(r *http.Request) (string, error) {

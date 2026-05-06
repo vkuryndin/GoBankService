@@ -123,7 +123,8 @@ func (r *CreditPaymentRepository) ProcessPayment(
 		return nil, err
 	}
 
-	// Overdue payments are charged as the original amount plus the accumulated penalty.
+	// Overdue schedules remain eligible for processing. Once the account has enough funds,
+	// the scheduler charges the original payment plus the accumulated penalty.
 	withdrawAmount, err := paymentAmountForWithdrawal(lockedPayment)
 	if err != nil {
 		return nil, err

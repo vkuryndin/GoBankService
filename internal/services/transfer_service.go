@@ -11,14 +11,22 @@ import (
 
 var ErrInvalidTransfer = errors.New("invalid transfer")
 
+type transferAccountStore interface {
+	Transfer(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string) (int64, error)
+}
+
+type transferMFAVerifier interface {
+	VerifyTransferCode(ctx context.Context, userID int64, request dto.TransferRequest) error
+}
+
 type TransferService struct {
-	accountRepository *repositories.AccountRepository
-	mfaService        *MFAService
+	accountRepository transferAccountStore
+	mfaService        transferMFAVerifier
 }
 
 func NewTransferService(
-	accountRepository *repositories.AccountRepository,
-	mfaService *MFAService,
+	accountRepository transferAccountStore,
+	mfaService transferMFAVerifier,
 ) *TransferService {
 	return &TransferService{
 		accountRepository: accountRepository,

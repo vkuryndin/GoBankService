@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"bank-service/internal/dto"
+	"bank-service/internal/models"
 	"bank-service/internal/repositories"
 	"bank-service/internal/security"
 )
@@ -30,18 +31,37 @@ var (
 	ErrInvalidMFAOperation = errors.New("invalid mfa operation")
 )
 
+type mfaCodeStore interface {
+	SaveCode(ctx context.Context, userID int64, purpose string, operationHash string, codeHash string, expiresAt time.Time) error
+	FindActiveCode(ctx context.Context, userID int64, purpose string, operationHash string) (*repositories.MFACode, error)
+	MarkUsed(ctx context.Context, codeID int64) error
+}
+
+type mfaAccountStore interface {
+	ValidateTransferAccounts(ctx context.Context, userID int64, fromAccountID int64, toAccountID int64) error
+	FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error)
+}
+
+type mfaCardStore interface {
+	FindAccountIDByIDAndUserID(ctx context.Context, cardID, userID int64) (int64, error)
+}
+
+type mfaNotificationSender interface {
+	SendMFAEmail(ctx context.Context, userID int64, purpose string, code string) error
+}
+
 type MFAService struct {
-	mfaRepository       *repositories.MFARepository
-	accountRepository   *repositories.AccountRepository
-	cardRepository      *repositories.CardRepository
-	notificationService *NotificationService
+	mfaRepository       mfaCodeStore
+	accountRepository   mfaAccountStore
+	cardRepository      mfaCardStore
+	notificationService mfaNotificationSender
 }
 
 func NewMFAService(
-	mfaRepository *repositories.MFARepository,
-	accountRepository *repositories.AccountRepository,
-	cardRepository *repositories.CardRepository,
-	notificationService *NotificationService,
+	mfaRepository mfaCodeStore,
+	accountRepository mfaAccountStore,
+	cardRepository mfaCardStore,
+	notificationService mfaNotificationSender,
 ) *MFAService {
 	return &MFAService{
 		mfaRepository:       mfaRepository,
@@ -57,8 +77,8 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 		return ErrInvalidMFAPurpose
 	}
 
-	// The operation hash binds an MFA code to a specific action.
-	// A code requested for one transfer/card payment/credit cannot be reused for another operation.
+	// The operation hash binds an MFA code to exact operation parameters.
+	// A code requested for one amount, account or card cannot be reused for another operation.
 	operationHash, err := s.buildOperationHash(ctx, userID, purpose, request)
 	if err != nil {
 		return err
@@ -74,6 +94,7 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 		return fmt.Errorf("hash mfa code: %w", err)
 	}
 
+	// Five minutes limits code reuse while leaving enough time to copy the code from email.
 	expiresAt := time.Now().Add(mfaCodeLifetime)
 
 	if err := s.mfaRepository.SaveCode(ctx, userID, purpose, operationHash, codeHash, expiresAt); err != nil {
@@ -311,7 +332,7 @@ func (s *MFAService) buildCreditCreateOperationHash(
 		return "", ErrInvalidMFAOperation
 	}
 
-	if request.TermMonths <= 0 || request.TermMonths > 120 {
+	if request.TermMonths <= 0 || request.TermMonths > maxCreditTermMonths {
 		return "", ErrInvalidMFAOperation
 	}
 

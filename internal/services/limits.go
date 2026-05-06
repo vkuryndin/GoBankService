@@ -11,5 +11,6 @@ const (
 	maxCreditTermMonths     = 120
 	maxCardCreationAttempts = 3
 
+	// Five minutes is a trade-off: short enough to limit reuse, long enough to copy from email.
 	mfaCodeLifetime = 5 * time.Minute
 )

@@ -18,16 +18,31 @@ var (
 	ErrInvalidCreditData = errors.New("invalid credit data")
 )
 
+type creditStore interface {
+	CreateWithScheduleAndIssue(ctx context.Context, userID int64, accountID int64, principalAmount string, interestRate string, termMonths int, monthlyPayment string, schedule []repositories.PaymentScheduleInput) (*models.Credit, error)
+	FindByUserID(ctx context.Context, userID int64) ([]models.Credit, error)
+	FindByIDAndUserID(ctx context.Context, creditID, userID int64) (*models.Credit, error)
+	FindScheduleByCreditIDAndUserID(ctx context.Context, creditID, userID int64) ([]models.PaymentSchedule, error)
+}
+
+type bankRateProvider interface {
+	GetBankRateValue(ctx context.Context) (float64, error)
+}
+
+type creditMFAVerifier interface {
+	VerifyCreditCreateCode(ctx context.Context, userID int64, request dto.CreateCreditRequest) error
+}
+
 type CreditService struct {
-	creditRepository *repositories.CreditRepository
-	rateService      *RateService
-	mfaService       *MFAService
+	creditRepository creditStore
+	rateService      bankRateProvider
+	mfaService       creditMFAVerifier
 }
 
 func NewCreditService(
-	creditRepository *repositories.CreditRepository,
-	rateService *RateService,
-	mfaService *MFAService,
+	creditRepository creditStore,
+	rateService bankRateProvider,
+	mfaService creditMFAVerifier,
 ) *CreditService {
 	return &CreditService{
 		creditRepository: creditRepository,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	smtpclient "bank-service/internal/integrations/smtp"
+	"bank-service/internal/models"
 	"bank-service/internal/repositories"
 )
 
@@ -15,14 +16,22 @@ var (
 	ErrNotificationUserNotFound = errors.New("notification user not found")
 )
 
+type notificationUserStore interface {
+	FindByID(ctx context.Context, userID int64) (*models.User, error)
+}
+
+type emailSender interface {
+	Send(ctx context.Context, to, subject, body string) error
+}
+
 type NotificationService struct {
-	userRepository *repositories.UserRepository
-	smtpClient     *smtpclient.Client
+	userRepository notificationUserStore
+	smtpClient     emailSender
 }
 
 func NewNotificationService(
-	userRepository *repositories.UserRepository,
-	smtpClient *smtpclient.Client,
+	userRepository notificationUserStore,
+	smtpClient emailSender,
 ) *NotificationService {
 	return &NotificationService{
 		userRepository: userRepository,
@@ -116,3 +125,5 @@ func (s *NotificationService) SendMFAEmail(
 
 	return nil
 }
+
+var _ notificationUserStore = (*repositories.UserRepository)(nil)

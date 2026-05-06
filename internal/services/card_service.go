@@ -19,20 +19,39 @@ var (
 	ErrCardCreateRetries = errors.New("card create retries exceeded")
 )
 
+type cardStore interface {
+	Create(ctx context.Context, userID int64, accountID int64, number string, expiry string, cvvHash string, numberHMAC string, pgpKey string) (*models.CardDetails, error)
+	FindByUserID(ctx context.Context, userID int64, pgpKey string) ([]models.CardDetails, error)
+	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
+}
+
+type cardPaymentAccountStore interface {
+	CardPayment(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
+}
+
+type cardProcessor interface {
+	GenerateCVVAndHash() (string, string, error)
+	VerifyCVV(card *models.CardDetails, cvv string) error
+}
+
+type cardPaymentMFAVerifier interface {
+	VerifyCardPaymentCode(ctx context.Context, userID int64, cardID int64, request dto.CardPaymentRequest) error
+}
+
 type CardService struct {
-	cardRepository        *repositories.CardRepository
-	accountRepository     *repositories.AccountRepository
-	cardProcessingService *CardProcessingService
-	mfaService            *MFAService
+	cardRepository        cardStore
+	accountRepository     cardPaymentAccountStore
+	cardProcessingService cardProcessor
+	mfaService            cardPaymentMFAVerifier
 	pgpKey                string
 	hmacSecret            string
 }
 
 func NewCardService(
-	cardRepository *repositories.CardRepository,
-	accountRepository *repositories.AccountRepository,
-	cardProcessingService *CardProcessingService,
-	mfaService *MFAService,
+	cardRepository cardStore,
+	accountRepository cardPaymentAccountStore,
+	cardProcessingService cardProcessor,
+	mfaService cardPaymentMFAVerifier,
 	pgpKey string,
 	hmacSecret string,
 ) *CardService {
@@ -213,7 +232,7 @@ func (s *CardService) createCardOnce(ctx context.Context, userID, accountID int6
 }
 
 func (s *CardService) verifyCardHMAC(card *models.CardDetails) error {
-	// HMAC lets us detect unexpected changes to decrypted card data without storing the plain card number.
+	// PGP protects card confidentiality; HMAC gives us an integrity check without storing the plain card number.
 	expectedHMAC := security.ComputeHMAC(card.Number, s.hmacSecret)
 	if expectedHMAC != card.NumberHMAC {
 		return fmt.Errorf("card hmac verification failed")

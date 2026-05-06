@@ -25,6 +25,8 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 }
 
 func (r *UserRepository) Create(ctx context.Context, email, username, passwordHash string) (*models.User, error) {
+	// The first registered user becomes an admin to bootstrap the educational setup
+	// without a separate seed script.
 	query := `
 		INSERT INTO users (
 			email,

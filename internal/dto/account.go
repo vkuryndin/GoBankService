@@ -1,8 +1,5 @@
 package dto
 
-type CreateAccountRequest struct {
-}
-
 type AccountResponse struct {
 	ID            int64  `json:"id"`
 	AccountNumber string `json:"account_number"`

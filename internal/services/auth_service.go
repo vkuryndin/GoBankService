@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"bank-service/internal/dto"
+	"bank-service/internal/models"
 	"bank-service/internal/repositories"
 	"bank-service/internal/security"
 )
@@ -19,17 +21,31 @@ var (
 	ErrInvalidToken        = errors.New("invalid token")
 )
 
+type authUserStore interface {
+	Create(ctx context.Context, email, username, passwordHash string) (*models.User, error)
+	FindByLogin(ctx context.Context, login string) (*models.User, error)
+}
+
+type revokedTokenStore interface {
+	SaveRevokedToken(ctx context.Context, tokenHash string, userID int64, expiresAt time.Time) error
+}
+
+type userSessionStore interface {
+	CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error
+	RevokeByTokenHash(ctx context.Context, tokenHash string) error
+}
+
 type AuthService struct {
-	userRepository        *repositories.UserRepository
-	tokenRepository       *repositories.TokenRepository
-	userSessionRepository *repositories.UserSessionRepository
+	userRepository        authUserStore
+	tokenRepository       revokedTokenStore
+	userSessionRepository userSessionStore
 	jwtSecret             string
 }
 
 func NewAuthService(
-	userRepository *repositories.UserRepository,
-	tokenRepository *repositories.TokenRepository,
-	userSessionRepository *repositories.UserSessionRepository,
+	userRepository authUserStore,
+	tokenRepository revokedTokenStore,
+	userSessionRepository userSessionStore,
 	jwtSecret string,
 ) *AuthService {
 	return &AuthService{
