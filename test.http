@@ -1,0 +1,504 @@
+### Variables
+@baseUrl = http://localhost:8080
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MTcyODc4LCJpYXQiOjE3NzgwODY0Nzh9.I3hZd5vabHD2pT7prwXBJ8dp_p3PnIvYormD-ozeblA
+@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MTcyOTAwLCJpYXQiOjE3NzgwODY1MDB9.Pr3JKgmRKVvX-Kl0BEtUFOyBl-5cnAMoy82dZbclzw4
+@accountId1user1 = 1
+@accountId2user1 = 1
+@accountId1user2 = 3
+@cvvForCardID2 = 079
+@cvvForCardID3 = 814
+@mfaCode=171468
+
+###-------------------------###
+### Health check
+GET {{baseUrl}}/health
+
+###-------------------------###
+### REGISTER ###
+###-------------------------###
+
+### Register user
+POST {{baseUrl}}/register
+Content-Type: application/json
+
+{
+  "email": "test@example.com",
+  "username": "testuser",
+  "password": "password123"
+}
+
+### Register user 2
+POST {{baseUrl}}/register
+Content-Type: application/json
+
+{
+  "email": "vkuryndin@gmail.com",
+  "username": "volodya",
+  "password": "password123"
+}
+
+###-------------------------###
+### LOGIN ###
+###-------------------------###
+
+### Login by email user 1
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "login": "test@example.com",
+  "password": "password123"
+}
+
+### Login by email user 2
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "login": "vkuryndin@gmail.com",
+  "password": "password123"
+}
+
+
+### Login by username
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "login": "testuser",
+  "password": "password123"
+}
+
+###-------------------------###
+### CHECK AUTH ###
+###-------------------------###
+
+
+### Check auth without token
+GET {{baseUrl}}/auth/check
+
+
+### Check auth with token
+GET {{baseUrl}}/auth/check
+Authorization: Bearer {{token}}
+
+
+### Check auth with token user 2
+GET {{baseUrl}}/auth/check
+Authorization: Bearer {{token2}}
+
+###-------------------------###
+### CREATE ACCOUNT ###
+###-------------------------###
+
+
+### Create account
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+
+### Create account user 2
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+
+
+### Get my accounts
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+
+
+### Get my accounts user 2
+GET {{baseUrl}}/accounts
+Authorization: Bearer {{token2}}
+
+
+### Get account by id user 1 account 1
+GET {{baseUrl}}/accounts/{{accountId1user1}}
+Authorization: Bearer {{token}}
+
+### Get account by id user 2 accounnt 3
+GET {{baseUrl}}/accounts/{{accountId1user2}}
+Authorization: Bearer {{token2}}
+
+
+### Deposit user 1
+POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "1000.00"
+}
+
+### Deposit user 2
+POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "amount": "1000.00"
+}
+
+
+### Withdraw user 1 account 1
+POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "250.00"
+}
+
+### Withdraw user 2 account 1
+POST {{baseUrl}}/accounts/{{accountId1user2}}/withdraw
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "amount": "250.00"
+}
+
+
+### Withdraw too much
+POST {{baseUrl}}/accounts/1/withdraw
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "999999.00"
+}
+
+### Create second account
+POST {{baseUrl}}/accounts
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{}
+
+
+### Transfer between accounts of the same user
+POST {{baseUrl}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "from_account_id": 1,
+  "to_account_id": 2,
+  "amount": "100.00",
+  "description": "test transfer"
+}
+
+
+### Transfer from user 1 to user 2
+POST {{baseUrl}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "from_account_id": {{accountId1user1}},
+  "to_account_id": {{accountId1user2}},
+  "amount": "500.00",
+  "description": "transfer from user1 to user2"
+}
+
+
+### Transfer too much
+POST {{baseUrl}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "from_account_id": 1,
+  "to_account_id": 2,
+  "amount": "999999.00",
+  "description": "too much"
+}
+
+
+### Transfer to same account
+POST {{baseUrl}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "from_account_id": 1,
+  "to_account_id": 1,
+  "amount": "100.00",
+  "description": "same account"
+}
+
+### Create card
+POST {{baseUrl}}/cards
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "account_id": 3
+}
+
+
+### Get my cards
+GET {{baseUrl}}/cards
+Authorization: Bearer {{token2}}
+
+
+### Get card by id
+GET {{baseUrl}}/cards/1
+Authorization: Bearer {{token}}
+
+
+### Pay by card
+POST {{baseUrl}}/cards/1/pay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "50.00",
+  "description": "test card payment"
+}
+
+
+### Pay by card too much
+POST {{baseUrl}}/cards/1/pay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "999999.00",
+  "description": "too much"
+}
+
+### Get CBR key rate
+GET {{baseUrl}}/rates/key
+Authorization: Bearer {{token}}
+
+### Create credit
+POST {{baseUrl}}/credits
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "account_id": 1,
+  "principal_amount": "50000.00",
+  "term_months": 12
+}
+
+
+### Get my credits
+GET {{baseUrl}}/credits
+Authorization: Bearer {{token}}
+
+
+### Get credit by id
+GET {{baseUrl}}/credits/1
+Authorization: Bearer {{token}}
+
+
+### Get credit schedule
+GET {{baseUrl}}/credits/1/schedule
+Authorization: Bearer {{token}}
+
+### Send test email
+GET {{baseUrl}}/notifications/test
+Authorization: Bearer {{token}}
+
+### Get analytics
+GET {{baseUrl}}/analytics
+Authorization: Bearer {{token}}
+
+
+### Predict balance default 30 days
+GET {{baseUrl}}/accounts/1/predict
+Authorization: Bearer {{token}}
+
+
+### Predict balance 365 days
+GET {{baseUrl}}/accounts/1/predict?days=365
+Authorization: Bearer {{token}}
+
+
+### Predict balance invalid days
+GET {{baseUrl}}/accounts/1/predict?days=366
+Authorization: Bearer {{token}}
+
+
+### Predict balance 30 days with statistics
+GET {{baseUrl}}/accounts/1/predict?days=30
+Authorization: Bearer {{token}}
+
+
+### Predict balance 365 days with statistics
+GET {{baseUrl}}/accounts/1/predict?days=365
+Authorization: Bearer {{token}}
+
+
+### Create card with one-time CVV
+POST {{baseUrl}}/cards
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "account_id": 1
+}
+
+
+### Pay by card with CVV
+POST {{baseUrl}}/cards/2/pay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "50.00",
+  "cvv": "{{cvvForCardID2}}",
+  "description": "card payment with cvv"
+}
+
+### Pay by card with wrong CVV
+POST {{baseUrl}}/cards/2/pay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "50.00",
+  "cvv": "999",
+  "description": "wrong cvv test"
+}
+
+
+### Login for logout test
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "login": "test@example.com",
+  "password": "password123"
+}
+
+
+### Check auth before logout
+GET {{baseUrl}}/auth/check
+Authorization: Bearer {{token}}
+
+
+### Logout
+POST {{baseUrl}}/logout
+Authorization: Bearer {{token2}}
+
+
+### Check auth after logout
+GET {{baseUrl}}/auth/check
+Authorization: Bearer {{token}}
+
+### Request MFA code for exact transfer
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "purpose": "transfer",
+  "from_account_id": 3,
+  "to_account_id": 1,
+  "amount": "100.00"
+}
+
+### Transfer with exact MFA
+POST {{baseUrl}}/transfer
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "from_account_id": 3,
+  "to_account_id": 1,
+  "amount": "100.00",
+  "description": "transfer with exact mfa",
+  "mfa_code": "{{mfaCode}}"
+}
+
+
+### Transfer with same MFA but different amount
+POST {{baseUrl}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "from_account_id": 1,
+  "to_account_id": 2,
+  "amount": "1000.00",
+  "description": "wrong operation details",
+  "mfa_code": "{{mfaCode}}"
+}
+
+### Request MFA for card payment
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "purpose": "card_payment",
+  "card_id": 3,
+  "amount": "50.00"
+}
+
+### Pay by card with CVV and MFA
+POST {{baseUrl}}/cards/3/pay
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "amount": "50.00",
+  "cvv": "{{cvvForCardID3}}",
+  "mfa_code": "{{mfaCode}}",
+  "description": "card payment with mfa"
+}
+### Request MFA for credit create
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "purpose": "credit_create",
+  "account_id": 3,
+  "principal_amount": "50000.00",
+  "term_months": 6
+}
+
+### Create credit with MFA
+POST {{baseUrl}}/credits
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "account_id": 3,
+  "principal_amount": "50000.00",
+  "term_months": 6,
+  "mfa_code": "{{mfaCode}}"
+}
+
+
+### Admin users
+GET {{baseUrl}}/admin/users
+Authorization: Bearer {{token2}}
+
+### Admin logged in users
+GET {{baseUrl}}/admin/logged-in-users
+Authorization: Bearer {{token2}}
+
+### Admin block account
+POST {{baseUrl}}/admin/accounts/4/block
+Authorization: Bearer {{token2}}
+
+### Deposit to blocked account
+POST {{baseUrl}}/accounts/4/deposit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": "100.00"
+}
+
+### Admin unblock account
+POST {{baseUrl}}/admin/accounts/4/unblock
+Authorization: Bearer {{token2}}
