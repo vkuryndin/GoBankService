@@ -1,13 +1,16 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
-	"bank-service/internal/middleware"
 	"bank-service/internal/services"
 )
+
+var predictionErrors = errorMap{
+	services.ErrInvalidPredictionDays: {statusCode: http.StatusBadRequest, message: "days must be between 1 and 365"},
+	services.ErrAccountNotFound:       {statusCode: http.StatusNotFound, message: "account not found"},
+}
 
 type AnalyticsHandler struct {
 	analyticsService *services.AnalyticsService
@@ -20,9 +23,8 @@ func NewAnalyticsHandler(analyticsService *services.AnalyticsService) *Analytics
 }
 
 func (h *AnalyticsHandler) GetAnalytics(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -36,9 +38,8 @@ func (h *AnalyticsHandler) GetAnalytics(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AnalyticsHandler) PredictBalance(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -56,17 +57,7 @@ func (h *AnalyticsHandler) PredictBalance(w http.ResponseWriter, r *http.Request
 
 	response, err := h.analyticsService.PredictBalance(r.Context(), userID, accountID, days)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidPredictionDays) {
-			writeError(w, http.StatusBadRequest, "days must be between 1 and 365")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "predict balance failed")
+		writeMappedError(w, err, predictionErrors, "predict balance failed")
 		return
 	}
 

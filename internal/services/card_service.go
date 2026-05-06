@@ -51,9 +51,7 @@ func (s *CardService) CreateCard(ctx context.Context, userID int64, request dto.
 		return nil, ErrInvalidCardData
 	}
 
-	const maxAttempts = 3
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := 0; attempt < maxCardCreationAttempts; attempt++ {
 		card, err := s.createCardOnce(ctx, userID, request.AccountID)
 		if err != nil {
 			if errors.Is(err, repositories.ErrCardAlreadyExists) {
@@ -120,7 +118,7 @@ func (s *CardService) PayByCard(
 		description = "card payment"
 	}
 
-	if len(description) > 500 {
+	if len(description) > maxDescriptionLength {
 		return nil, ErrInvalidDescription
 	}
 
@@ -215,6 +213,7 @@ func (s *CardService) createCardOnce(ctx context.Context, userID, accountID int6
 }
 
 func (s *CardService) verifyCardHMAC(card *models.CardDetails) error {
+	// HMAC lets us detect unexpected changes to decrypted card data without storing the plain card number.
 	expectedHMAC := security.ComputeHMAC(card.Number, s.hmacSecret)
 	if expectedHMAC != card.NumberHMAC {
 		return fmt.Errorf("card hmac verification failed")

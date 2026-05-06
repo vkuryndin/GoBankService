@@ -39,7 +39,7 @@ func (s *AnalyticsService) PredictBalance(
 	accountID int64,
 	days int,
 ) (*dto.PredictBalanceResponse, error) {
-	if days <= 0 || days > 365 {
+	if days <= 0 || days > maxPredictionDays {
 		return nil, ErrInvalidPredictionDays
 	}
 

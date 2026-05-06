@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"regexp"
-	"strings"
 	"time"
 
 	"bank-service/internal/dto"
@@ -16,12 +14,11 @@ import (
 )
 
 var (
-	ErrAccountNotFound     = errors.New("account not found")
-	ErrInvalidAmount       = errors.New("invalid amount")
-	ErrInsufficientFunds   = errors.New("insufficient funds")
-	ErrInvalidDescription  = errors.New("invalid description")
-	ErrAccountBlocked      = errors.New("account is blocked")
-	amountValidationRegexp = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
+	ErrAccountNotFound    = errors.New("account not found")
+	ErrInvalidAmount      = errors.New("invalid amount")
+	ErrInsufficientFunds  = errors.New("insufficient funds")
+	ErrInvalidDescription = errors.New("invalid description")
+	ErrAccountBlocked     = errors.New("account is blocked")
 )
 
 type AccountService struct {
@@ -132,25 +129,6 @@ func toAccountResponse(account *models.Account) *dto.AccountResponse {
 		CreatedAt:     account.CreatedAt.Format(time.RFC3339),
 		IsBlocked:     account.IsBlocked,
 	}
-}
-
-func normalizeAmount(amount string) (string, error) {
-	amount = strings.TrimSpace(amount)
-
-	if !amountValidationRegexp.MatchString(amount) {
-		return "", ErrInvalidAmount
-	}
-
-	value := new(big.Rat)
-	if _, ok := value.SetString(amount); !ok {
-		return "", ErrInvalidAmount
-	}
-
-	if value.Sign() <= 0 {
-		return "", ErrInvalidAmount
-	}
-
-	return amount, nil
 }
 
 func generateAccountNumber() (string, error) {

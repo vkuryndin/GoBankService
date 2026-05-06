@@ -41,7 +41,7 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 	}
 
 	description := strings.TrimSpace(request.Description)
-	if len(description) > 500 {
+	if len(description) > maxDescriptionLength {
 		return nil, ErrInvalidDescription
 	}
 
@@ -65,6 +65,7 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 		if errors.Is(err, repositories.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
 		}
+
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
 		}

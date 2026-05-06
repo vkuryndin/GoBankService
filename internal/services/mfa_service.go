@@ -21,7 +21,6 @@ const (
 	MFAPurposeTransfer     = "transfer"
 	MFAPurposeCardPayment  = "card_payment"
 	MFAPurposeCreditCreate = "credit_create"
-	mfaCodeTTL             = 5 * time.Minute
 )
 
 var (
@@ -58,6 +57,8 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 		return ErrInvalidMFAPurpose
 	}
 
+	// The operation hash binds an MFA code to a specific action.
+	// A code requested for one transfer/card payment/credit cannot be reused for another operation.
 	operationHash, err := s.buildOperationHash(ctx, userID, purpose, request)
 	if err != nil {
 		return err
@@ -73,7 +74,7 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 		return fmt.Errorf("hash mfa code: %w", err)
 	}
 
-	expiresAt := time.Now().Add(mfaCodeTTL)
+	expiresAt := time.Now().Add(mfaCodeLifetime)
 
 	if err := s.mfaRepository.SaveCode(ctx, userID, purpose, operationHash, codeHash, expiresAt); err != nil {
 		return err

@@ -1,14 +1,24 @@
 package handlers
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
 
 	"bank-service/internal/dto"
-	"bank-service/internal/middleware"
 	"bank-service/internal/services"
 )
+
+var transferErrors = errorMap{
+	services.ErrInvalidAmount:       {statusCode: http.StatusBadRequest, message: "invalid amount"},
+	services.ErrInvalidTransfer:     {statusCode: http.StatusBadRequest, message: "invalid transfer"},
+	services.ErrInvalidDescription:  {statusCode: http.StatusBadRequest, message: "invalid description"},
+	services.ErrMFACodeRequired:     {statusCode: http.StatusBadRequest, message: "mfa code required"},
+	services.ErrInvalidMFACode:      {statusCode: http.StatusForbidden, message: "invalid mfa code"},
+	services.ErrInvalidMFAPurpose:   {statusCode: http.StatusBadRequest, message: "invalid mfa purpose"},
+	services.ErrInvalidMFAOperation: {statusCode: http.StatusBadRequest, message: "invalid mfa operation"},
+	services.ErrAccountNotFound:     {statusCode: http.StatusNotFound, message: "account not found"},
+	services.ErrInsufficientFunds:   {statusCode: http.StatusConflict, message: "insufficient funds"},
+	services.ErrAccountBlocked:      {statusCode: http.StatusForbidden, message: "account is blocked"},
+}
 
 type TransferHandler struct {
 	transferService *services.TransferService
@@ -21,70 +31,19 @@ func NewTransferHandler(transferService *services.TransferService) *TransferHand
 }
 
 func (h *TransferHandler) Transfer(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
 	var request dto.TransferRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.transferService.Transfer(r.Context(), userID, request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidAmount) {
-			writeError(w, http.StatusBadRequest, "invalid amount")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidTransfer) {
-			writeError(w, http.StatusBadRequest, "invalid transfer")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidDescription) {
-			writeError(w, http.StatusBadRequest, "invalid description")
-			return
-		}
-
-		if errors.Is(err, services.ErrMFACodeRequired) {
-			writeError(w, http.StatusBadRequest, "mfa code required")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFACode) {
-			writeError(w, http.StatusForbidden, "invalid mfa code")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFAPurpose) {
-			writeError(w, http.StatusBadRequest, "invalid mfa purpose")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFAOperation) {
-			writeError(w, http.StatusBadRequest, "invalid mfa operation")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		if errors.Is(err, services.ErrInsufficientFunds) {
-			writeError(w, http.StatusConflict, "insufficient funds")
-			return
-		}
-		if errors.Is(err, services.ErrAccountBlocked) {
-			writeError(w, http.StatusForbidden, "account is blocked")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "transfer failed")
+		writeMappedError(w, err, transferErrors, "transfer failed")
 		return
 	}
 

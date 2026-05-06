@@ -1,16 +1,33 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 
 	"bank-service/internal/dto"
-	"bank-service/internal/middleware"
 	"bank-service/internal/services"
 
 	"github.com/gorilla/mux"
+)
+
+var (
+	getAccountErrors = errorMap{
+		services.ErrAccountNotFound: {statusCode: http.StatusNotFound, message: "account not found"},
+	}
+
+	depositErrors = errorMap{
+		services.ErrInvalidAmount:   {statusCode: http.StatusBadRequest, message: "invalid amount"},
+		services.ErrAccountNotFound: {statusCode: http.StatusNotFound, message: "account not found"},
+		services.ErrAccountBlocked:  {statusCode: http.StatusForbidden, message: "account is blocked"},
+	}
+
+	withdrawErrors = errorMap{
+		services.ErrInvalidAmount:     {statusCode: http.StatusBadRequest, message: "invalid amount"},
+		services.ErrAccountNotFound:   {statusCode: http.StatusNotFound, message: "account not found"},
+		services.ErrInsufficientFunds: {statusCode: http.StatusConflict, message: "insufficient funds"},
+		services.ErrAccountBlocked:    {statusCode: http.StatusForbidden, message: "account is blocked"},
+	}
 )
 
 type AccountHandler struct {
@@ -24,9 +41,8 @@ func NewAccountHandler(accountService *services.AccountService) *AccountHandler 
 }
 
 func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -40,9 +56,8 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) GetUserAccounts(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -56,9 +71,8 @@ func (h *AccountHandler) GetUserAccounts(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -70,12 +84,7 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.accountService.GetAccount(r.Context(), userID, accountID)
 	if err != nil {
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "get account failed")
+		writeMappedError(w, err, getAccountErrors, "get account failed")
 		return
 	}
 
@@ -83,9 +92,8 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -96,29 +104,13 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request dto.DepositRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.accountService.Deposit(r.Context(), userID, accountID, request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidAmount) {
-			writeError(w, http.StatusBadRequest, "invalid amount")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountBlocked) {
-			writeError(w, http.StatusForbidden, "account is blocked")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "deposit failed")
+		writeMappedError(w, err, depositErrors, "deposit failed")
 		return
 	}
 
@@ -126,9 +118,8 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -139,33 +130,13 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request dto.WithdrawRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.accountService.Withdraw(r.Context(), userID, accountID, request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidAmount) {
-			writeError(w, http.StatusBadRequest, "invalid amount")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		if errors.Is(err, services.ErrInsufficientFunds) {
-			writeError(w, http.StatusConflict, "insufficient funds")
-			return
-		}
-		if errors.Is(err, services.ErrAccountBlocked) {
-			writeError(w, http.StatusForbidden, "account is blocked")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "withdraw failed")
+		writeMappedError(w, err, withdrawErrors, "withdraw failed")
 		return
 	}
 

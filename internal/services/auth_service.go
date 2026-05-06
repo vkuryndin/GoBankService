@@ -41,24 +41,9 @@ func NewAuthService(
 }
 
 func (s *AuthService) Register(ctx context.Context, request dto.RegisterRequest) (*dto.RegisterResponse, error) {
-	email := strings.TrimSpace(strings.ToLower(request.Email))
-	username := strings.TrimSpace(request.Username)
-	password := request.Password
-
-	if email == "" || username == "" || password == "" {
-		return nil, fmt.Errorf("%w: email, username and password are required", ErrInvalidRegisterData)
-	}
-
-	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
-		return nil, fmt.Errorf("%w: invalid email", ErrInvalidRegisterData)
-	}
-
-	if len(username) < 3 {
-		return nil, fmt.Errorf("%w: username must be at least 3 characters", ErrInvalidRegisterData)
-	}
-
-	if len(password) < 8 {
-		return nil, fmt.Errorf("%w: password must be at least 8 characters", ErrInvalidRegisterData)
+	email, username, password, err := normalizeRegistrationInput(request)
+	if err != nil {
+		return nil, err
 	}
 
 	passwordHash, err := security.HashPassword(password)
@@ -155,4 +140,28 @@ func (s *AuthService) Logout(ctx context.Context, tokenString string) error {
 	}
 
 	return nil
+}
+
+func normalizeRegistrationInput(request dto.RegisterRequest) (string, string, string, error) {
+	email := strings.TrimSpace(strings.ToLower(request.Email))
+	username := strings.TrimSpace(request.Username)
+	password := request.Password
+
+	if email == "" || username == "" || password == "" {
+		return "", "", "", fmt.Errorf("%w: email, username and password are required", ErrInvalidRegisterData)
+	}
+
+	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return "", "", "", fmt.Errorf("%w: invalid email", ErrInvalidRegisterData)
+	}
+
+	if len(username) < minimumUsernameLength {
+		return "", "", "", fmt.Errorf("%w: username must be at least %d characters", ErrInvalidRegisterData, minimumUsernameLength)
+	}
+
+	if len(password) < minimumPasswordLength {
+		return "", "", "", fmt.Errorf("%w: password must be at least %d characters", ErrInvalidRegisterData, minimumPasswordLength)
+	}
+
+	return email, username, password, nil
 }

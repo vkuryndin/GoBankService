@@ -118,6 +118,9 @@ func (r *AccountRepository) FindByIDAndUserID(ctx context.Context, accountID, us
 	return account, nil
 }
 
+// ValidateTransferAccounts keeps transfers safe before an MFA code is issued.
+// The source account must belong to the authenticated user; the destination account may belong to another user,
+// but both accounts have to exist and be available for operations.
 func (r *AccountRepository) ValidateTransferAccounts(
 	ctx context.Context,
 	userID int64,
@@ -307,6 +310,7 @@ func (r *AccountRepository) Transfer(
 	return transactionID, nil
 }
 
+// lockAccount prevents concurrent balance changes and verifies ownership in the same database transaction.
 func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error {
 	query := `
 		SELECT id, is_blocked
@@ -334,6 +338,7 @@ func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error
 	return nil
 }
 
+// lockTransferAccounts locks accounts in deterministic order to reduce deadlock risk during transfers.
 func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID, toAccountID int64) error {
 	query := `
 		SELECT id, user_id, is_blocked

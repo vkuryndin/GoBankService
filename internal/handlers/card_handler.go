@@ -1,16 +1,38 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 
 	"bank-service/internal/dto"
-	"bank-service/internal/middleware"
 	"bank-service/internal/services"
 
 	"github.com/gorilla/mux"
+)
+
+var (
+	createCardErrors = errorMap{
+		services.ErrInvalidCardData: {statusCode: http.StatusBadRequest, message: "invalid card data"},
+		services.ErrAccountNotFound: {statusCode: http.StatusNotFound, message: "account not found"},
+	}
+
+	getCardErrors = errorMap{
+		services.ErrCardNotFound: {statusCode: http.StatusNotFound, message: "card not found"},
+	}
+
+	cardPaymentErrors = errorMap{
+		services.ErrInvalidAmount:       {statusCode: http.StatusBadRequest, message: "invalid amount"},
+		services.ErrInvalidDescription:  {statusCode: http.StatusBadRequest, message: "invalid description"},
+		services.ErrMFACodeRequired:     {statusCode: http.StatusBadRequest, message: "mfa code required"},
+		services.ErrInvalidMFACode:      {statusCode: http.StatusForbidden, message: "invalid mfa code"},
+		services.ErrInvalidMFAOperation: {statusCode: http.StatusBadRequest, message: "invalid mfa operation"},
+		services.ErrInvalidCVV:          {statusCode: http.StatusForbidden, message: "invalid cvv"},
+		services.ErrCardNotFound:        {statusCode: http.StatusNotFound, message: "card not found"},
+		services.ErrAccountNotFound:     {statusCode: http.StatusNotFound, message: "account not found"},
+		services.ErrInsufficientFunds:   {statusCode: http.StatusConflict, message: "insufficient funds"},
+		services.ErrAccountBlocked:      {statusCode: http.StatusForbidden, message: "account is blocked"},
+	}
 )
 
 type CardHandler struct {
@@ -24,31 +46,19 @@ func NewCardHandler(cardService *services.CardService) *CardHandler {
 }
 
 func (h *CardHandler) CreateCard(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
 	var request dto.CreateCardRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.cardService.CreateCard(r.Context(), userID, request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCardData) {
-			writeError(w, http.StatusBadRequest, "invalid card data")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "create card failed")
+		writeMappedError(w, err, createCardErrors, "create card failed")
 		return
 	}
 
@@ -56,9 +66,8 @@ func (h *CardHandler) CreateCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CardHandler) GetUserCards(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -72,9 +81,8 @@ func (h *CardHandler) GetUserCards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -86,12 +94,7 @@ func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.cardService.GetCard(r.Context(), userID, cardID)
 	if err != nil {
-		if errors.Is(err, services.ErrCardNotFound) {
-			writeError(w, http.StatusNotFound, "card not found")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "get card failed")
+		writeMappedError(w, err, getCardErrors, "get card failed")
 		return
 	}
 
@@ -99,9 +102,8 @@ func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CardHandler) PayByCard(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -112,64 +114,13 @@ func (h *CardHandler) PayByCard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var request dto.CardPaymentRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.cardService.PayByCard(r.Context(), userID, cardID, request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidAmount) {
-			writeError(w, http.StatusBadRequest, "invalid amount")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidDescription) {
-			writeError(w, http.StatusBadRequest, "invalid description")
-			return
-		}
-
-		if errors.Is(err, services.ErrMFACodeRequired) {
-			writeError(w, http.StatusBadRequest, "mfa code required")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFACode) {
-			writeError(w, http.StatusForbidden, "invalid mfa code")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFAOperation) {
-			writeError(w, http.StatusBadRequest, "invalid mfa operation")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidCVV) {
-			writeError(w, http.StatusForbidden, "invalid cvv")
-			return
-		}
-
-		if errors.Is(err, services.ErrCardNotFound) {
-			writeError(w, http.StatusNotFound, "card not found")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		if errors.Is(err, services.ErrInsufficientFunds) {
-			writeError(w, http.StatusConflict, "insufficient funds")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountBlocked) {
-			writeError(w, http.StatusForbidden, "account is blocked")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "card payment failed")
+		writeMappedError(w, err, cardPaymentErrors, "card payment failed")
 		return
 	}
 

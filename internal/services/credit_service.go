@@ -41,7 +41,7 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 		return nil, ErrInvalidCreditData
 	}
 
-	if request.TermMonths <= 0 || request.TermMonths > 120 {
+	if request.TermMonths <= 0 || request.TermMonths > maxCreditTermMonths {
 		return nil, ErrInvalidCreditData
 	}
 

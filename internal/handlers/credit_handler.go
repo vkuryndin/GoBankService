@@ -1,16 +1,31 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 
 	"bank-service/internal/dto"
-	"bank-service/internal/middleware"
 	"bank-service/internal/services"
 
 	"github.com/gorilla/mux"
+)
+
+var (
+	createCreditErrors = errorMap{
+		services.ErrInvalidCreditData:   {statusCode: http.StatusBadRequest, message: "invalid credit data"},
+		services.ErrInvalidAmount:       {statusCode: http.StatusBadRequest, message: "invalid amount"},
+		services.ErrAccountNotFound:     {statusCode: http.StatusNotFound, message: "account not found"},
+		services.ErrAccountBlocked:      {statusCode: http.StatusForbidden, message: "account is blocked"},
+		services.ErrMFACodeRequired:     {statusCode: http.StatusBadRequest, message: "mfa code required"},
+		services.ErrInvalidMFACode:      {statusCode: http.StatusForbidden, message: "invalid mfa code"},
+		services.ErrInvalidMFAPurpose:   {statusCode: http.StatusBadRequest, message: "invalid mfa purpose"},
+		services.ErrInvalidMFAOperation: {statusCode: http.StatusBadRequest, message: "invalid mfa operation"},
+	}
+
+	getCreditErrors = errorMap{
+		services.ErrCreditNotFound: {statusCode: http.StatusNotFound, message: "credit not found"},
+	}
 )
 
 type CreditHandler struct {
@@ -24,61 +39,19 @@ func NewCreditHandler(creditService *services.CreditService) *CreditHandler {
 }
 
 func (h *CreditHandler) CreateCredit(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
 	var request dto.CreateCreditRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.creditService.CreateCredit(r.Context(), userID, request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidCreditData) {
-			writeError(w, http.StatusBadRequest, "invalid credit data")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidAmount) {
-			writeError(w, http.StatusBadRequest, "invalid amount")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountNotFound) {
-			writeError(w, http.StatusNotFound, "account not found")
-			return
-		}
-
-		if errors.Is(err, services.ErrAccountBlocked) {
-			writeError(w, http.StatusForbidden, "account is blocked")
-			return
-		}
-
-		if errors.Is(err, services.ErrMFACodeRequired) {
-			writeError(w, http.StatusBadRequest, "mfa code required")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFACode) {
-			writeError(w, http.StatusForbidden, "invalid mfa code")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFAPurpose) {
-			writeError(w, http.StatusBadRequest, "invalid mfa purpose")
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidMFAOperation) {
-			writeError(w, http.StatusBadRequest, "invalid mfa operation")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "create credit failed")
+		writeMappedError(w, err, createCreditErrors, "create credit failed")
 		return
 	}
 
@@ -86,9 +59,8 @@ func (h *CreditHandler) CreateCredit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CreditHandler) GetUserCredits(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -102,9 +74,8 @@ func (h *CreditHandler) GetUserCredits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CreditHandler) GetCredit(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -116,12 +87,7 @@ func (h *CreditHandler) GetCredit(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.creditService.GetCredit(r.Context(), userID, creditID)
 	if err != nil {
-		if errors.Is(err, services.ErrCreditNotFound) {
-			writeError(w, http.StatusNotFound, "credit not found")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "get credit failed")
+		writeMappedError(w, err, getCreditErrors, "get credit failed")
 		return
 	}
 
@@ -129,9 +95,8 @@ func (h *CreditHandler) GetCredit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CreditHandler) GetCreditSchedule(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
@@ -143,12 +108,7 @@ func (h *CreditHandler) GetCreditSchedule(w http.ResponseWriter, r *http.Request
 
 	response, err := h.creditService.GetCreditSchedule(r.Context(), userID, creditID)
 	if err != nil {
-		if errors.Is(err, services.ErrCreditNotFound) {
-			writeError(w, http.StatusNotFound, "credit not found")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "get credit schedule failed")
+		writeMappedError(w, err, getCreditErrors, "get credit schedule failed")
 		return
 	}
 

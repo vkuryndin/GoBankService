@@ -40,6 +40,7 @@ func NewCreditPaymentRepository(db *sql.DB) *CreditPaymentRepository {
 	}
 }
 
+// FindDuePayments includes overdue rows so the scheduler can retry failed payments instead of losing them.
 func (r *CreditPaymentRepository) FindDuePayments(ctx context.Context, limit int) ([]DueCreditPayment, error) {
 	query := `
 		SELECT
@@ -122,6 +123,7 @@ func (r *CreditPaymentRepository) ProcessPayment(
 		return nil, err
 	}
 
+	// Overdue payments are charged as the original amount plus the accumulated penalty.
 	withdrawAmount, err := paymentAmountForWithdrawal(lockedPayment)
 	if err != nil {
 		return nil, err

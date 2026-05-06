@@ -1,14 +1,28 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
 	"bank-service/internal/dto"
-	"bank-service/internal/middleware"
 	"bank-service/internal/services"
+)
+
+var (
+	registerErrors = errorMap{
+		services.ErrInvalidRegisterData: {statusCode: http.StatusBadRequest, message: "invalid register data"},
+		services.ErrEmailAlreadyUsed:    {statusCode: http.StatusConflict, message: "email or username already used"},
+	}
+
+	loginErrors = errorMap{
+		services.ErrInvalidLoginData:   {statusCode: http.StatusBadRequest, message: "invalid login data"},
+		services.ErrInvalidCredentials: {statusCode: http.StatusUnauthorized, message: "invalid login or password"},
+	}
+
+	logoutErrors = errorMap{
+		services.ErrInvalidToken: {statusCode: http.StatusUnauthorized, message: "invalid token"},
+	}
 )
 
 type AuthHandler struct {
@@ -23,25 +37,13 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var request dto.RegisterRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.authService.Register(r.Context(), request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidRegisterData) {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		if errors.Is(err, services.ErrEmailAlreadyUsed) {
-			writeError(w, http.StatusConflict, "email or username already used")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "registration failed")
+		writeMappedError(w, err, registerErrors, "registration failed")
 		return
 	}
 
@@ -50,25 +52,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var request dto.LoginRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	if !decodeJSON(w, r, &request) {
 		return
 	}
 
 	response, err := h.authService.Login(r.Context(), request)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidLoginData) {
-			writeError(w, http.StatusBadRequest, err.Error())
-			return
-		}
-
-		if errors.Is(err, services.ErrInvalidCredentials) {
-			writeError(w, http.StatusUnauthorized, "invalid login or password")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "login failed")
+		writeMappedError(w, err, loginErrors, "login failed")
 		return
 	}
 
@@ -83,12 +73,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.Logout(r.Context(), tokenString); err != nil {
-		if errors.Is(err, services.ErrInvalidToken) {
-			writeError(w, http.StatusUnauthorized, "invalid token")
-			return
-		}
-
-		writeError(w, http.StatusInternalServerError, "logout failed")
+		writeMappedError(w, err, logoutErrors, "logout failed")
 		return
 	}
 
@@ -98,9 +83,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := requireUserID(w, r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "user is not authenticated")
 		return
 	}
 
