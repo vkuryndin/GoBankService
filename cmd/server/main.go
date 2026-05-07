@@ -51,6 +51,14 @@ func main() {
 		"from":    cfg.SMTP.From,
 	}).Info("smtp config loaded")
 
+	logger.WithFields(logrus.Fields{
+		"enabled":                    cfg.CreditPolicy.Enabled,
+		"max_active_credits":         cfg.CreditPolicy.MaxActiveCredits,
+		"max_principal_amount":       cfg.CreditPolicy.MaxPrincipalAmount,
+		"max_total_principal_amount": cfg.CreditPolicy.MaxTotalPrincipalAmount,
+		"max_debt_load_percent":      cfg.CreditPolicy.MaxDebtLoadPercent,
+	}).Info("credit policy loaded")
+
 	database, err := appdb.Connect(cfg.DatabaseURL)
 	if err != nil {
 		logger.Fatalf("database connection error: %v", err)
@@ -126,7 +134,18 @@ func main() {
 		cfg.Security.CVV.Lockout,
 	)
 	rateService := services.NewRateService(cbrClient, cfg.Security.CBRCacheTTL)
-	creditService := services.NewCreditService(creditRepository, rateService, mfaService)
+	creditService := services.NewCreditService(
+		creditRepository,
+		rateService,
+		mfaService,
+		services.CreditPolicy{
+			Enabled:                 cfg.CreditPolicy.Enabled,
+			MaxActiveCredits:        cfg.CreditPolicy.MaxActiveCredits,
+			MaxPrincipalAmount:      cfg.CreditPolicy.MaxPrincipalAmount,
+			MaxTotalPrincipalAmount: cfg.CreditPolicy.MaxTotalPrincipalAmount,
+			MaxDebtLoadPercent:      cfg.CreditPolicy.MaxDebtLoadPercent,
+		},
+	)
 	creditPaymentService := services.NewCreditPaymentService(
 		creditPaymentRepository,
 		notificationService,

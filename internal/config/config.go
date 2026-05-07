@@ -2,7 +2,9 @@ package config
 
 import (
 	"errors"
+	"math/big"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +13,8 @@ import (
 )
 
 const defaultCBRURL = "https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx"
+
+var moneyValueRegexp = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
 
 type Config struct {
 	ServerPort     string
@@ -22,6 +26,7 @@ type Config struct {
 	SMTP           SMTPConfig
 	Server         ServerConfig
 	Security       SecurityConfig
+	CreditPolicy   CreditPolicyConfig
 }
 
 type SMTPConfig struct {
@@ -81,6 +86,14 @@ type IdempotencyConfig struct {
 	CleanupInterval time.Duration
 }
 
+type CreditPolicyConfig struct {
+	Enabled                 bool
+	MaxActiveCredits        int
+	MaxPrincipalAmount      string
+	MaxTotalPrincipalAmount string
+	MaxDebtLoadPercent      int
+}
+
 func Load() (Config, error) {
 	_ = godotenv.Load()
 
@@ -129,6 +142,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	creditPolicyConfig, err := loadCreditPolicyConfig()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		ServerPort:     serverPort,
 		DatabaseURL:    databaseURL,
@@ -139,6 +157,43 @@ func Load() (Config, error) {
 		SMTP:           smtpConfig,
 		Server:         serverConfig,
 		Security:       securityConfig,
+		CreditPolicy:   creditPolicyConfig,
+	}, nil
+}
+
+func loadCreditPolicyConfig() (CreditPolicyConfig, error) {
+	maxActiveCredits, err := envInt("CREDIT_MAX_ACTIVE_CREDITS", 3)
+	if err != nil {
+		return CreditPolicyConfig{}, err
+	}
+	if maxActiveCredits < 0 {
+		return CreditPolicyConfig{}, errors.New("CREDIT_MAX_ACTIVE_CREDITS must be non-negative")
+	}
+
+	maxPrincipalAmount, err := envMoney("CREDIT_MAX_PRINCIPAL_AMOUNT", "1000000.00")
+	if err != nil {
+		return CreditPolicyConfig{}, err
+	}
+
+	maxTotalPrincipalAmount, err := envMoney("CREDIT_MAX_TOTAL_PRINCIPAL_AMOUNT", "3000000.00")
+	if err != nil {
+		return CreditPolicyConfig{}, err
+	}
+
+	maxDebtLoadPercent, err := envInt("CREDIT_MAX_DEBT_LOAD_PERCENT", 50)
+	if err != nil {
+		return CreditPolicyConfig{}, err
+	}
+	if maxDebtLoadPercent < 0 || maxDebtLoadPercent > 100 {
+		return CreditPolicyConfig{}, errors.New("CREDIT_MAX_DEBT_LOAD_PERCENT must be between 0 and 100")
+	}
+
+	return CreditPolicyConfig{
+		Enabled:                 envBool("CREDIT_POLICY_ENABLED", true),
+		MaxActiveCredits:        maxActiveCredits,
+		MaxPrincipalAmount:      maxPrincipalAmount,
+		MaxTotalPrincipalAmount: maxTotalPrincipalAmount,
+		MaxDebtLoadPercent:      maxDebtLoadPercent,
 	}, nil
 }
 
@@ -345,6 +400,24 @@ func loadAttemptLimitConfig(prefix string, defaultMaxFailures int, defaultLockou
 		MaxFailures: maxFailures,
 		Lockout:     lockout,
 	}, nil
+}
+
+func envMoney(name string, defaultValue string) (string, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		raw = defaultValue
+	}
+
+	if !moneyValueRegexp.MatchString(raw) {
+		return "", errors.New(name + " must be a positive money amount with up to 2 decimal places")
+	}
+
+	value, ok := new(big.Rat).SetString(raw)
+	if !ok || value.Sign() <= 0 {
+		return "", errors.New(name + " must be positive")
+	}
+
+	return raw, nil
 }
 
 func envBool(name string, defaultValue bool) bool {

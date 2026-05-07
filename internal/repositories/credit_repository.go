@@ -17,6 +17,14 @@ type PaymentScheduleInput struct {
 	Amount      string
 }
 
+type CreditRiskSummary struct {
+	ActiveCreditsCount   int
+	OverdueCreditsCount  int
+	TotalPrincipalAmount string
+	TotalMonthlyPayment  string
+	MonthlyIncome        string
+}
+
 type CreditRepository struct {
 	db *sql.DB
 }
@@ -242,6 +250,57 @@ func (r *CreditRepository) FindScheduleByCreditIDAndUserID(
 	}
 
 	return schedule, nil
+}
+
+func (r *CreditRepository) GetCreditRiskSummary(ctx context.Context, userID int64) (*CreditRiskSummary, error) {
+	query := `
+		WITH credit_data AS (
+			SELECT
+				COUNT(*) FILTER (WHERE status IN ('active', 'overdue')) AS active_count,
+				COUNT(*) FILTER (WHERE status = 'overdue') AS overdue_count,
+				COALESCE(SUM(principal_amount) FILTER (WHERE status IN ('active', 'overdue')), 0)::text AS total_principal,
+				COALESCE(SUM(monthly_payment) FILTER (WHERE status IN ('active', 'overdue')), 0)::text AS total_monthly_payment
+			FROM credits
+			WHERE user_id = $1
+		),
+		income_data AS (
+			SELECT COALESCE(SUM(t.amount), 0)::text AS monthly_income
+			FROM transactions t
+			LEFT JOIN accounts to_acc ON to_acc.id = t.to_account_id
+			LEFT JOIN accounts from_acc ON from_acc.id = t.from_account_id
+			WHERE t.status = 'completed'
+			  AND t.created_at >= NOW() - INTERVAL '30 days'
+			  AND (
+				(t.type = 'deposit' AND t.user_id = $1)
+				OR (
+					t.type = 'transfer'
+					AND to_acc.user_id = $1
+					AND (from_acc.user_id IS NULL OR from_acc.user_id <> $1)
+				)
+			  )
+		)
+		SELECT
+			cd.active_count,
+			cd.overdue_count,
+			cd.total_principal,
+			cd.total_monthly_payment,
+			id.monthly_income
+		FROM credit_data cd
+		CROSS JOIN income_data id
+	`
+
+	summary := &CreditRiskSummary{}
+	if err := r.db.QueryRowContext(ctx, query, userID).Scan(
+		&summary.ActiveCreditsCount,
+		&summary.OverdueCreditsCount,
+		&summary.TotalPrincipalAmount,
+		&summary.TotalMonthlyPayment,
+		&summary.MonthlyIncome,
+	); err != nil {
+		return nil, fmt.Errorf("get credit risk summary: %w", err)
+	}
+
+	return summary, nil
 }
 
 func createCredit(

@@ -18,6 +18,11 @@ var (
 		errorRules{
 			{target: services.ErrInvalidCreditData, statusCode: http.StatusBadRequest, message: "invalid credit data"},
 			{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"},
+			{target: services.ErrActiveOverdueCreditExists, statusCode: http.StatusConflict, message: "active overdue credit exists"},
+			{target: services.ErrActiveCreditLimitExceeded, statusCode: http.StatusConflict, message: "active credit limit exceeded"},
+			{target: services.ErrCreditPrincipalLimitExceeded, statusCode: http.StatusBadRequest, message: "credit principal limit exceeded"},
+			{target: services.ErrCreditTotalPrincipalLimitExceeded, statusCode: http.StatusConflict, message: "credit total principal limit exceeded"},
+			{target: services.ErrCreditDebtLoadTooHigh, statusCode: http.StatusConflict, message: "credit debt load too high"},
 		},
 		accountErrorRules,
 		mfaErrorRules,
