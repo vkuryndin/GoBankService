@@ -30,7 +30,12 @@ func main() {
 	}
 
 	logger.WithFields(logrus.Fields{
-		"server_port": cfg.ServerPort,
+		"server_port":            cfg.ServerPort,
+		"max_request_body_bytes": cfg.Security.MaxRequestBodyBytes,
+		"rate_limit_enabled":     cfg.Security.RateLimit.Enabled,
+		"idempotency_enabled":    cfg.Security.Idempotency.Enabled,
+		"idempotency_required":   cfg.Security.Idempotency.Required,
+		"cbr_cache_ttl_seconds":  cfg.Security.CBRCacheTTL.Seconds(),
 	}).Info("config loaded")
 
 	logger.WithFields(logrus.Fields{
@@ -75,6 +80,7 @@ func main() {
 	analyticsRepository := repositories.NewAnalyticsRepository(database)
 	userSessionRepository := repositories.NewUserSessionRepository(database)
 	adminRepository := repositories.NewAdminRepository(database)
+	idempotencyRepository := repositories.NewIdempotencyRepository(database)
 
 	cbrClient := cbr.NewClient(cfg.CBRURL)
 	smtpClient := smtpclient.NewClient(cfg.SMTP)
@@ -93,6 +99,8 @@ func main() {
 		accountRepository,
 		cardRepository,
 		notificationService,
+		cfg.Security.MFA.MaxFailures,
+		cfg.Security.MFA.Lockout,
 	)
 	transferService := services.NewTransferService(accountRepository, mfaService)
 	cardProcessingService := services.NewCardProcessingService()
@@ -103,8 +111,10 @@ func main() {
 		mfaService,
 		cfg.CardPGPKey,
 		cfg.CardHMACSecret,
+		cfg.Security.CVV.MaxFailures,
+		cfg.Security.CVV.Lockout,
 	)
-	rateService := services.NewRateService(cbrClient)
+	rateService := services.NewRateService(cbrClient, cfg.Security.CBRCacheTTL)
 	creditService := services.NewCreditService(creditRepository, rateService, mfaService)
 	creditPaymentService := services.NewCreditPaymentService(
 		creditPaymentRepository,
@@ -146,14 +156,26 @@ func main() {
 		adminHandler,
 		tokenRepository,
 		userRepository,
+		idempotencyRepository,
 		cfg.JWTSecret,
+		cfg.Security,
 		logger,
 	)
+
 	addr := ":" + cfg.ServerPort
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           appRouter,
+		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
+		MaxHeaderBytes:    cfg.Server.MaxHeaderBytes,
+	}
 
 	logger.Infof("server started on %s", addr)
 
-	if err := http.ListenAndServe(addr, appRouter); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		logger.Fatalf("server stopped: %v", err)
 	}
 }

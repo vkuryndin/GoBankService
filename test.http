@@ -1,13 +1,20 @@
 ### Variables
 @baseUrl = http://localhost:8080
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MTc2NTQzLCJpYXQiOjE3NzgwOTAxNDN9.JQAIEXq05YQmquk7eEPgJFRMdni8Yqnvcd5f7UVL_50
-@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MTc2NTYxLCJpYXQiOjE3NzgwOTAxNjF9.QnPyCrVC-7onYVTDusnk9Y9-TPtvpJB0JPGSChyRpVY
+@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MjIyNDM4LCJpYXQiOjE3NzgxMzYwMzgsImp0aSI6IjM2MTBhNmQ2NzkwZDVkNGI0NDM4NmNkYTE4ZThjYTAxIn0.QOig6CejqNAk7bwQU6WzeKsolVUBCQ0ApEqsgF-2urA
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
 @cvvForCardID2 = 079
 @cvvForCardID3 = 814
 @mfaCode=623420
+
+###-------------------------###
+### IDEMPOTENCY ###
+###-------------------------###
+### Финансовые POST-запросы ниже используют Idempotency-Key.
+### Для обычного ручного прогона используется {{$guid}}, чтобы каждый запуск создавал новый ключ.
+### Если хочешь проверить повторную отправку одной операции, временно замени {{$guid}} в двух одинаковых запросах на один и тот же фиксированный ключ.
 
 ###-------------------------###
 ### Health check
@@ -169,6 +176,7 @@ Authorization: Bearer {{token2}}
 POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "1000.00"
@@ -178,6 +186,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId2user1}}/deposit
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "500.00"
@@ -187,6 +196,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "1000.00"
@@ -196,6 +206,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "0.00"
@@ -205,6 +216,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "250.00"
@@ -214,6 +226,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId1user2}}/withdraw
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "250.00"
@@ -223,6 +236,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "999999.00"
@@ -232,6 +246,7 @@ Content-Type: application/json
 POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "10.00"
@@ -258,6 +273,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user1}},
@@ -284,6 +300,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user1}},
@@ -297,6 +314,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user1}},
@@ -322,6 +340,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user2}},
@@ -348,6 +367,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user1}},
@@ -361,6 +381,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user1}},
@@ -373,6 +394,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user1}},
@@ -428,6 +450,7 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/cards/2/pay
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
@@ -438,6 +461,7 @@ Content-Type: application/json
 POST {{baseUrl}}/cards/2/pay
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
@@ -449,6 +473,7 @@ Content-Type: application/json
 POST {{baseUrl}}/cards/2/pay
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
@@ -472,6 +497,7 @@ Content-Type: application/json
 POST {{baseUrl}}/cards/2/pay
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
@@ -496,6 +522,7 @@ Content-Type: application/json
 POST {{baseUrl}}/cards/3/pay
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
@@ -520,6 +547,7 @@ Content-Type: application/json
 POST {{baseUrl}}/cards/2/pay
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "999999.00",
@@ -544,6 +572,7 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/credits
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "account_id": {{accountId1user1}},
@@ -568,6 +597,7 @@ Content-Type: application/json
 POST {{baseUrl}}/credits
 Authorization: Bearer {{token}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "account_id": {{accountId1user1}},
@@ -593,6 +623,7 @@ Content-Type: application/json
 POST {{baseUrl}}/credits
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "account_id": {{accountId1user2}},
@@ -689,6 +720,7 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "100.00"
@@ -698,6 +730,7 @@ Content-Type: application/json
 POST {{baseUrl}}/transfer
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "from_account_id": {{accountId1user2}},
@@ -723,6 +756,7 @@ Authorization: Bearer {{token}}
 POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
 Authorization: Bearer {{token2}}
 Content-Type: application/json
+Idempotency-Key: {{$guid}}
 
 {
   "amount": "100.00"

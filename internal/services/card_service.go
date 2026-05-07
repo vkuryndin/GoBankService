@@ -45,6 +45,7 @@ type CardService struct {
 	mfaService            cardPaymentMFAVerifier
 	pgpKey                string
 	hmacSecret            string
+	cvvAttemptLimiter     *attemptLimiter
 }
 
 func NewCardService(
@@ -54,6 +55,8 @@ func NewCardService(
 	mfaService cardPaymentMFAVerifier,
 	pgpKey string,
 	hmacSecret string,
+	maxFailedCVVAttempts int,
+	cvvLockout time.Duration,
 ) *CardService {
 	return &CardService{
 		cardRepository:        cardRepository,
@@ -62,6 +65,7 @@ func NewCardService(
 		mfaService:            mfaService,
 		pgpKey:                pgpKey,
 		hmacSecret:            hmacSecret,
+		cvvAttemptLimiter:     newAttemptLimiter(maxFailedCVVAttempts, cvvLockout),
 	}
 }
 
@@ -157,9 +161,17 @@ func (s *CardService) PayByCard(
 		return nil, err
 	}
 
+	cvvAttemptKey := fmt.Sprintf("cvv:%d:%d", userID, cardID)
+	if s.cvvAttemptLimiter.isLocked(cvvAttemptKey) {
+		return nil, ErrInvalidCVV
+	}
+
 	if err := s.cardProcessingService.VerifyCVV(card, request.CVV); err != nil {
+		s.cvvAttemptLimiter.recordFailure(cvvAttemptKey)
 		return nil, err
 	}
+
+	s.cvvAttemptLimiter.reset(cvvAttemptKey)
 
 	if err := s.mfaService.VerifyCardPaymentCode(ctx, userID, cardID, request); err != nil {
 		return nil, err

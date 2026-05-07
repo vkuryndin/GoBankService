@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) NOT NULL UNIQUE,
     username VARCHAR(100) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -15,7 +14,6 @@ CREATE TABLE IF NOT EXISTS accounts (
     account_number VARCHAR(32) NOT NULL UNIQUE,
     balance NUMERIC(14,2) NOT NULL DEFAULT 0.00,
     currency CHAR(3) NOT NULL DEFAULT 'RUB',
-    is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT accounts_balance_non_negative CHECK (balance >= 0),
@@ -110,16 +108,51 @@ CREATE TABLE IF NOT EXISTS revoked_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at
+ON revoked_tokens(expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_user_id
+ON revoked_tokens(user_id);
+
+
 CREATE TABLE IF NOT EXISTS mfa_codes (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     purpose VARCHAR(50) NOT NULL,
-    operation_hash TEXT NOT NULL DEFAULT '',
     code_hash TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     used_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_mfa_codes_user_id_purpose
+ON mfa_codes(user_id, purpose);
+
+CREATE INDEX IF NOT EXISTS idx_mfa_codes_expires_at
+ON mfa_codes(expires_at);
+
+
+ALTER TABLE mfa_codes
+ADD COLUMN IF NOT EXISTS operation_hash TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_mfa_codes_user_purpose_operation
+ON mfa_codes(user_id, purpose, operation_hash);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
+CREATE INDEX IF NOT EXISTS idx_cards_account_id ON cards(account_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_credits_user_id ON credits(user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_schedules_credit_id ON payment_schedules(credit_id);
+CREATE INDEX IF NOT EXISTS idx_payment_schedules_payment_date ON payment_schedules(payment_date);
+
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE accounts
+ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS user_sessions (
     id BIGSERIAL PRIMARY KEY,
@@ -130,57 +163,6 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     revoked_at TIMESTAMPTZ
 );
 
-ALTER TABLE users
-ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
-
-ALTER TABLE accounts
-ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT FALSE;
-
-ALTER TABLE mfa_codes
-ADD COLUMN IF NOT EXISTS operation_hash TEXT NOT NULL DEFAULT '';
-
-CREATE INDEX IF NOT EXISTS idx_accounts_user_id
-ON accounts(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_cards_user_id
-ON cards(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_cards_account_id
-ON cards(account_id);
-
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id
-ON transactions(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_transactions_created_at
-ON transactions(created_at);
-
-CREATE INDEX IF NOT EXISTS idx_credits_user_id
-ON credits(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_payment_schedules_credit_id
-ON payment_schedules(credit_id);
-
-CREATE INDEX IF NOT EXISTS idx_payment_schedules_payment_date
-ON payment_schedules(payment_date);
-
-CREATE INDEX IF NOT EXISTS idx_payment_schedules_status_payment_date
-ON payment_schedules(status, payment_date);
-
-CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at
-ON revoked_tokens(expires_at);
-
-CREATE INDEX IF NOT EXISTS idx_revoked_tokens_user_id
-ON revoked_tokens(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_mfa_codes_user_id_purpose
-ON mfa_codes(user_id, purpose);
-
-CREATE INDEX IF NOT EXISTS idx_mfa_codes_expires_at
-ON mfa_codes(expires_at);
-
-CREATE INDEX IF NOT EXISTS idx_mfa_codes_user_purpose_operation
-ON mfa_codes(user_id, purpose, operation_hash);
-
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id
 ON user_sessions(user_id);
 
@@ -190,3 +172,15 @@ ON user_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_active
 ON user_sessions(user_id, expires_at)
 WHERE revoked_at IS NULL;
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    method VARCHAR(16) NOT NULL,
+    path TEXT NOT NULL,
+    key TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT idempotency_keys_unique_operation UNIQUE (user_id, method, path, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
+ON idempotency_keys(created_at);

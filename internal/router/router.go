@@ -2,7 +2,9 @@ package router
 
 import (
 	"net/http"
+	"strings"
 
+	"bank-service/internal/config"
 	"bank-service/internal/handlers"
 	"bank-service/internal/middleware"
 	"bank-service/internal/repositories"
@@ -25,12 +27,16 @@ func NewRouter(
 	adminHandler *handlers.AdminHandler,
 	tokenRepository *repositories.TokenRepository,
 	userRepository *repositories.UserRepository,
+	idempotencyRepository *repositories.IdempotencyRepository,
 	jwtSecret string,
+	securityConfig config.SecurityConfig,
 	logger *logrus.Logger,
 ) *mux.Router {
 	r := mux.NewRouter()
 
 	r.Use(middleware.RequestLogger(logger))
+	r.Use(middleware.MaxRequestBodySize(securityConfig.MaxRequestBodyBytes))
+	r.Use(buildPublicRateLimiter(securityConfig.RateLimit))
 
 	r.HandleFunc("/health", healthHandler.Health).Methods(http.MethodGet)
 	r.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
@@ -38,6 +44,15 @@ func NewRouter(
 
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware(jwtSecret, tokenRepository))
+	protected.Use(buildProtectedRateLimiter(securityConfig.RateLimit))
+	protected.Use(middleware.IdempotencyMiddleware(
+		idempotencyRepository,
+		middleware.IdempotencyConfig{
+			Enabled:  securityConfig.Idempotency.Enabled,
+			Required: securityConfig.Idempotency.Required,
+		},
+		logger,
+	))
 
 	protected.HandleFunc("/auth/check", authHandler.CheckAuth).Methods(http.MethodGet)
 	protected.HandleFunc("/logout", authHandler.Logout).Methods(http.MethodPost)
@@ -78,4 +93,85 @@ func NewRouter(
 	admin.HandleFunc("/accounts/{accountId}/unblock", adminHandler.UnblockAccount).Methods(http.MethodPost)
 
 	return r
+}
+
+func buildPublicRateLimiter(config config.RateLimitConfig) func(http.Handler) http.Handler {
+	rules := []middleware.RateLimitRule{
+		{
+			Name:   "login",
+			Limit:  config.LoginRequests,
+			Window: config.LoginWindow,
+			Match:  middleware.MatchMethodPath(http.MethodPost, "/login"),
+			Key:    middleware.ClientIPKey,
+		},
+		{
+			Name:   "register",
+			Limit:  config.RegisterRequests,
+			Window: config.RegisterWindow,
+			Match:  middleware.MatchMethodPath(http.MethodPost, "/register"),
+			Key:    middleware.ClientIPKey,
+		},
+		{
+			Name:   "global",
+			Limit:  config.GlobalRequests,
+			Window: config.GlobalWindow,
+			Match:  middleware.MatchAny(),
+			Key:    middleware.ClientIPKey,
+		},
+	}
+
+	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval)
+}
+
+func buildProtectedRateLimiter(config config.RateLimitConfig) func(http.Handler) http.Handler {
+	rules := []middleware.RateLimitRule{
+		{
+			Name:   "mfa",
+			Limit:  config.MFARequests,
+			Window: config.MFAWindow,
+			Match:  middleware.MatchMethodPath(http.MethodPost, "/mfa/request"),
+			Key:    middleware.UserIDKey,
+		},
+		{
+			Name:   "rates",
+			Limit:  config.RateRequests,
+			Window: config.RateWindow,
+			Match:  middleware.MatchMethodPath(http.MethodGet, "/rates/key"),
+			Key:    middleware.UserIDKey,
+		},
+		{
+			Name:   "admin",
+			Limit:  config.AdminRequests,
+			Window: config.AdminWindow,
+			Match:  middleware.MatchPathPrefix("/admin"),
+			Key:    middleware.UserIDKey,
+		},
+		{
+			Name:   "financial",
+			Limit:  config.FinancialRequests,
+			Window: config.FinancialWindow,
+			Match:  isFinancialEndpoint,
+			Key:    middleware.UserIDKey,
+		},
+	}
+
+	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval)
+}
+
+func isFinancialEndpoint(r *http.Request) bool {
+	path := r.URL.Path
+
+	if r.Method == http.MethodPost && (path == "/transfer" || path == "/credits") {
+		return true
+	}
+
+	if r.Method == http.MethodPost && strings.HasPrefix(path, "/accounts/") {
+		return strings.HasSuffix(path, "/deposit") || strings.HasSuffix(path, "/withdraw")
+	}
+
+	if r.Method == http.MethodPost && strings.HasPrefix(path, "/cards/") {
+		return strings.HasSuffix(path, "/pay")
+	}
+
+	return false
 }

@@ -55,6 +55,7 @@ type MFAService struct {
 	accountRepository   mfaAccountStore
 	cardRepository      mfaCardStore
 	notificationService mfaNotificationSender
+	attemptLimiter      *attemptLimiter
 }
 
 func NewMFAService(
@@ -62,12 +63,15 @@ func NewMFAService(
 	accountRepository mfaAccountStore,
 	cardRepository mfaCardStore,
 	notificationService mfaNotificationSender,
+	maxFailedAttempts int,
+	lockout time.Duration,
 ) *MFAService {
 	return &MFAService{
 		mfaRepository:       mfaRepository,
 		accountRepository:   accountRepository,
 		cardRepository:      cardRepository,
 		notificationService: notificationService,
+		attemptLimiter:      newAttemptLimiter(maxFailedAttempts, lockout),
 	}
 }
 
@@ -197,9 +201,17 @@ func (s *MFAService) verifyCode(
 		return err
 	}
 
-	if !security.CheckPassword(code, activeCode.CodeHash) {
+	attemptKey := fmt.Sprintf("mfa:%d:%s:%s", userID, purpose, operationHash)
+	if s.attemptLimiter.isLocked(attemptKey) {
 		return ErrInvalidMFACode
 	}
+
+	if !security.CheckPassword(code, activeCode.CodeHash) {
+		s.attemptLimiter.recordFailure(attemptKey)
+		return ErrInvalidMFACode
+	}
+
+	s.attemptLimiter.reset(attemptKey)
 
 	if err := s.mfaRepository.MarkUsed(ctx, activeCode.ID); err != nil {
 		return err
