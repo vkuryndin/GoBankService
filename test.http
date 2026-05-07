@@ -1,7 +1,11 @@
 ### Variables
-@baseUrl = http://localhost:8080
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MTc2NTQzLCJpYXQiOjE3NzgwOTAxNDN9.JQAIEXq05YQmquk7eEPgJFRMdni8Yqnvcd5f7UVL_50
-@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MjIzNjQyLCJpYXQiOjE3NzgxMzcyNDIsImp0aSI6ImM0MjY0YjdhMzhmN2NkMzA1YWRkN2IzNjZkNjU1NDkwIn0.wrQM6YAIaLxrX2VtD_-W-UGq5UBxCJ2ZxOPkBiXppp0
+@baseUrl = http://18.185.7.63:8081
+
+
+@baseUrl2 = http://localhost:8080
+
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MjQyNDQ1LCJpYXQiOjE3NzgxNTYwNDUsImp0aSI6IjhlOWI2Y2NiNWUyN2U2MmRmODA2N2U2MGU4MzE3MzA0In0.I2Fv7MudDh9W4kBUhvaFQL7CxaHQbskl7Vro4NkyG2Y
+@token2 =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJzdWIiOiIyIiwiZXhwIjoxNzc4MjQzMzU2LCJpYXQiOjE3NzgxNTY5NTYsImp0aSI6ImI5ZWIwMTk5NDJiZTM1MTFhMWRhMWJiN2I0NDg3N2U5In0.NKUQbqvpY3nEe6ZdKMF9lip5wreOoRVpT2Fn5_Y6GL8
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
@@ -12,9 +16,12 @@
 
 @cvvForCardID7 = 287
 
-@cardId1user1 = 6
+@cvvForCardID31 = 851
+@cvvForCardID41 = 063
 
-@cardId1user2 = 7
+@cardId1user1 = 1
+
+@cardId1user2 = 2
 
 @mfaCode=623420
 
@@ -251,7 +258,7 @@ Idempotency-Key: {{$guid}}
 
 {
   "amount": "250.00",
-  "mfa_code": "{{mfaCode}}"
+  "mfa_code": "130092"
 }
 
 ### Request MFA for withdraw user 2 account 1
@@ -350,7 +357,7 @@ Idempotency-Key: {{$guid}}
   "to_account_id": {{accountId2user1}},
   "amount": "100.00",
   "description": "transfer between user 1 accounts",
-  "mfa_code": "{{mfaCode}}"
+  "mfa_code": "135876"
 }
 
 ### Request MFA for transfer from user 1 to user 2
@@ -571,7 +578,7 @@ Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
-  "cvv": "{{cvvForCardID2}}",
+  "cvv": "{{cvvForCardID31}}",
   "mfa_code": "{{mfaCode}}",
   "description": "card payment with cvv and mfa"
 }
@@ -631,8 +638,8 @@ Idempotency-Key: {{$guid}}
 ###-------------------------###
 
 ### Close card
-POST {{baseUrl}}/cards/{{cardId1user1}}/close
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/cards/{{cardId1user2}}/close
+Authorization: Bearer {{token2}}
 Idempotency-Key: {{$guid}}
 
 ### Get closed card: status should be closed
@@ -821,15 +828,15 @@ Authorization: Bearer {{token}}
 
 ### Admin logged in users
 GET {{baseUrl}}/admin/logged-in-users
-Authorization: Bearer {{token2}}
+Authorization: Bearer {{token}}
 
 ### User 2 tries admin users
 GET {{baseUrl}}/admin/users
 Authorization: Bearer {{token2}}
 
 ### Admin block user 2 account
-POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/block
-Authorization: Bearer {{token2}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/block
+Authorization: Bearer {{token}}
 
 ### Deposit to blocked account should fail
 POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
@@ -860,12 +867,12 @@ POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/block
 Authorization: Bearer {{token2}}
 
 ### Admin unblock user 2 account
-POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/unblock
-Authorization: Bearer {{token2}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/unblock
+Authorization: Bearer {{token}}
 
 ### Admin unblock already unblocked account should fail
 POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/unblock
-Authorization: Bearer {{token2}}
+Authorization: Bearer {{token}}
 
 ### Deposit after unblock should work
 POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
