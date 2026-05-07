@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -18,12 +19,15 @@ var (
 	ErrInvalidCardData    = errors.New("invalid card data")
 	ErrCardCreateRetries  = errors.New("card create retries exceeded")
 	ErrCVVAttemptsBlocked = errors.New("cvv attempts blocked")
+	ErrCardClosed         = errors.New("card is closed")
+	ErrCardAlreadyClosed  = errors.New("card already closed")
 )
 
 type cardStore interface {
 	Create(ctx context.Context, userID int64, accountID int64, number string, expiry string, cvvHash string, numberHMAC string, pgpKey string) (*models.CardDetails, error)
 	FindByUserID(ctx context.Context, userID int64, pgpKey string) ([]models.CardDetails, error)
 	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
+	Close(ctx context.Context, userID int64, cardID int64) (*models.CardDetails, error)
 }
 
 type cardPaymentAccountStore interface {
@@ -126,6 +130,27 @@ func (s *CardService) GetCard(ctx context.Context, userID, cardID int64) (*dto.C
 	return toFullCardResponse(card), nil
 }
 
+func (s *CardService) CloseCard(ctx context.Context, userID int64, cardID int64) (*dto.CloseCardResponse, error) {
+	if cardID <= 0 {
+		return nil, ErrInvalidCardData
+	}
+
+	// Cards are soft-closed instead of deleted to preserve transaction history and auditability.
+	card, err := s.cardRepository.Close(ctx, userID, cardID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+		if errors.Is(err, repositories.ErrCardAlreadyClosed) {
+			return nil, ErrCardAlreadyClosed
+		}
+
+		return nil, err
+	}
+
+	return toCloseCardResponse(card), nil
+}
+
 func (s *CardService) PayByCard(
 	ctx context.Context,
 	userID int64,
@@ -158,6 +183,10 @@ func (s *CardService) PayByCard(
 		return nil, err
 	}
 
+	if card.Status == models.CardStatusClosed {
+		return nil, ErrCardClosed
+	}
+
 	if err := s.verifyCardHMAC(card); err != nil {
 		return nil, err
 	}
@@ -182,13 +211,7 @@ func (s *CardService) PayByCard(
 		return nil, err
 	}
 
-	_, transactionID, err := s.accountRepository.CardPayment(
-		ctx,
-		userID,
-		card.AccountID,
-		amount,
-		description,
-	)
+	_, transactionID, err := s.accountRepository.CardPayment(ctx, userID, card.AccountID, amount, description)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
@@ -229,16 +252,7 @@ func (s *CardService) createCardOnce(ctx context.Context, userID, accountID int6
 
 	numberHMAC := security.ComputeHMAC(number, s.hmacSecret)
 
-	card, err := s.cardRepository.Create(
-		ctx,
-		userID,
-		accountID,
-		number,
-		expiry,
-		cvvHash,
-		numberHMAC,
-		s.pgpKey,
-	)
+	card, err := s.cardRepository.Create(ctx, userID, accountID, number, expiry, cvvHash, numberHMAC, s.pgpKey)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +278,8 @@ func toMaskedCardResponse(card *models.CardDetails) *dto.CardResponse {
 		AccountID:    card.AccountID,
 		MaskedNumber: security.MaskCardNumber(card.Number),
 		NumberHMAC:   card.NumberHMAC,
+		Status:       normalizeCardStatus(card.Status),
+		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),
 	}
 }
@@ -276,6 +292,8 @@ func toFullCardResponse(card *models.CardDetails) *dto.CardResponse {
 		MaskedNumber: security.MaskCardNumber(card.Number),
 		Expiry:       card.Expiry,
 		NumberHMAC:   card.NumberHMAC,
+		Status:       normalizeCardStatus(card.Status),
+		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),
 	}
 }
@@ -289,6 +307,31 @@ func toIssuedCardResponse(card *models.CardDetails) *dto.CardResponse {
 		Expiry:       card.Expiry,
 		CVV:          card.CVV,
 		NumberHMAC:   card.NumberHMAC,
+		Status:       normalizeCardStatus(card.Status),
+		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),
 	}
+}
+
+func toCloseCardResponse(card *models.CardDetails) *dto.CloseCardResponse {
+	return &dto.CloseCardResponse{
+		ID:        card.ID,
+		AccountID: card.AccountID,
+		Status:    normalizeCardStatus(card.Status),
+		ClosedAt:  formatNullableTime(card.ClosedAt),
+	}
+}
+
+func normalizeCardStatus(status string) string {
+	if status == "" {
+		return models.CardStatusActive
+	}
+	return status
+}
+
+func formatNullableTime(value sql.NullTime) string {
+	if !value.Valid {
+		return ""
+	}
+	return value.Time.Format(time.RFC3339)
 }

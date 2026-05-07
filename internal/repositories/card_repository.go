@@ -14,6 +14,7 @@ import (
 var (
 	ErrCardNotFound      = errors.New("card not found")
 	ErrCardAlreadyExists = errors.New("card already exists")
+	ErrCardAlreadyClosed = errors.New("card already closed")
 )
 
 type CardRepository struct {
@@ -21,9 +22,7 @@ type CardRepository struct {
 }
 
 func NewCardRepository(db *sql.DB) *CardRepository {
-	return &CardRepository{
-		db: db,
-	}
+	return &CardRepository{db: db}
 }
 
 func (r *CardRepository) Create(
@@ -65,22 +64,14 @@ func (r *CardRepository) Create(
 			pgp_sym_decrypt(encrypted_expiry, $7),
 			cvv_hash,
 			number_hmac,
+			status,
+			closed_at,
 			created_at
 	`
 
 	card := &models.CardDetails{}
 
-	err := r.db.QueryRowContext(
-		ctx,
-		query,
-		userID,
-		accountID,
-		number,
-		expiry,
-		cvvHash,
-		numberHMAC,
-		pgpKey,
-	).Scan(
+	err := r.db.QueryRowContext(ctx, query, userID, accountID, number, expiry, cvvHash, numberHMAC, pgpKey).Scan(
 		&card.ID,
 		&card.UserID,
 		&card.AccountID,
@@ -88,6 +79,8 @@ func (r *CardRepository) Create(
 		&card.Expiry,
 		&card.CVVHash,
 		&card.NumberHMAC,
+		&card.Status,
+		&card.ClosedAt,
 		&card.CreatedAt,
 	)
 	if err != nil {
@@ -116,6 +109,8 @@ func (r *CardRepository) FindByUserID(ctx context.Context, userID int64, pgpKey 
 			pgp_sym_decrypt(encrypted_expiry, $2),
 			cvv_hash,
 			number_hmac,
+			status,
+			closed_at,
 			created_at
 		FROM cards
 		WHERE user_id = $1
@@ -141,6 +136,8 @@ func (r *CardRepository) FindByUserID(ctx context.Context, userID int64, pgpKey 
 			&card.Expiry,
 			&card.CVVHash,
 			&card.NumberHMAC,
+			&card.Status,
+			&card.ClosedAt,
 			&card.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan card: %w", err)
@@ -171,6 +168,8 @@ func (r *CardRepository) FindByIDAndUserID(
 			pgp_sym_decrypt(encrypted_expiry, $3),
 			cvv_hash,
 			number_hmac,
+			status,
+			closed_at,
 			created_at
 		FROM cards
 		WHERE id = $1 AND user_id = $2
@@ -186,6 +185,8 @@ func (r *CardRepository) FindByIDAndUserID(
 		&card.Expiry,
 		&card.CVVHash,
 		&card.NumberHMAC,
+		&card.Status,
+		&card.ClosedAt,
 		&card.CreatedAt,
 	)
 	if err != nil {
@@ -203,7 +204,7 @@ func (r *CardRepository) FindAccountIDByIDAndUserID(ctx context.Context, cardID 
 	query := `
 		SELECT account_id
 		FROM cards
-		WHERE id = $1 AND user_id = $2
+		WHERE id = $1 AND user_id = $2 AND status = 'active'
 	`
 
 	var accountID int64
@@ -218,6 +219,54 @@ func (r *CardRepository) FindAccountIDByIDAndUserID(ctx context.Context, cardID 
 	}
 
 	return accountID, nil
+}
+
+func (r *CardRepository) Close(ctx context.Context, userID int64, cardID int64) (*models.CardDetails, error) {
+	query := `
+		UPDATE cards
+		SET
+			status = 'closed',
+			closed_at = NOW()
+		WHERE id = $1
+		  AND user_id = $2
+		  AND status = 'active'
+		RETURNING
+			id,
+			user_id,
+			account_id,
+			status,
+			closed_at,
+			created_at
+	`
+
+	card := &models.CardDetails{}
+
+	err := r.db.QueryRowContext(ctx, query, cardID, userID).Scan(
+		&card.ID,
+		&card.UserID,
+		&card.AccountID,
+		&card.Status,
+		&card.ClosedAt,
+		&card.CreatedAt,
+	)
+	if err == nil {
+		return card, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("close card: %w", err)
+	}
+
+	status, statusErr := r.findCardStatus(ctx, userID, cardID)
+	if statusErr != nil {
+		return nil, statusErr
+	}
+
+	if status == models.CardStatusClosed {
+		return nil, ErrCardAlreadyClosed
+	}
+
+	return nil, ErrCardNotFound
 }
 
 func (r *CardRepository) ValidateCardOwnership(ctx context.Context, userID int64, cardID int64) error {
@@ -241,4 +290,24 @@ func (r *CardRepository) ValidateCardOwnership(ctx context.Context, userID int64
 	}
 
 	return nil
+}
+
+func (r *CardRepository) findCardStatus(ctx context.Context, userID int64, cardID int64) (string, error) {
+	query := `
+		SELECT status
+		FROM cards
+		WHERE id = $1 AND user_id = $2
+	`
+
+	var status string
+	err := r.db.QueryRowContext(ctx, query, cardID, userID).Scan(&status)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrCardNotFound
+		}
+
+		return "", fmt.Errorf("find card status: %w", err)
+	}
+
+	return status, nil
 }

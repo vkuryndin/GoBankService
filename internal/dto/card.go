@@ -12,6 +12,8 @@ type CardResponse struct {
 	Expiry       string `json:"expiry,omitempty"`
 	CVV          string `json:"cvv,omitempty"`
 	NumberHMAC   string `json:"number_hmac,omitempty"`
+	Status       string `json:"status"`
+	ClosedAt     string `json:"closed_at,omitempty"`
 	CreatedAt    string `json:"created_at"`
 }
 
@@ -28,4 +30,11 @@ type CardPaymentResponse struct {
 	AccountID     int64  `json:"account_id"`
 	Amount        string `json:"amount"`
 	Status        string `json:"status"`
+}
+
+type CloseCardResponse struct {
+	ID        int64  `json:"id"`
+	AccountID int64  `json:"account_id"`
+	Status    string `json:"status"`
+	ClosedAt  string `json:"closed_at"`
 }

@@ -7,6 +7,15 @@
 @accountId1user2 = 3
 @cvvForCardID2 = 079
 @cvvForCardID3 = 814
+
+@cvvForCardID6 = 445
+
+@cvvForCardID7 = 287
+
+@cardId1user1 = 6
+
+@cardId1user2 = 7
+
 @mfaCode=623420
 
 ###-------------------------###
@@ -588,7 +597,7 @@ Idempotency-Key: {{$guid}}
 {
   "amount": "50.00",
   "cvv": "{{cvvForCardID3}}",
-  "mfa_code": "{{mfaCode}}",
+  "mfa_code": "019797",
   "description": "card payment with mfa"
 }
 
@@ -616,6 +625,51 @@ Idempotency-Key: {{$guid}}
   "mfa_code": "{{mfaCode}}",
   "description": "too much"
 }
+
+###-------------------------###
+### CLOSED CARDS ###
+###-------------------------###
+
+### Close card
+POST {{baseUrl}}/cards/{{cardId1user1}}/close
+Authorization: Bearer {{token}}
+Idempotency-Key: {{$guid}}
+
+### Get closed card: status should be closed
+GET {{baseUrl}}/cards/{{cardId1user1}}
+Authorization: Bearer {{token}}
+
+### Request MFA for payment by closed card should fail
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "purpose": "card_payment",
+  "card_id": {{cardId1user1}},
+  "amount": "100.00"
+}
+
+### Pay by closed card should fail: card is closed
+POST {{baseUrl}}/cards/{{cardId1user1}}/pay
+Authorization: Bearer {{token}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "amount": "100.00",
+  "cvv": "{{cardCVV}}",
+  "mfa_code": "{{mfaCode}}",
+  "description": "closed card payment check"
+}
+
+### Close already closed card should fail: card already closed
+POST {{baseUrl}}/cards/{{cardId1user1}}/close
+Authorization: Bearer {{token}}
+Idempotency-Key: {{$guid}}
+
+
+
 
 ###-------------------------###
 ### RATES ###

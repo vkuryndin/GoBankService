@@ -21,6 +21,12 @@ var (
 
 	getCardErrorRules = errorRules{{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"}}
 
+	cardCloseErrorRules = errorRules{
+		{target: services.ErrInvalidCardData, statusCode: http.StatusBadRequest, message: "invalid card data"},
+		{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"},
+		{target: services.ErrCardAlreadyClosed, statusCode: http.StatusConflict, message: "card already closed"},
+	}
+
 	cardPaymentErrorRules = joinErrorRules(
 		errorRules{
 			{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"},
@@ -28,6 +34,7 @@ var (
 			{target: services.ErrInvalidCVV, statusCode: http.StatusForbidden, message: "invalid cvv"},
 			{target: services.ErrCVVAttemptsBlocked, statusCode: http.StatusForbidden, message: "invalid cvv"},
 			{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"},
+			{target: services.ErrCardClosed, statusCode: http.StatusConflict, message: "card is closed"},
 		},
 		mfaErrorRules,
 		accountErrorRules,
@@ -71,6 +78,27 @@ func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 	handleAuthed(w, r, getCardErrorRules, "get card failed", func(ctx context.Context, userID int64) (int, any, error) {
 		response, err := h.cardService.GetCard(ctx, userID, cardID)
 		return http.StatusOK, response, err
+	})
+}
+
+func (h *CardHandler) CloseCard(w http.ResponseWriter, r *http.Request) {
+	cardID, err := parseCardID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid card id")
+		return
+	}
+
+	handleAuthed(w, r, cardCloseErrorRules, "close card failed", func(ctx context.Context, userID int64) (int, any, error) {
+		response, err := h.cardService.CloseCard(ctx, userID, cardID)
+		if err != nil {
+			recordFinancialAudit(h.auditRecorder, r, userID, "card.close.failed", "card", cardID, audit.StatusFailed, nil)
+			return http.StatusOK, nil, err
+		}
+
+		recordFinancialAudit(h.auditRecorder, r, userID, "card.close.success", "card", cardID, audit.StatusSuccess, map[string]any{
+			"account_id": response.AccountID,
+		})
+		return http.StatusOK, response, nil
 	})
 }
 

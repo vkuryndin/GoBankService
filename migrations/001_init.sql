@@ -28,9 +28,12 @@ CREATE TABLE IF NOT EXISTS cards (
     encrypted_expiry BYTEA NOT NULL,
     cvv_hash TEXT NOT NULL,
     number_hmac TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    closed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT cards_number_hmac_unique UNIQUE (number_hmac)
+    CONSTRAINT cards_number_hmac_unique UNIQUE (number_hmac),
+    CONSTRAINT cards_status_check CHECK (status IN ('active', 'closed'))
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -141,6 +144,7 @@ ON mfa_codes(user_id, purpose, operation_hash);
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_cards_user_id ON cards(user_id);
 CREATE INDEX IF NOT EXISTS idx_cards_account_id ON cards(account_id);
+CREATE INDEX IF NOT EXISTS idx_cards_user_status ON cards(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_created_at ON transactions(created_at);
 CREATE INDEX IF NOT EXISTS idx_credits_user_id ON credits(user_id);
@@ -243,6 +247,16 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_currency_rub') THEN
         ALTER TABLE accounts ADD CONSTRAINT accounts_currency_rub CHECK (currency = 'RUB');
+    END IF;
+
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'cards') THEN
+        ALTER TABLE cards ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+        ALTER TABLE cards ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cards_status_check') THEN
+        ALTER TABLE cards ADD CONSTRAINT cards_status_check CHECK (status IN ('active', 'closed'));
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_amount_positive') THEN
