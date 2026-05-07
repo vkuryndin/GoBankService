@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/models"
 	"bank-service/internal/repositories"
@@ -57,6 +58,7 @@ type MFAService struct {
 	cardRepository      mfaCardStore
 	notificationService mfaNotificationSender
 	attemptLimiter      *attemptLimiter
+	auditRecorder       audit.Recorder
 }
 
 func NewMFAService(
@@ -66,6 +68,7 @@ func NewMFAService(
 	notificationService mfaNotificationSender,
 	maxFailedAttempts int,
 	lockout time.Duration,
+	auditRecorder audit.Recorder,
 ) *MFAService {
 	return &MFAService{
 		mfaRepository:       mfaRepository,
@@ -73,6 +76,7 @@ func NewMFAService(
 		cardRepository:      cardRepository,
 		notificationService: notificationService,
 		attemptLimiter:      newAttemptLimiter(maxFailedAttempts, lockout),
+		auditRecorder:       auditRecorder,
 	}
 }
 
@@ -220,6 +224,7 @@ func (s *MFAService) verifyCode(
 	activeCode, err := s.mfaRepository.FindActiveCode(ctx, userID, purpose, operationHash)
 	if err != nil {
 		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			s.recordMFAVerification(ctx, userID, purpose, audit.StatusFailed, "not_found_or_used")
 			return ErrInvalidMFACode
 		}
 
@@ -228,11 +233,13 @@ func (s *MFAService) verifyCode(
 
 	attemptKey := fmt.Sprintf("mfa:%d:%s:%s", userID, purpose, operationHash)
 	if s.attemptLimiter.isLocked(attemptKey) {
+		s.recordMFAVerification(ctx, userID, purpose, audit.StatusBlocked, "too_many_attempts")
 		return ErrInvalidMFACode
 	}
 
 	if !security.CheckPassword(code, activeCode.CodeHash) {
 		s.attemptLimiter.recordFailure(attemptKey)
+		s.recordMFAVerification(ctx, userID, purpose, audit.StatusFailed, "invalid_code")
 		return ErrInvalidMFACode
 	}
 
@@ -242,7 +249,26 @@ func (s *MFAService) verifyCode(
 		return err
 	}
 
+	s.recordMFAVerification(ctx, userID, purpose, audit.StatusSuccess, "verified")
+
 	return nil
+}
+
+func (s *MFAService) recordMFAVerification(ctx context.Context, userID int64, purpose string, status string, reason string) {
+	if s.auditRecorder == nil {
+		return
+	}
+
+	s.auditRecorder.Record(ctx, audit.Event{
+		UserID:       audit.Int64Ptr(userID),
+		Action:       "mfa.verify." + status,
+		ResourceType: "mfa_code",
+		Status:       status,
+		Details: map[string]any{
+			"purpose": purpose,
+			"reason":  reason,
+		},
+	})
 }
 
 func (s *MFAService) buildOperationHash(

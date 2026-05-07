@@ -129,7 +129,8 @@ func (s *AuthService) Login(ctx context.Context, request dto.LoginRequest) (*dto
 	}
 
 	return &dto.LoginResponse{
-		Token: token,
+		Token:  token,
+		UserID: user.ID,
 	}, nil
 }
 
@@ -170,9 +171,14 @@ func normalizeRegistrationInput(request dto.RegisterRequest) (string, string, st
 	email := strings.TrimSpace(strings.ToLower(request.Email))
 	username := strings.TrimSpace(request.Username)
 	password := request.Password
+	trimmedPassword := strings.TrimSpace(password)
 
-	if email == "" || username == "" || password == "" {
+	if email == "" || username == "" || trimmedPassword == "" {
 		return "", "", "", fmt.Errorf("%w: email, username and password are required", ErrInvalidRegisterData)
+	}
+
+	if password != trimmedPassword {
+		return "", "", "", fmt.Errorf("%w: password must not start or end with whitespace", ErrInvalidRegisterData)
 	}
 
 	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
@@ -185,6 +191,10 @@ func normalizeRegistrationInput(request dto.RegisterRequest) (string, string, st
 
 	if len(password) < minimumPasswordLength {
 		return "", "", "", fmt.Errorf("%w: password must be at least %d characters", ErrInvalidRegisterData, minimumPasswordLength)
+	}
+
+	if strings.EqualFold(password, email) || strings.EqualFold(password, username) {
+		return "", "", "", fmt.Errorf("%w: password must differ from email and username", ErrInvalidRegisterData)
 	}
 
 	return email, username, password, nil

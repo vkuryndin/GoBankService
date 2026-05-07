@@ -35,6 +35,7 @@ func RequestLogger(logger *logrus.Logger) func(http.Handler) http.Handler {
 			duration := time.Since(startedAt)
 
 			entry := logger.WithFields(logrus.Fields{
+				"request_id":  RequestIDFromContext(r.Context()),
 				"method":      r.Method,
 				"path":        r.URL.Path,
 				"status":      recorder.statusCode,

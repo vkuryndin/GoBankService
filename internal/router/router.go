@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/config"
 	"bank-service/internal/handlers"
 	"bank-service/internal/middleware"
@@ -30,13 +31,16 @@ func NewRouter(
 	idempotencyRepository *repositories.IdempotencyRepository,
 	jwtSecret string,
 	securityConfig config.SecurityConfig,
+	auditRecorder audit.Recorder,
 	logger *logrus.Logger,
 ) *mux.Router {
 	r := mux.NewRouter()
 
+	r.Use(middleware.RequestID())
+	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.RequestLogger(logger))
 	r.Use(middleware.MaxRequestBodySize(securityConfig.MaxRequestBodyBytes))
-	r.Use(buildPublicRateLimiter(securityConfig.RateLimit))
+	r.Use(buildPublicRateLimiter(securityConfig.RateLimit, auditRecorder))
 
 	r.HandleFunc("/health", healthHandler.Health).Methods(http.MethodGet)
 	r.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
@@ -44,7 +48,7 @@ func NewRouter(
 
 	protected := r.PathPrefix("/").Subrouter()
 	protected.Use(middleware.AuthMiddleware(jwtSecret, tokenRepository))
-	protected.Use(buildProtectedRateLimiter(securityConfig.RateLimit))
+	protected.Use(buildProtectedRateLimiter(securityConfig.RateLimit, auditRecorder))
 	protected.Use(middleware.IdempotencyMiddleware(
 		idempotencyRepository,
 		middleware.IdempotencyConfig{
@@ -52,6 +56,7 @@ func NewRouter(
 			Required: securityConfig.Idempotency.Required,
 		},
 		logger,
+		auditRecorder,
 	))
 
 	protected.HandleFunc("/auth/check", authHandler.CheckAuth).Methods(http.MethodGet)
@@ -95,7 +100,7 @@ func NewRouter(
 	return r
 }
 
-func buildPublicRateLimiter(config config.RateLimitConfig) func(http.Handler) http.Handler {
+func buildPublicRateLimiter(config config.RateLimitConfig, auditRecorder audit.Recorder) func(http.Handler) http.Handler {
 	rules := []middleware.RateLimitRule{
 		{
 			Name:   "login",
@@ -120,10 +125,10 @@ func buildPublicRateLimiter(config config.RateLimitConfig) func(http.Handler) ht
 		},
 	}
 
-	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval)
+	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval, auditRecorder)
 }
 
-func buildProtectedRateLimiter(config config.RateLimitConfig) func(http.Handler) http.Handler {
+func buildProtectedRateLimiter(config config.RateLimitConfig, auditRecorder audit.Recorder) func(http.Handler) http.Handler {
 	rules := []middleware.RateLimitRule{
 		{
 			Name:   "mfa",
@@ -155,7 +160,7 @@ func buildProtectedRateLimiter(config config.RateLimitConfig) func(http.Handler)
 		},
 	}
 
-	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval)
+	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval, auditRecorder)
 }
 
 func isFinancialEndpoint(r *http.Request) bool {

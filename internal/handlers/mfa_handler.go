@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
 )
@@ -18,16 +18,39 @@ var requestMFAErrorRules = joinErrorRules(
 	notificationErrorRules,
 )
 
-type MFAHandler struct{ mfaService *services.MFAService }
+type MFAHandler struct {
+	mfaService    *services.MFAService
+	auditRecorder audit.Recorder
+}
 
-func NewMFAHandler(mfaService *services.MFAService) *MFAHandler {
-	return &MFAHandler{mfaService: mfaService}
+func NewMFAHandler(mfaService *services.MFAService, auditRecorder audit.Recorder) *MFAHandler {
+	return &MFAHandler{
+		mfaService:    mfaService,
+		auditRecorder: auditRecorder,
+	}
 }
 
 func (h *MFAHandler) RequestCode(w http.ResponseWriter, r *http.Request) {
-	handleAuthedJSON[dto.MFARequest](w, r, requestMFAErrorRules, "request mfa code failed",
-		func(ctx context.Context, userID int64, request dto.MFARequest) (int, any, error) {
-			err := h.mfaService.RequestCode(ctx, userID, request)
-			return http.StatusOK, dto.MessageResponse{Message: "mfa code sent"}, err
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
+	var request dto.MFARequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+
+	if err := h.mfaService.RequestCode(r.Context(), userID, request); err != nil {
+		recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "mfa.request.failed", "mfa_code", nil, audit.StatusFailed, map[string]any{
+			"purpose": request.Purpose,
 		})
+		writeMappedError(w, err, requestMFAErrorRules, "request mfa code failed")
+		return
+	}
+
+	recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "mfa.request.success", "mfa_code", nil, audit.StatusSuccess, map[string]any{
+		"purpose": request.Purpose,
+	})
+	writeJSON(w, http.StatusOK, dto.MessageResponse{Message: "mfa code sent"})
 }

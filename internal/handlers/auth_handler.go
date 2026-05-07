@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
 )
@@ -27,41 +28,91 @@ var (
 )
 
 type AuthHandler struct {
-	authService *services.AuthService
+	authService   *services.AuthService
+	auditRecorder audit.Recorder
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService *services.AuthService, auditRecorder audit.Recorder) *AuthHandler {
+	return &AuthHandler{
+		authService:   authService,
+		auditRecorder: auditRecorder,
+	}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	handleJSON[dto.RegisterRequest](w, r, registerErrorRules, "registration failed",
-		func(ctx context.Context, request dto.RegisterRequest) (int, any, error) {
-			response, err := h.authService.Register(ctx, request)
-			return http.StatusCreated, response, err
-		})
+	var request dto.RegisterRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+
+	response, err := h.authService.Register(r.Context(), request)
+	if err != nil {
+		recordRequestAudit(h.auditRecorder, r, nil, "auth.register.failed", "user", nil, audit.StatusFailed, nil)
+		writeMappedError(w, err, registerErrorRules, "registration failed")
+		return
+	}
+
+	recordRequestAudit(
+		h.auditRecorder,
+		r,
+		audit.Int64Ptr(response.ID),
+		"auth.register.success",
+		"user",
+		audit.Int64Ptr(response.ID),
+		audit.StatusSuccess,
+		nil,
+	)
+	writeJSON(w, http.StatusCreated, response)
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	handleJSON[dto.LoginRequest](w, r, loginErrorRules, "login failed",
-		func(ctx context.Context, request dto.LoginRequest) (int, any, error) {
-			response, err := h.authService.Login(ctx, request)
-			return http.StatusOK, response, err
+	var request dto.LoginRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+
+	response, err := h.authService.Login(r.Context(), request)
+	if err != nil {
+		recordRequestAudit(h.auditRecorder, r, nil, "auth.login.failed", "user", nil, audit.StatusFailed, map[string]any{
+			"login_provided": strings.TrimSpace(request.Login) != "",
 		})
+		writeMappedError(w, err, loginErrorRules, "login failed")
+		return
+	}
+
+	recordRequestAudit(
+		h.auditRecorder,
+		r,
+		audit.Int64Ptr(response.UserID),
+		"auth.login.success",
+		"user",
+		audit.Int64Ptr(response.UserID),
+		audit.StatusSuccess,
+		nil,
+	)
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUserID(w, r)
+	if !ok {
+		return
+	}
+
 	tokenString, err := extractBearerToken(r)
 	if err != nil {
+		recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.failed", "user", audit.Int64Ptr(userID), audit.StatusFailed, nil)
 		writeError(w, http.StatusUnauthorized, "invalid token")
 		return
 	}
 
 	if err := h.authService.Logout(r.Context(), tokenString); err != nil {
+		recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.failed", "user", audit.Int64Ptr(userID), audit.StatusFailed, nil)
 		writeMappedError(w, err, logoutErrorRules, "logout failed")
 		return
 	}
 
+	recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.success", "user", audit.Int64Ptr(userID), audit.StatusSuccess, nil)
 	writeJSON(w, http.StatusOK, dto.MessageResponse{Message: "logout successful"})
 }
 

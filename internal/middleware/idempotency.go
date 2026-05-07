@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/repositories"
 
 	"github.com/sirupsen/logrus"
@@ -27,6 +28,7 @@ func IdempotencyMiddleware(
 	store idempotencyStore,
 	config IdempotencyConfig,
 	logger *logrus.Logger,
+	auditRecorder audit.Recorder,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +61,7 @@ func IdempotencyMiddleware(
 
 			if err := store.ClaimKey(r.Context(), userID, r.Method, r.URL.Path, key); err != nil {
 				if errors.Is(err, repositories.ErrIdempotencyKeyAlreadyUsed) {
+					recordIdempotencyDuplicate(r, auditRecorder, userID)
 					writeMiddlewareError(w, http.StatusConflict, "duplicate idempotency key")
 					return
 				}
@@ -80,6 +83,25 @@ func IdempotencyMiddleware(
 			}
 		})
 	}
+}
+
+func recordIdempotencyDuplicate(r *http.Request, auditRecorder audit.Recorder, userID int64) {
+	if auditRecorder == nil {
+		return
+	}
+
+	auditRecorder.Record(context.Background(), audit.Event{
+		UserID:    audit.Int64Ptr(userID),
+		Action:    "security.idempotency.duplicate",
+		Status:    audit.StatusBlocked,
+		IPAddress: ClientIP(r),
+		UserAgent: r.UserAgent(),
+		Details: map[string]any{
+			"request_id": RequestIDFromContext(r.Context()),
+			"method":     r.Method,
+			"path":       r.URL.Path,
+		},
+	})
 }
 
 func isIdempotentProtectedOperation(r *http.Request) bool {

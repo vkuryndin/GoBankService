@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"bank-service/internal/config"
@@ -54,8 +57,8 @@ func main() {
 
 	logger.Info("database connected")
 
-	dbInfoCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	dbInfoCtx, cancelDBInfo := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelDBInfo()
 
 	dbInfo, err := appdb.GetInfo(dbInfoCtx, database)
 	if err != nil {
@@ -70,6 +73,9 @@ func main() {
 		}).Info("database info")
 	}
 
+	appCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	userRepository := repositories.NewUserRepository(database)
 	tokenRepository := repositories.NewTokenRepository(database)
 	mfaRepository := repositories.NewMFARepository(database)
@@ -81,10 +87,12 @@ func main() {
 	userSessionRepository := repositories.NewUserSessionRepository(database)
 	adminRepository := repositories.NewAdminRepository(database)
 	idempotencyRepository := repositories.NewIdempotencyRepository(database)
+	auditRepository := repositories.NewAuditRepository(database)
 
 	cbrClient := cbr.NewClient(cfg.CBRURL)
 	smtpClient := smtpclient.NewClient(cfg.SMTP)
 
+	auditService := services.NewAuditService(auditRepository, logger)
 	authService := services.NewAuthService(
 		userRepository,
 		tokenRepository,
@@ -100,6 +108,7 @@ func main() {
 		notificationService,
 		cfg.Security.MFA.MaxFailures,
 		cfg.Security.MFA.Lockout,
+		auditService,
 	)
 	accountService := services.NewAccountService(accountRepository, mfaService)
 	transferService := services.NewTransferService(accountRepository, mfaService)
@@ -124,14 +133,14 @@ func main() {
 	analyticsService := services.NewAnalyticsService(analyticsRepository)
 
 	creditPaymentScheduler := scheduler.NewCreditPaymentScheduler(creditPaymentService, logger)
-	creditPaymentScheduler.Start(context.Background())
+	creditPaymentScheduler.Start(appCtx)
 	tokenCleanupScheduler := scheduler.NewTokenCleanupScheduler(tokenRepository, logger)
-	tokenCleanupScheduler.Start(context.Background())
+	tokenCleanupScheduler.Start(appCtx)
 	mfaCleanupScheduler := scheduler.NewMFACleanupScheduler(mfaRepository, logger)
-	mfaCleanupScheduler.Start(context.Background())
+	mfaCleanupScheduler.Start(appCtx)
 
 	healthHandler := handlers.NewHealthHandler(database)
-	authHandler := handlers.NewAuthHandler(authService)
+	authHandler := handlers.NewAuthHandler(authService, auditService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	transferHandler := handlers.NewTransferHandler(transferService)
 	cardHandler := handlers.NewCardHandler(cardService)
@@ -139,8 +148,8 @@ func main() {
 	creditHandler := handlers.NewCreditHandler(creditService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
-	mfaHandler := handlers.NewMFAHandler(mfaService)
-	adminHandler := handlers.NewAdminHandler(adminService)
+	mfaHandler := handlers.NewMFAHandler(mfaService, auditService)
+	adminHandler := handlers.NewAdminHandler(adminService, auditService)
 
 	appRouter := router.NewRouter(
 		healthHandler,
@@ -159,6 +168,7 @@ func main() {
 		idempotencyRepository,
 		cfg.JWTSecret,
 		cfg.Security,
+		auditService,
 		logger,
 	)
 
@@ -173,9 +183,23 @@ func main() {
 		MaxHeaderBytes:    cfg.Server.MaxHeaderBytes,
 	}
 
-	logger.Infof("server started on %s", addr)
+	go func() {
+		logger.Infof("server started on %s", addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.WithError(err).Fatal("server stopped unexpectedly")
+		}
+	}()
 
-	if err := server.ListenAndServe(); err != nil {
-		logger.Fatalf("server stopped: %v", err)
+	<-appCtx.Done()
+	logger.Info("shutdown signal received")
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelShutdown()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		logger.WithError(err).Error("graceful shutdown failed")
+		return
 	}
+
+	logger.Info("server stopped gracefully")
 }

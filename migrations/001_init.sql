@@ -184,3 +184,103 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
 ON idempotency_keys(created_at);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(64) NOT NULL,
+    resource_type VARCHAR(64),
+    resource_id BIGINT,
+    status VARCHAR(32) NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT audit_logs_action_not_empty CHECK (action <> ''),
+    CONSTRAINT audit_logs_status_check CHECK (status IN ('success', 'failed', 'blocked'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id
+ON audit_logs(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action
+ON audit_logs(action);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+ON audit_logs(created_at);
+
+-- Compatibility constraints for databases that were created before constraints
+-- were moved into the CREATE TABLE definitions above.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_email_not_empty') THEN
+        ALTER TABLE users ADD CONSTRAINT users_email_not_empty CHECK (email <> '');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_username_not_empty') THEN
+        ALTER TABLE users ADD CONSTRAINT users_username_not_empty CHECK (username <> '');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_password_hash_not_empty') THEN
+        ALTER TABLE users ADD CONSTRAINT users_password_hash_not_empty CHECK (password_hash <> '');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_balance_non_negative') THEN
+        ALTER TABLE accounts ADD CONSTRAINT accounts_balance_non_negative CHECK (balance >= 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_currency_rub') THEN
+        ALTER TABLE accounts ADD CONSTRAINT accounts_currency_rub CHECK (currency = 'RUB');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_amount_positive') THEN
+        ALTER TABLE transactions ADD CONSTRAINT transactions_amount_positive CHECK (amount > 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_currency_rub') THEN
+        ALTER TABLE transactions ADD CONSTRAINT transactions_currency_rub CHECK (currency = 'RUB');
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_type_check') THEN
+        ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (
+            type IN ('deposit', 'withdraw', 'transfer', 'card_payment', 'credit_payment', 'credit_issue', 'penalty')
+        );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_status_check') THEN
+        ALTER TABLE transactions ADD CONSTRAINT transactions_status_check CHECK (status IN ('pending', 'completed', 'failed'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_principal_positive') THEN
+        ALTER TABLE credits ADD CONSTRAINT credits_principal_positive CHECK (principal_amount > 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_interest_non_negative') THEN
+        ALTER TABLE credits ADD CONSTRAINT credits_interest_non_negative CHECK (interest_rate >= 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_term_positive') THEN
+        ALTER TABLE credits ADD CONSTRAINT credits_term_positive CHECK (term_months > 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_monthly_payment_positive') THEN
+        ALTER TABLE credits ADD CONSTRAINT credits_monthly_payment_positive CHECK (monthly_payment > 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_status_check') THEN
+        ALTER TABLE credits ADD CONSTRAINT credits_status_check CHECK (status IN ('active', 'closed', 'overdue'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payment_schedules_amount_positive') THEN
+        ALTER TABLE payment_schedules ADD CONSTRAINT payment_schedules_amount_positive CHECK (amount > 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payment_schedules_penalty_non_negative') THEN
+        ALTER TABLE payment_schedules ADD CONSTRAINT payment_schedules_penalty_non_negative CHECK (penalty_amount >= 0);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payment_schedules_status_check') THEN
+        ALTER TABLE payment_schedules ADD CONSTRAINT payment_schedules_status_check CHECK (status IN ('pending', 'paid', 'overdue'));
+    END IF;
+END $$;

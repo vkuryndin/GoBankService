@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"bank-service/internal/audit"
 )
 
 type RateLimitRule struct {
@@ -26,6 +29,7 @@ type rateLimiter struct {
 	enabled         bool
 	rules           []RateLimitRule
 	cleanupInterval time.Duration
+	auditRecorder   audit.Recorder
 	mu              sync.Mutex
 	entries         map[string]rateLimitEntry
 }
@@ -34,11 +38,13 @@ func NewRateLimiter(
 	enabled bool,
 	rules []RateLimitRule,
 	cleanupInterval time.Duration,
+	auditRecorder audit.Recorder,
 ) func(http.Handler) http.Handler {
 	limiter := &rateLimiter{
 		enabled:         enabled,
 		rules:           rules,
 		cleanupInterval: cleanupInterval,
+		auditRecorder:   auditRecorder,
 		entries:         make(map[string]rateLimitEntry),
 	}
 
@@ -70,11 +76,38 @@ func (l *rateLimiter) middleware(next http.Handler) http.Handler {
 		allowed, retryAfter := l.allow(rule, key)
 		if !allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
+			l.recordBlockedRequest(r, rule, retryAfter)
 			writeMiddlewareError(w, http.StatusTooManyRequests, "too many requests")
 			return
 		}
 
 		next.ServeHTTP(w, r)
+	})
+}
+
+func (l *rateLimiter) recordBlockedRequest(r *http.Request, rule RateLimitRule, retryAfter time.Duration) {
+	if l.auditRecorder == nil {
+		return
+	}
+
+	var userID *int64
+	if value, ok := GetUserIDFromContext(r.Context()); ok {
+		userID = audit.Int64Ptr(value)
+	}
+
+	l.auditRecorder.Record(context.Background(), audit.Event{
+		UserID:    userID,
+		Action:    "security.rate_limit.blocked",
+		Status:    audit.StatusBlocked,
+		IPAddress: ClientIP(r),
+		UserAgent: r.UserAgent(),
+		Details: map[string]any{
+			"request_id":          RequestIDFromContext(r.Context()),
+			"rule":                rule.Name,
+			"method":              r.Method,
+			"path":                r.URL.Path,
+			"retry_after_seconds": int(retryAfter.Seconds()),
+		},
 	})
 }
 
