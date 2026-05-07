@@ -87,7 +87,7 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 	}
 
 	// The operation hash binds an MFA code to exact operation parameters.
-	// A code requested for one amount, account or card cannot be reused for another operation.
+	// A code requested for one amount, account, card or credit cannot be reused for another operation.
 	operationHash, err := s.buildOperationHash(ctx, userID, purpose, request)
 	if err != nil {
 		return err
@@ -103,7 +103,7 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 		return fmt.Errorf("hash mfa code: %w", err)
 	}
 
-	// Five minutes limits code reuse while leaving enough time to copy the code from email.
+	// Five minutes keeps the code short-lived, but still leaves enough time to copy it from email during manual API usage.
 	expiresAt := time.Now().Add(mfaCodeLifetime)
 
 	if err := s.mfaRepository.SaveCode(ctx, userID, purpose, operationHash, codeHash, expiresAt); err != nil {

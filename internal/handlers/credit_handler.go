@@ -2,32 +2,24 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"net/http"
-	"strconv"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
-
-	"github.com/gorilla/mux"
 )
 
 var (
 	createCreditErrorRules = joinErrorRules(
 		errorRules{
-			{target: services.ErrInvalidCreditData, statusCode: http.StatusBadRequest, message: "invalid credit data"},
-			{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"},
-			{target: services.ErrActiveOverdueCreditExists, statusCode: http.StatusConflict, message: "active overdue credit exists"},
-			{target: services.ErrActiveCreditLimitExceeded, statusCode: http.StatusConflict, message: "active credit limit exceeded"},
-			{target: services.ErrCreditPrincipalLimitExceeded, statusCode: http.StatusBadRequest, message: "credit principal limit exceeded"},
-			{target: services.ErrCreditTotalPrincipalLimitExceeded, statusCode: http.StatusConflict, message: "credit total principal limit exceeded"},
-			{target: services.ErrCreditDebtLoadTooHigh, statusCode: http.StatusConflict, message: "credit debt load too high"},
+			{target: services.ErrInvalidCreditData, status: http.StatusBadRequest, message: "invalid credit data"},
+			{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"},
 		},
+		creditPolicyErrorRules,
 		accountErrorRules,
 		mfaErrorRules,
 	)
-	getCreditErrorRules = errorRules{{target: services.ErrCreditNotFound, statusCode: http.StatusNotFound, message: "credit not found"}}
+	getCreditErrorRules = errorRules{{target: services.ErrCreditNotFound, status: http.StatusNotFound, message: "credit not found"}}
 )
 
 type CreditHandler struct {
@@ -109,13 +101,4 @@ func (h *CreditHandler) recordCreditCreate(
 		"principal_amount": request.PrincipalAmount,
 		"term_months":      request.TermMonths,
 	})
-}
-
-func parseCreditID(r *http.Request) (int64, error) {
-	vars := mux.Vars(r)
-	creditID, err := strconv.ParseInt(vars["creditId"], 10, 64)
-	if err != nil || creditID <= 0 {
-		return 0, errors.New("invalid credit id")
-	}
-	return creditID, nil
 }

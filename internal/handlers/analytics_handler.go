@@ -9,8 +9,8 @@ import (
 )
 
 var predictionErrorRules = errorRules{
-	{target: services.ErrInvalidPredictionDays, statusCode: http.StatusBadRequest, message: "days must be between 1 and 365"},
-	{target: services.ErrAccountNotFound, statusCode: http.StatusNotFound, message: "account not found"},
+	{target: services.ErrInvalidPredictionDays, status: http.StatusBadRequest, message: "days must be between 1 and 365"},
+	{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"},
 }
 
 type AnalyticsHandler struct{ analyticsService *services.AnalyticsService }

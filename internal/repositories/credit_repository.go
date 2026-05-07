@@ -35,6 +35,8 @@ func NewCreditRepository(db *sql.DB) *CreditRepository {
 	}
 }
 
+// Credit creation, schedule generation, account funding and transaction history are committed atomically.
+// A partially issued credit would leave the balance, repayment schedule and audit trail inconsistent.
 func (r *CreditRepository) CreateWithScheduleAndIssue(
 	ctx context.Context,
 	userID int64,

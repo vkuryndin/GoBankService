@@ -102,6 +102,7 @@ func IdempotencyMiddleware(
 	}
 }
 
+// request_hash prevents clients from reusing the same Idempotency-Key for a different financial request body.
 func hashRequestBody(r *http.Request) (string, error) {
 	if r.Body == nil {
 		return hashBytes(nil), nil

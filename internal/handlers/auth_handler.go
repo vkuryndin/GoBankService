@@ -13,17 +13,17 @@ import (
 
 var (
 	registerErrorRules = errorRules{
-		{target: services.ErrInvalidRegisterData, statusCode: http.StatusBadRequest, message: "invalid register data"},
-		{target: services.ErrEmailAlreadyUsed, statusCode: http.StatusConflict, message: "email or username already used"},
+		{target: services.ErrInvalidRegisterData, status: http.StatusBadRequest, message: "invalid register data"},
+		{target: services.ErrEmailAlreadyUsed, status: http.StatusConflict, message: "email or username already used"},
 	}
 
 	loginErrorRules = errorRules{
-		{target: services.ErrInvalidLoginData, statusCode: http.StatusBadRequest, message: "invalid login data"},
-		{target: services.ErrInvalidCredentials, statusCode: http.StatusUnauthorized, message: "invalid login or password"},
+		{target: services.ErrInvalidLoginData, status: http.StatusBadRequest, message: "invalid login data"},
+		{target: services.ErrInvalidCredentials, status: http.StatusUnauthorized, message: "invalid login or password"},
 	}
 
 	logoutErrorRules = errorRules{
-		{target: services.ErrInvalidToken, statusCode: http.StatusUnauthorized, message: "invalid token"},
+		{target: services.ErrInvalidToken, status: http.StatusUnauthorized, message: "invalid token"},
 	}
 )
 

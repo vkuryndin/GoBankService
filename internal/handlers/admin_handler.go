@@ -8,11 +8,13 @@ import (
 	"bank-service/internal/services"
 )
 
-var adminAccountErrorRules = errorRules{
-	{target: services.ErrAccountNotFound, statusCode: http.StatusNotFound, message: "account not found"},
-	{target: services.ErrAccountAlreadyBlocked, statusCode: http.StatusConflict, message: "account already blocked"},
-	{target: services.ErrAccountAlreadyUnblocked, statusCode: http.StatusConflict, message: "account already unblocked"},
-}
+var adminAccountErrorRules = joinErrorRules(
+	errorRules{
+		{target: services.ErrAccountAlreadyBlocked, status: http.StatusConflict, message: "account already blocked"},
+		{target: services.ErrAccountAlreadyUnblocked, status: http.StatusConflict, message: "account already unblocked"},
+	},
+	accountErrorRules,
+)
 
 type AdminHandler struct {
 	adminService  *services.AdminService
@@ -55,50 +57,48 @@ func (h *AdminHandler) changeAccountBlockStatus(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	adminID, ok := requireUserID(w, r)
-	if !ok {
-		return
-	}
-
 	action := "admin.account.unblock"
 	fallback := "unblock account failed"
-	operation := func(ctx context.Context) (any, error) {
-		return h.adminService.UnblockAccount(ctx, accountID)
-	}
-
 	if blocked {
 		action = "admin.account.block"
 		fallback = "block account failed"
-		operation = func(ctx context.Context) (any, error) {
-			return h.adminService.BlockAccount(ctx, accountID)
+	}
+
+	handleAuthed(w, r, adminAccountErrorRules, fallback, func(ctx context.Context, adminID int64) (int, any, error) {
+		response, err := h.setAccountBlockStatus(ctx, accountID, blocked)
+		if err != nil {
+			h.recordAccountBlockAudit(r, adminID, accountID, action+".failed", audit.StatusFailed)
+			return http.StatusOK, nil, err
 		}
+
+		h.recordAccountBlockAudit(r, adminID, accountID, action+".success", audit.StatusSuccess)
+		return http.StatusOK, response, nil
+	})
+}
+
+func (h *AdminHandler) setAccountBlockStatus(ctx context.Context, accountID int64, blocked bool) (any, error) {
+	if blocked {
+		return h.adminService.BlockAccount(ctx, accountID)
 	}
 
-	response, err := operation(r.Context())
-	if err != nil {
-		recordRequestAudit(
-			h.auditRecorder,
-			r,
-			audit.Int64Ptr(adminID),
-			action+".failed",
-			"account",
-			audit.Int64Ptr(accountID),
-			audit.StatusFailed,
-			nil,
-		)
-		writeMappedError(w, err, adminAccountErrorRules, fallback)
-		return
-	}
+	return h.adminService.UnblockAccount(ctx, accountID)
+}
 
+func (h *AdminHandler) recordAccountBlockAudit(
+	r *http.Request,
+	adminID int64,
+	accountID int64,
+	action string,
+	status string,
+) {
 	recordRequestAudit(
 		h.auditRecorder,
 		r,
 		audit.Int64Ptr(adminID),
-		action+".success",
+		action,
 		"account",
 		audit.Int64Ptr(accountID),
-		audit.StatusSuccess,
+		status,
 		nil,
 	)
-	writeJSON(w, http.StatusOK, response)
 }

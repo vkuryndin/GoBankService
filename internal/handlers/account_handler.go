@@ -2,21 +2,17 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"net/http"
-	"strconv"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
-
-	"github.com/gorilla/mux"
 )
 
 var (
-	getAccountErrorRules = errorRules{{target: services.ErrAccountNotFound, statusCode: http.StatusNotFound, message: "account not found"}}
-	depositErrorRules    = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules)
-	withdrawErrorRules   = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules, mfaErrorRules)
+	getAccountErrorRules = errorRules{{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"}}
+	depositErrorRules    = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules)
+	withdrawErrorRules   = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules, mfaErrorRules)
 )
 
 type AccountHandler struct {
@@ -109,13 +105,4 @@ func (h *AccountHandler) recordAccountOperation(
 	recordFinancialAudit(h.auditRecorder, r, userID, action, "account", accountID, status, map[string]any{
 		"amount": amount,
 	})
-}
-
-func parseAccountID(r *http.Request) (int64, error) {
-	vars := mux.Vars(r)
-	accountID, err := strconv.ParseInt(vars["accountId"], 10, 64)
-	if err != nil || accountID <= 0 {
-		return 0, errors.New("invalid account id")
-	}
-	return accountID, nil
 }

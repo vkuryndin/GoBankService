@@ -8,7 +8,7 @@ import (
 
 var amountValidationRegexp = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
 
-// normalizeAmount keeps money as a decimal string to avoid float rounding before PostgreSQL NUMERIC handles it.
+// normalizeAmount keeps money as a decimal string so financial values are not rounded by float arithmetic before PostgreSQL NUMERIC stores them.
 func normalizeAmount(amount string) (string, error) {
 	amount = strings.TrimSpace(amount)
 	if !amountValidationRegexp.MatchString(amount) {

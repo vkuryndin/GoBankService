@@ -350,6 +350,8 @@ func closeCreditIfFullyPaid(ctx context.Context, tx *sql.Tx, creditID int64) err
 	return nil
 }
 
+// paymentAmountForWithdrawal adds the penalty only when an overdue schedule is actually paid.
+// This avoids writing a successful penalty transaction before money is collected.
 func paymentAmountForWithdrawal(payment *lockedPaymentSchedule) (string, error) {
 	if payment.Status != "overdue" || !isPositiveMoney(payment.PenaltyAmount) {
 		return payment.Amount, nil

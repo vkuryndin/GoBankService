@@ -658,7 +658,7 @@ Content-Type: application/json
 
 {
   "amount": "100.00",
-  "cvv": "{{cardCVV}}",
+  "cvv": "{{cvvForCardID6}}",
   "mfa_code": "{{mfaCode}}",
   "description": "closed card payment check"
 }
@@ -828,11 +828,11 @@ GET {{baseUrl}}/admin/users
 Authorization: Bearer {{token2}}
 
 ### Admin block user 2 account
-POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/block
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/block
+Authorization: Bearer {{token2}}
 
 ### Deposit to blocked account should fail
-POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
+POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
 Authorization: Bearer {{token2}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
@@ -848,28 +848,28 @@ Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
-  "from_account_id": {{accountId1user2}},
-  "to_account_id": {{accountId1user1}},
+  "from_account_id": {{accountId1user1}},
+  "to_account_id": {{accountId1user2}},
   "amount": "10.00",
   "description": "blocked account transfer",
   "mfa_code": "{{mfaCode}}"
 }
 
 ### Admin block already blocked account should fail
-POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/block
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/block
+Authorization: Bearer {{token2}}
 
 ### Admin unblock user 2 account
-POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/unblock
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/unblock
+Authorization: Bearer {{token2}}
 
 ### Admin unblock already unblocked account should fail
-POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/unblock
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/unblock
+Authorization: Bearer {{token2}}
 
 ### Deposit after unblock should work
-POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
-Authorization: Bearer {{token2}}
+POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
+Authorization: Bearer {{token}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 

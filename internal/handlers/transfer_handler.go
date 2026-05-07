@@ -11,9 +11,9 @@ import (
 
 var transferErrorRules = joinErrorRules(
 	errorRules{
-		{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"},
-		{target: services.ErrInvalidTransfer, statusCode: http.StatusBadRequest, message: "invalid transfer"},
-		{target: services.ErrInvalidDescription, statusCode: http.StatusBadRequest, message: "invalid description"},
+		{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"},
+		{target: services.ErrInvalidTransfer, status: http.StatusBadRequest, message: "invalid transfer"},
+		{target: services.ErrInvalidDescription, status: http.StatusBadRequest, message: "invalid description"},
 	},
 	mfaErrorRules,
 	accountErrorRules,

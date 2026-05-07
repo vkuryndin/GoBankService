@@ -4,38 +4,28 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
-
-	"github.com/gorilla/mux"
 )
 
 var (
-	createCardErrorRules = errorRules{
-		{target: services.ErrInvalidCardData, statusCode: http.StatusBadRequest, message: "invalid card data"},
-		{target: services.ErrAccountNotFound, statusCode: http.StatusNotFound, message: "account not found"},
-	}
-
-	getCardErrorRules = errorRules{{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"}}
-
-	cardCloseErrorRules = errorRules{
-		{target: services.ErrInvalidCardData, statusCode: http.StatusBadRequest, message: "invalid card data"},
-		{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"},
-		{target: services.ErrCardAlreadyClosed, statusCode: http.StatusConflict, message: "card already closed"},
-	}
+	createCardErrorRules = joinErrorRules(
+		errorRules{{target: services.ErrInvalidCardData, status: http.StatusBadRequest, message: "invalid card data"}},
+		accountErrorRules,
+	)
+	getCardErrorRules   = cardErrorRules
+	cardCloseErrorRules = cardErrorRules
 
 	cardPaymentErrorRules = joinErrorRules(
 		errorRules{
-			{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"},
-			{target: services.ErrInvalidDescription, statusCode: http.StatusBadRequest, message: "invalid description"},
-			{target: services.ErrInvalidCVV, statusCode: http.StatusForbidden, message: "invalid cvv"},
-			{target: services.ErrCVVAttemptsBlocked, statusCode: http.StatusForbidden, message: "invalid cvv"},
-			{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"},
-			{target: services.ErrCardClosed, statusCode: http.StatusConflict, message: "card is closed"},
+			{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"},
+			{target: services.ErrInvalidDescription, status: http.StatusBadRequest, message: "invalid description"},
+			{target: services.ErrInvalidCVV, status: http.StatusForbidden, message: "invalid cvv"},
+			{target: services.ErrCVVAttemptsBlocked, status: http.StatusForbidden, message: "invalid cvv"},
 		},
+		cardErrorRules,
 		mfaErrorRules,
 		accountErrorRules,
 	)
@@ -145,13 +135,4 @@ func (h *CardHandler) recordCardFailure(
 	recordFinancialAudit(h.auditRecorder, r, userID, action, "card", cardID, status, map[string]any{
 		"amount": request.Amount,
 	})
-}
-
-func parseCardID(r *http.Request) (int64, error) {
-	vars := mux.Vars(r)
-	cardID, err := strconv.ParseInt(vars["cardId"], 10, 64)
-	if err != nil || cardID <= 0 {
-		return 0, errors.New("invalid card id")
-	}
-	return cardID, nil
 }

@@ -311,6 +311,7 @@ func (r *AccountRepository) Transfer(
 }
 
 // lockAccount prevents concurrent balance changes and verifies ownership in the same database transaction.
+// This prevents a user from modifying another user's balance even if they guess an account ID.
 func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error {
 	query := `
 		SELECT id, is_blocked
@@ -339,6 +340,7 @@ func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error
 }
 
 // lockTransferAccounts locks accounts in deterministic order to reduce deadlock risk during transfers.
+// Only the source account must belong to the authenticated user; the destination account may belong to another user.
 func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID, toAccountID int64) error {
 	query := `
 		SELECT id, user_id, is_blocked
