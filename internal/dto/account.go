@@ -1,5 +1,6 @@
 package dto
 
+// AccountResponse is returned to the account owner. Currency is fixed to RUB by the service/database rules.
 type AccountResponse struct {
 	ID            int64  `json:"id"`
 	AccountNumber string `json:"account_number"`
@@ -14,7 +15,8 @@ type DepositRequest struct {
 }
 
 type WithdrawRequest struct {
-	Amount string `json:"amount"`
+	Amount  string `json:"amount"`
+	MFACode string `json:"mfa_code"`
 }
 
 type PredictBalanceResponse struct {

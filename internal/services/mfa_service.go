@@ -22,6 +22,7 @@ const (
 	MFAPurposeTransfer     = "transfer"
 	MFAPurposeCardPayment  = "card_payment"
 	MFAPurposeCreditCreate = "credit_create"
+	MFAPurposeWithdraw     = "withdraw"
 )
 
 var (
@@ -180,6 +181,30 @@ func (s *MFAService) VerifyCreditCreateCode(
 	return s.verifyCode(ctx, userID, MFAPurposeCreditCreate, mfaRequest, code)
 }
 
+func (s *MFAService) VerifyWithdrawCode(
+	ctx context.Context,
+	userID int64,
+	accountID int64,
+	request dto.WithdrawRequest,
+) error {
+	code := strings.TrimSpace(request.MFACode)
+	if code == "" {
+		return ErrMFACodeRequired
+	}
+
+	if !isValidMFACodeFormat(code) {
+		return ErrInvalidMFACode
+	}
+
+	mfaRequest := dto.MFARequest{
+		Purpose:   MFAPurposeWithdraw,
+		AccountID: accountID,
+		Amount:    request.Amount,
+	}
+
+	return s.verifyCode(ctx, userID, MFAPurposeWithdraw, mfaRequest, code)
+}
+
 func (s *MFAService) verifyCode(
 	ctx context.Context,
 	userID int64,
@@ -235,6 +260,9 @@ func (s *MFAService) buildOperationHash(
 
 	case MFAPurposeCreditCreate:
 		return s.buildCreditCreateOperationHash(ctx, userID, request)
+
+	case MFAPurposeWithdraw:
+		return s.buildWithdrawOperationHash(ctx, userID, request)
 
 	default:
 		return "", ErrInvalidMFAPurpose
@@ -378,6 +406,44 @@ func (s *MFAService) buildCreditCreateOperationHash(
 	return hashOperation(raw), nil
 }
 
+func (s *MFAService) buildWithdrawOperationHash(
+	ctx context.Context,
+	userID int64,
+	request dto.MFARequest,
+) (string, error) {
+	if request.AccountID <= 0 {
+		return "", ErrInvalidMFAOperation
+	}
+
+	amount, err := canonicalMoneyAmount(request.Amount)
+	if err != nil {
+		return "", err
+	}
+
+	account, err := s.accountRepository.FindByIDAndUserID(ctx, request.AccountID, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return "", ErrAccountNotFound
+		}
+
+		return "", err
+	}
+
+	if account.IsBlocked {
+		return "", ErrAccountBlocked
+	}
+
+	raw := fmt.Sprintf(
+		"user_id=%d|purpose=%s|account_id=%d|amount=%s",
+		userID,
+		MFAPurposeWithdraw,
+		request.AccountID,
+		amount,
+	)
+
+	return hashOperation(raw), nil
+}
+
 func hashOperation(raw string) string {
 	hash := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(hash[:])
@@ -404,7 +470,8 @@ func normalizePurpose(purpose string) string {
 func isAllowedPurpose(purpose string) bool {
 	return purpose == MFAPurposeTransfer ||
 		purpose == MFAPurposeCardPayment ||
-		purpose == MFAPurposeCreditCreate
+		purpose == MFAPurposeCreditCreate ||
+		purpose == MFAPurposeWithdraw
 }
 
 func generateMFACode() (string, error) {

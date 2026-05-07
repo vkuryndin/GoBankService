@@ -29,13 +29,19 @@ type accountStore interface {
 	Withdraw(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
 }
 
-type AccountService struct {
-	accountRepository accountStore
+type withdrawMFAVerifier interface {
+	VerifyWithdrawCode(ctx context.Context, userID int64, accountID int64, request dto.WithdrawRequest) error
 }
 
-func NewAccountService(accountRepository accountStore) *AccountService {
+type AccountService struct {
+	accountRepository accountStore
+	mfaService        withdrawMFAVerifier
+}
+
+func NewAccountService(accountRepository accountStore, mfaService withdrawMFAVerifier) *AccountService {
 	return &AccountService{
 		accountRepository: accountRepository,
+		mfaService:        mfaService,
 	}
 }
 
@@ -106,6 +112,11 @@ func (s *AccountService) Deposit(ctx context.Context, userID, accountID int64, r
 func (s *AccountService) Withdraw(ctx context.Context, userID, accountID int64, request dto.WithdrawRequest) (*dto.AccountResponse, error) {
 	amount, err := normalizeAmount(request.Amount)
 	if err != nil {
+		return nil, err
+	}
+
+	// Withdraw directly decreases the user's balance, so it is protected with operation-bound MFA.
+	if err := s.mfaService.VerifyWithdrawCode(ctx, userID, accountID, request); err != nil {
 		return nil, err
 	}
 

@@ -15,7 +15,7 @@ import (
 var (
 	getAccountErrorRules = errorRules{{target: services.ErrAccountNotFound, statusCode: http.StatusNotFound, message: "account not found"}}
 	depositErrorRules    = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules)
-	withdrawErrorRules   = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules)
+	withdrawErrorRules   = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules, mfaErrorRules)
 )
 
 type AccountHandler struct{ accountService *services.AccountService }

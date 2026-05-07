@@ -91,7 +91,6 @@ func main() {
 		userSessionRepository,
 		cfg.JWTSecret,
 	)
-	accountService := services.NewAccountService(accountRepository)
 	notificationService := services.NewNotificationService(userRepository, smtpClient)
 	adminService := services.NewAdminService(adminRepository)
 	mfaService := services.NewMFAService(
@@ -102,6 +101,7 @@ func main() {
 		cfg.Security.MFA.MaxFailures,
 		cfg.Security.MFA.Lockout,
 	)
+	accountService := services.NewAccountService(accountRepository, mfaService)
 	transferService := services.NewTransferService(accountRepository, mfaService)
 	cardProcessingService := services.NewCardProcessingService()
 	cardService := services.NewCardService(

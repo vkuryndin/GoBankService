@@ -1,7 +1,7 @@
 ### Variables
 @baseUrl = http://localhost:8080
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MTc2NTQzLCJpYXQiOjE3NzgwOTAxNDN9.JQAIEXq05YQmquk7eEPgJFRMdni8Yqnvcd5f7UVL_50
-@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MjIyNDM4LCJpYXQiOjE3NzgxMzYwMzgsImp0aSI6IjM2MTBhNmQ2NzkwZDVkNGI0NDM4NmNkYTE4ZThjYTAxIn0.QOig6CejqNAk7bwQU6WzeKsolVUBCQ0ApEqsgF-2urA
+@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MjIzNjQyLCJpYXQiOjE3NzgxMzcyNDIsImp0aSI6ImM0MjY0YjdhMzhmN2NkMzA1YWRkN2IzNjZkNjU1NDkwIn0.wrQM6YAIaLxrX2VtD_-W-UGq5UBxCJ2ZxOPkBiXppp0
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
@@ -212,34 +212,94 @@ Idempotency-Key: {{$guid}}
   "amount": "0.00"
 }
 
-### Withdraw user 1 account 1
+### Withdraw without MFA should fail
 POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
 Authorization: Bearer {{token}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
+  "amount": "10.00"
+}
+
+### Request MFA for withdraw user 1 account 1
+### После получения письма обнови @mfaCode перед следующим запросом.
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "purpose": "withdraw",
+  "account_id": {{accountId1user1}},
   "amount": "250.00"
 }
 
-### Withdraw user 2 account 1
+### Withdraw user 1 account 1 with MFA
+POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "amount": "250.00",
+  "mfa_code": "{{mfaCode}}"
+}
+
+### Request MFA for withdraw user 2 account 1
+### После получения письма обнови @mfaCode перед следующим запросом.
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "purpose": "withdraw",
+  "account_id": {{accountId1user2}},
+  "amount": "250.00"
+}
+
+### Withdraw user 2 account 1 with MFA
 POST {{baseUrl}}/accounts/{{accountId1user2}}/withdraw
 Authorization: Bearer {{token2}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
-  "amount": "250.00"
+  "amount": "250.00",
+  "mfa_code": "{{mfaCode}}"
 }
 
-### Withdraw too much user 1
+### Request MFA for withdraw too much user 1
+### После получения письма обнови @mfaCode перед следующим запросом.
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "purpose": "withdraw",
+  "account_id": {{accountId1user1}},
+  "amount": "999999.00"
+}
+
+### Withdraw too much user 1 with MFA
 POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
 Authorization: Bearer {{token}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
-  "amount": "999999.00"
+  "amount": "999999.00",
+  "mfa_code": "{{mfaCode}}"
+}
+
+### User 2 requests MFA for user 1 account withdraw and should fail
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "purpose": "withdraw",
+  "account_id": {{accountId1user1}},
+  "amount": "10.00"
 }
 
 ### User 2 tries to withdraw from user 1 account
@@ -249,7 +309,8 @@ Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
-  "amount": "10.00"
+  "amount": "10.00",
+  "mfa_code": "000000"
 }
 
 ###-------------------------###
