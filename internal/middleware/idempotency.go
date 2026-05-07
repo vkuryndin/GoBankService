@@ -1,8 +1,12 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -15,7 +19,7 @@ import (
 const idempotencyHeader = "Idempotency-Key"
 
 type idempotencyStore interface {
-	ClaimKey(ctx context.Context, userID int64, method string, path string, key string) error
+	ClaimKey(ctx context.Context, userID int64, method string, path string, key string, requestHash string) error
 	ReleaseKey(ctx context.Context, userID int64, method string, path string, key string) error
 }
 
@@ -59,10 +63,23 @@ func IdempotencyMiddleware(
 				return
 			}
 
-			if err := store.ClaimKey(r.Context(), userID, r.Method, r.URL.Path, key); err != nil {
+			requestHash, err := hashRequestBody(r)
+			if err != nil {
+				logger.WithError(err).Warn("idempotency request hash failed")
+				writeMiddlewareError(w, http.StatusBadRequest, "invalid request body")
+				return
+			}
+
+			if err := store.ClaimKey(r.Context(), userID, r.Method, r.URL.Path, key, requestHash); err != nil {
 				if errors.Is(err, repositories.ErrIdempotencyKeyAlreadyUsed) {
-					recordIdempotencyDuplicate(r, auditRecorder, userID)
+					recordIdempotencyDuplicate(r, auditRecorder, userID, false)
 					writeMiddlewareError(w, http.StatusConflict, "duplicate idempotency key")
+					return
+				}
+
+				if errors.Is(err, repositories.ErrIdempotencyKeyConflict) {
+					recordIdempotencyDuplicate(r, auditRecorder, userID, true)
+					writeMiddlewareError(w, http.StatusConflict, "idempotency key reused with different request")
 					return
 				}
 
@@ -85,9 +102,39 @@ func IdempotencyMiddleware(
 	}
 }
 
-func recordIdempotencyDuplicate(r *http.Request, auditRecorder audit.Recorder, userID int64) {
+func hashRequestBody(r *http.Request) (string, error) {
+	if r.Body == nil {
+		return hashBytes(nil), nil
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return "", err
+	}
+
+	_ = r.Body.Close()
+	r.Body = io.NopCloser(bytes.NewReader(body))
+
+	return hashBytes(body), nil
+}
+
+func hashBytes(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func recordIdempotencyDuplicate(r *http.Request, auditRecorder audit.Recorder, userID int64, requestConflict bool) {
 	if auditRecorder == nil {
 		return
+	}
+
+	details := map[string]any{
+		"request_id": RequestIDFromContext(r.Context()),
+		"method":     r.Method,
+		"path":       r.URL.Path,
+	}
+	if requestConflict {
+		details["request_conflict"] = true
 	}
 
 	auditRecorder.Record(context.Background(), audit.Event{
@@ -96,11 +143,7 @@ func recordIdempotencyDuplicate(r *http.Request, auditRecorder audit.Recorder, u
 		Status:    audit.StatusBlocked,
 		IPAddress: ClientIP(r),
 		UserAgent: r.UserAgent(),
-		Details: map[string]any{
-			"request_id": RequestIDFromContext(r.Context()),
-			"method":     r.Method,
-			"path":       r.URL.Path,
-		},
+		Details:   details,
 	})
 }
 

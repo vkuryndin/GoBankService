@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/repositories"
 
 	"github.com/sirupsen/logrus"
@@ -23,17 +24,20 @@ type creditPaymentNotifier interface {
 type CreditPaymentService struct {
 	creditPaymentRepository creditPaymentStore
 	notificationService     creditPaymentNotifier
+	auditRecorder           audit.Recorder
 	logger                  *logrus.Logger
 }
 
 func NewCreditPaymentService(
 	creditPaymentRepository creditPaymentStore,
 	notificationService creditPaymentNotifier,
+	auditRecorder audit.Recorder,
 	logger *logrus.Logger,
 ) *CreditPaymentService {
 	return &CreditPaymentService{
 		creditPaymentRepository: creditPaymentRepository,
 		notificationService:     notificationService,
+		auditRecorder:           auditRecorder,
 		logger:                  logger,
 	}
 }
@@ -55,6 +59,7 @@ func (s *CreditPaymentService) ProcessDuePayments(ctx context.Context) error {
 
 	for _, payment := range payments {
 		if err := s.processPayment(ctx, payment); err != nil {
+			s.recordCreditPaymentAudit(ctx, payment, nil, "finance.credit_payment.failed", audit.StatusFailed)
 			s.logger.WithError(err).WithFields(logrus.Fields{
 				"schedule_id": payment.ScheduleID,
 				"credit_id":   payment.CreditID,
@@ -81,15 +86,23 @@ func (s *CreditPaymentService) processPayment(ctx context.Context, payment repos
 		"status":         result.Status,
 	}).Info("credit payment scheduler: payment processed")
 
+	action := "finance.credit_payment.success"
+	status := audit.StatusSuccess
+	if result.Status == "overdue" {
+		action = "finance.credit_payment.failed"
+		status = audit.StatusFailed
+	}
+	s.recordCreditPaymentAudit(ctx, payment, result, action, status)
+
 	notifyCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	status := result.Status
+	notificationStatus := result.Status
 	if result.Status == "overdue" {
-		status = fmt.Sprintf("overdue, penalty %s RUB", result.PenaltyAmount)
+		notificationStatus = fmt.Sprintf("overdue, penalty %s RUB", result.PenaltyAmount)
 	}
 
-	err = s.notificationService.SendCreditPaymentEmail(notifyCtx, result.UserID, result.Amount, status)
+	err = s.notificationService.SendCreditPaymentEmail(notifyCtx, result.UserID, result.Amount, notificationStatus)
 	if err != nil {
 		if errors.Is(err, ErrNotificationsDisabled) {
 			s.logger.WithField("user_id", result.UserID).Warn("credit payment notification skipped: smtp disabled")
@@ -101,4 +114,38 @@ func (s *CreditPaymentService) processPayment(ctx context.Context, payment repos
 	}
 
 	return nil
+}
+
+func (s *CreditPaymentService) recordCreditPaymentAudit(
+	ctx context.Context,
+	payment repositories.DueCreditPayment,
+	result *repositories.CreditPaymentProcessResult,
+	action string,
+	status string,
+) {
+	if s.auditRecorder == nil {
+		return
+	}
+
+	amount := payment.Amount
+	penaltyAmount := payment.PenaltyAmount
+	if result != nil {
+		amount = result.Amount
+		penaltyAmount = result.PenaltyAmount
+	}
+
+	s.auditRecorder.Record(ctx, audit.Event{
+		UserID:       audit.Int64Ptr(payment.UserID),
+		Action:       action,
+		ResourceType: "credit",
+		ResourceID:   audit.Int64Ptr(payment.CreditID),
+		Status:       status,
+		Details: map[string]any{
+			"schedule_id":    payment.ScheduleID,
+			"account_id":     payment.AccountID,
+			"amount":         amount,
+			"penalty_amount": penaltyAmount,
+			"source":         "scheduler",
+		},
+	})
 }

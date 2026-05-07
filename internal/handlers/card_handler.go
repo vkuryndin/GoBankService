@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
 
@@ -25,6 +26,7 @@ var (
 			{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"},
 			{target: services.ErrInvalidDescription, statusCode: http.StatusBadRequest, message: "invalid description"},
 			{target: services.ErrInvalidCVV, statusCode: http.StatusForbidden, message: "invalid cvv"},
+			{target: services.ErrCVVAttemptsBlocked, statusCode: http.StatusForbidden, message: "invalid cvv"},
 			{target: services.ErrCardNotFound, statusCode: http.StatusNotFound, message: "card not found"},
 		},
 		mfaErrorRules,
@@ -32,10 +34,16 @@ var (
 	)
 )
 
-type CardHandler struct{ cardService *services.CardService }
+type CardHandler struct {
+	cardService   *services.CardService
+	auditRecorder audit.Recorder
+}
 
-func NewCardHandler(cardService *services.CardService) *CardHandler {
-	return &CardHandler{cardService: cardService}
+func NewCardHandler(cardService *services.CardService, auditRecorder audit.Recorder) *CardHandler {
+	return &CardHandler{
+		cardService:   cardService,
+		auditRecorder: auditRecorder,
+	}
 }
 
 func (h *CardHandler) CreateCard(w http.ResponseWriter, r *http.Request) {
@@ -76,8 +84,39 @@ func (h *CardHandler) PayByCard(w http.ResponseWriter, r *http.Request) {
 	handleAuthedJSON[dto.CardPaymentRequest](w, r, cardPaymentErrorRules, "card payment failed",
 		func(ctx context.Context, userID int64, request dto.CardPaymentRequest) (int, any, error) {
 			response, err := h.cardService.PayByCard(ctx, userID, cardID, request)
-			return http.StatusOK, response, err
+			if err != nil {
+				h.recordCardFailure(r, userID, cardID, request, err)
+				return http.StatusOK, nil, err
+			}
+
+			recordFinancialAudit(h.auditRecorder, r, userID, "finance.card_payment.success", "transaction", response.TransactionID, audit.StatusSuccess, map[string]any{
+				"card_id":    cardID,
+				"account_id": response.AccountID,
+				"amount":     request.Amount,
+			})
+			return http.StatusOK, response, nil
 		})
+}
+
+func (h *CardHandler) recordCardFailure(
+	r *http.Request,
+	userID int64,
+	cardID int64,
+	request dto.CardPaymentRequest,
+	err error,
+) {
+	action := "finance.card_payment.failed"
+	status := audit.StatusFailed
+	if errors.Is(err, services.ErrCVVAttemptsBlocked) {
+		action = "card.cvv.blocked"
+		status = audit.StatusBlocked
+	} else if errors.Is(err, services.ErrInvalidCVV) {
+		action = "card.cvv.failed"
+	}
+
+	recordFinancialAudit(h.auditRecorder, r, userID, action, "card", cardID, status, map[string]any{
+		"amount": request.Amount,
+	})
 }
 
 func parseCardID(r *http.Request) (int64, error) {

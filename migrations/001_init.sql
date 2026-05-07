@@ -178,12 +178,19 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     method VARCHAR(16) NOT NULL,
     path TEXT NOT NULL,
     key TEXT NOT NULL,
+    request_hash TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT idempotency_keys_unique_operation UNIQUE (user_id, method, path, key)
 );
 
+ALTER TABLE idempotency_keys
+ADD COLUMN IF NOT EXISTS request_hash TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
 ON idempotency_keys(created_at);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_request_hash
+ON idempotency_keys(request_hash);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
     id BIGSERIAL PRIMARY KEY,
@@ -214,6 +221,10 @@ ON audit_logs(created_at);
 -- were moved into the CREATE TABLE definitions above.
 DO $$
 BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'idempotency_keys') THEN
+        ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS request_hash TEXT NOT NULL DEFAULT '';
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_email_not_empty') THEN
         ALTER TABLE users ADD CONSTRAINT users_email_not_empty CHECK (email <> '');
     END IF;

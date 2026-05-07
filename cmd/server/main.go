@@ -33,12 +33,14 @@ func main() {
 	}
 
 	logger.WithFields(logrus.Fields{
-		"server_port":            cfg.ServerPort,
-		"max_request_body_bytes": cfg.Security.MaxRequestBodyBytes,
-		"rate_limit_enabled":     cfg.Security.RateLimit.Enabled,
-		"idempotency_enabled":    cfg.Security.Idempotency.Enabled,
-		"idempotency_required":   cfg.Security.Idempotency.Required,
-		"cbr_cache_ttl_seconds":  cfg.Security.CBRCacheTTL.Seconds(),
+		"server_port":                          cfg.ServerPort,
+		"max_request_body_bytes":               cfg.Security.MaxRequestBodyBytes,
+		"rate_limit_enabled":                   cfg.Security.RateLimit.Enabled,
+		"idempotency_enabled":                  cfg.Security.Idempotency.Enabled,
+		"idempotency_required":                 cfg.Security.Idempotency.Required,
+		"idempotency_retention_seconds":        cfg.Security.Idempotency.Retention.Seconds(),
+		"idempotency_cleanup_interval_seconds": cfg.Security.Idempotency.CleanupInterval.Seconds(),
+		"cbr_cache_ttl_seconds":                cfg.Security.CBRCacheTTL.Seconds(),
 	}).Info("config loaded")
 
 	logger.WithFields(logrus.Fields{
@@ -128,6 +130,7 @@ func main() {
 	creditPaymentService := services.NewCreditPaymentService(
 		creditPaymentRepository,
 		notificationService,
+		auditService,
 		logger,
 	)
 	analyticsService := services.NewAnalyticsService(analyticsRepository)
@@ -138,14 +141,21 @@ func main() {
 	tokenCleanupScheduler.Start(appCtx)
 	mfaCleanupScheduler := scheduler.NewMFACleanupScheduler(mfaRepository, logger)
 	mfaCleanupScheduler.Start(appCtx)
+	idempotencyCleanupScheduler := scheduler.NewIdempotencyCleanupScheduler(
+		idempotencyRepository,
+		logger,
+		cfg.Security.Idempotency.CleanupInterval,
+		cfg.Security.Idempotency.Retention,
+	)
+	idempotencyCleanupScheduler.Start(appCtx)
 
 	healthHandler := handlers.NewHealthHandler(database)
 	authHandler := handlers.NewAuthHandler(authService, auditService)
-	accountHandler := handlers.NewAccountHandler(accountService)
-	transferHandler := handlers.NewTransferHandler(transferService)
-	cardHandler := handlers.NewCardHandler(cardService)
+	accountHandler := handlers.NewAccountHandler(accountService, auditService)
+	transferHandler := handlers.NewTransferHandler(transferService, auditService)
+	cardHandler := handlers.NewCardHandler(cardService, auditService)
 	rateHandler := handlers.NewRateHandler(rateService)
-	creditHandler := handlers.NewCreditHandler(creditService)
+	creditHandler := handlers.NewCreditHandler(creditService, auditService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
 	mfaHandler := handlers.NewMFAHandler(mfaService, auditService)

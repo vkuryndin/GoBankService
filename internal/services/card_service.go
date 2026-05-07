@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	ErrCardNotFound      = errors.New("card not found")
-	ErrInvalidCardData   = errors.New("invalid card data")
-	ErrCardCreateRetries = errors.New("card create retries exceeded")
+	ErrCardNotFound       = errors.New("card not found")
+	ErrInvalidCardData    = errors.New("invalid card data")
+	ErrCardCreateRetries  = errors.New("card create retries exceeded")
+	ErrCVVAttemptsBlocked = errors.New("cvv attempts blocked")
 )
 
 type cardStore interface {
@@ -163,11 +164,15 @@ func (s *CardService) PayByCard(
 
 	cvvAttemptKey := fmt.Sprintf("cvv:%d:%d", userID, cardID)
 	if s.cvvAttemptLimiter.isLocked(cvvAttemptKey) {
-		return nil, ErrInvalidCVV
+		return nil, ErrCVVAttemptsBlocked
 	}
 
 	if err := s.cardProcessingService.VerifyCVV(card, request.CVV); err != nil {
 		s.cvvAttemptLimiter.recordFailure(cvvAttemptKey)
+		if s.cvvAttemptLimiter.isLocked(cvvAttemptKey) {
+			return nil, ErrCVVAttemptsBlocked
+		}
+
 		return nil, err
 	}
 

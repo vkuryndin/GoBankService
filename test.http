@@ -767,7 +767,7 @@ Authorization: Bearer {{token}}
 
 ### Admin logged in users
 GET {{baseUrl}}/admin/logged-in-users
-Authorization: Bearer {{token}}
+Authorization: Bearer {{token2}}
 
 ### User 2 tries admin users
 GET {{baseUrl}}/admin/users

@@ -75,8 +75,10 @@ type AttemptLimitConfig struct {
 }
 
 type IdempotencyConfig struct {
-	Enabled  bool
-	Required bool
+	Enabled         bool
+	Required        bool
+	Retention       time.Duration
+	CleanupInterval time.Duration
 }
 
 func Load() (Config, error) {
@@ -242,6 +244,16 @@ func loadSecurityConfig() (SecurityConfig, error) {
 		return SecurityConfig{}, err
 	}
 
+	idempotencyRetention, err := envDurationSeconds("IDEMPOTENCY_RETENTION_SECONDS", 24*time.Hour)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
+	idempotencyCleanupInterval, err := envDurationSeconds("IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS", time.Hour)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
 	return SecurityConfig{
 		MaxRequestBodyBytes: maxRequestBodyBytes,
 		RateLimit:           rateLimitConfig,
@@ -249,8 +261,10 @@ func loadSecurityConfig() (SecurityConfig, error) {
 		CVV:                 cvvConfig,
 		CBRCacheTTL:         cbrCacheTTL,
 		Idempotency: IdempotencyConfig{
-			Enabled:  envBool("IDEMPOTENCY_ENABLED", true),
-			Required: envBool("IDEMPOTENCY_REQUIRED", false),
+			Enabled:         envBool("IDEMPOTENCY_ENABLED", true),
+			Required:        envBool("IDEMPOTENCY_REQUIRED", false),
+			Retention:       idempotencyRetention,
+			CleanupInterval: idempotencyCleanupInterval,
 		},
 	}, nil
 }

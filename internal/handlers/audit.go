@@ -43,3 +43,25 @@ func recordRequestAudit(
 		Details:      details,
 	})
 }
+
+func recordFinancialAudit(
+	auditRecorder audit.Recorder,
+	r *http.Request,
+	userID int64,
+	action string,
+	resourceType string,
+	resourceID int64,
+	status string,
+	details map[string]any,
+) {
+	recordRequestAudit(
+		auditRecorder,
+		r,
+		audit.Int64Ptr(userID),
+		action,
+		resourceType,
+		audit.Int64Ptr(resourceID),
+		status,
+		details,
+	)
+}

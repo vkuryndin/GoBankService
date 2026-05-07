@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"bank-service/internal/audit"
 	"bank-service/internal/dto"
 	"bank-service/internal/services"
 
@@ -18,10 +19,16 @@ var (
 	withdrawErrorRules   = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, statusCode: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules, mfaErrorRules)
 )
 
-type AccountHandler struct{ accountService *services.AccountService }
+type AccountHandler struct {
+	accountService *services.AccountService
+	auditRecorder  audit.Recorder
+}
 
-func NewAccountHandler(accountService *services.AccountService) *AccountHandler {
-	return &AccountHandler{accountService: accountService}
+func NewAccountHandler(accountService *services.AccountService, auditRecorder audit.Recorder) *AccountHandler {
+	return &AccountHandler{
+		accountService: accountService,
+		auditRecorder:  auditRecorder,
+	}
 }
 
 func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +68,13 @@ func (h *AccountHandler) Deposit(w http.ResponseWriter, r *http.Request) {
 	handleAuthedJSON[dto.DepositRequest](w, r, depositErrorRules, "deposit failed",
 		func(ctx context.Context, userID int64, request dto.DepositRequest) (int, any, error) {
 			response, err := h.accountService.Deposit(ctx, userID, accountID, request)
-			return http.StatusOK, response, err
+			if err != nil {
+				h.recordAccountOperation(r, userID, accountID, "finance.deposit.failed", audit.StatusFailed, request.Amount)
+				return http.StatusOK, nil, err
+			}
+
+			h.recordAccountOperation(r, userID, accountID, "finance.deposit.success", audit.StatusSuccess, request.Amount)
+			return http.StatusOK, response, nil
 		})
 }
 
@@ -75,8 +88,27 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	handleAuthedJSON[dto.WithdrawRequest](w, r, withdrawErrorRules, "withdraw failed",
 		func(ctx context.Context, userID int64, request dto.WithdrawRequest) (int, any, error) {
 			response, err := h.accountService.Withdraw(ctx, userID, accountID, request)
-			return http.StatusOK, response, err
+			if err != nil {
+				h.recordAccountOperation(r, userID, accountID, "finance.withdraw.failed", audit.StatusFailed, request.Amount)
+				return http.StatusOK, nil, err
+			}
+
+			h.recordAccountOperation(r, userID, accountID, "finance.withdraw.success", audit.StatusSuccess, request.Amount)
+			return http.StatusOK, response, nil
 		})
+}
+
+func (h *AccountHandler) recordAccountOperation(
+	r *http.Request,
+	userID int64,
+	accountID int64,
+	action string,
+	status string,
+	amount string,
+) {
+	recordFinancialAudit(h.auditRecorder, r, userID, action, "account", accountID, status, map[string]any{
+		"amount": amount,
+	})
 }
 
 func parseAccountID(r *http.Request) (int64, error) {
