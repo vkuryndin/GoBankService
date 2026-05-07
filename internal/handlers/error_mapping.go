@@ -4,7 +4,10 @@ import (
 	"errors"
 	"net/http"
 
+	"bank-service/internal/middleware"
 	"bank-service/internal/services"
+
+	"github.com/sirupsen/logrus"
 )
 
 type httpErrorMapping struct {
@@ -15,7 +18,7 @@ type httpErrorMapping struct {
 
 type errorRules []httpErrorMapping
 
-func writeMappedError(w http.ResponseWriter, err error, rules errorRules, fallbackMessage string) {
+func writeMappedError(w http.ResponseWriter, r *http.Request, err error, rules errorRules, fallbackMessage string) {
 	for _, rule := range rules {
 		if errors.Is(err, rule.target) {
 			writeError(w, rule.status, rule.message)
@@ -23,11 +26,30 @@ func writeMappedError(w http.ResponseWriter, err error, rules errorRules, fallba
 		}
 	}
 
+	logUnexpectedHandlerError(r, err, fallbackMessage)
 	writeUnexpectedError(w, fallbackMessage)
 }
 
 func writeUnexpectedError(w http.ResponseWriter, message string) {
 	writeError(w, http.StatusInternalServerError, message)
+}
+
+func logUnexpectedHandlerError(r *http.Request, err error, fallbackMessage string) {
+	fields := logrus.Fields{
+		"method":           r.Method,
+		"path":             r.URL.Path,
+		"fallback_message": fallbackMessage,
+	}
+
+	if requestID := middleware.RequestIDFromContext(r.Context()); requestID != "" {
+		fields["request_id"] = requestID
+	}
+
+	if userID, ok := middleware.GetUserIDFromContext(r.Context()); ok {
+		fields["user_id"] = userID
+	}
+
+	logrus.WithFields(fields).WithError(err).Error("unexpected handler error")
 }
 
 func joinErrorRules(groups ...errorRules) errorRules {

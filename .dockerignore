@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+README.md
+tmp/
+logs/
+*.log
+*.exe
+*.test
+.DS_Store
+.vscode/
+.idea/

@@ -19,7 +19,7 @@ func handleAuthed(
 
 	statusCode, response, err := action(r.Context(), userID)
 	if err != nil {
-		writeMappedError(w, err, rules, fallbackMessage)
+		writeMappedError(w, r, err, rules, fallbackMessage)
 		return
 	}
 
@@ -45,7 +45,7 @@ func handleAuthedJSON[T any](
 
 	statusCode, response, err := action(r.Context(), userID, request)
 	if err != nil {
-		writeMappedError(w, err, rules, fallbackMessage)
+		writeMappedError(w, r, err, rules, fallbackMessage)
 		return
 	}
 
@@ -66,7 +66,7 @@ func handleJSON[T any](
 
 	statusCode, response, err := action(r.Context(), request)
 	if err != nil {
-		writeMappedError(w, err, rules, fallbackMessage)
+		writeMappedError(w, r, err, rules, fallbackMessage)
 		return
 	}
 

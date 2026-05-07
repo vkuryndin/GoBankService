@@ -48,7 +48,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	response, err := h.authService.Register(r.Context(), request)
 	if err != nil {
 		recordRequestAudit(h.auditRecorder, r, nil, "auth.register.failed", "user", nil, audit.StatusFailed, nil)
-		writeMappedError(w, err, registerErrorRules, "registration failed")
+		writeMappedError(w, r, err, registerErrorRules, "registration failed")
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		recordRequestAudit(h.auditRecorder, r, nil, "auth.login.failed", "user", nil, audit.StatusFailed, map[string]any{
 			"login_provided": strings.TrimSpace(request.Login) != "",
 		})
-		writeMappedError(w, err, loginErrorRules, "login failed")
+		writeMappedError(w, r, err, loginErrorRules, "login failed")
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.authService.Logout(r.Context(), tokenString); err != nil {
 		recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.failed", "user", audit.Int64Ptr(userID), audit.StatusFailed, nil)
-		writeMappedError(w, err, logoutErrorRules, "logout failed")
+		writeMappedError(w, r, err, logoutErrorRules, "logout failed")
 		return
 	}
 
