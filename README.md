@@ -71,22 +71,140 @@ REST API банковского сервиса на Go. Проект реали�
 ## Структура проекта
 
 ```text
+main.go                 точка входа, инициализация зависимостей, запуск HTTP-сервера.
 cmd/server              запуск приложения
-internal/config         конфигурация
+internal/config         конфигурация приложения
 internal/db             подключение к PostgreSQL
 internal/models         модели БД
 internal/dto            DTO запросов и ответов
 internal/repositories   SQL-запросы и транзакции
-internal/services       бизнес-логика
+internal/services       бизнес-логика и правила приложения
 internal/handlers       HTTP handlers
 internal/middleware     middleware
-internal/router         маршрутизация
+internal/router         маршрутизация и регистрация маршрутов
 internal/security       JWT, bcrypt, карты, HMAC
-internal/integrations   внешние интеграции
+internal/integrations   внешние интеграции (внешние сервисы: ЦБ РФ и SMTP)
 internal/scheduler      фоновые задачи
 internal/audit          audit events
 migrations              SQL-миграции
 ```
+
+### Полная структура проекта
+.
+├── .env
+├── .env.example
+├── .gitignore
+├── cmd
+│   └── server
+│       └── main.go
+├── go.mod
+├── go.sum
+├── internal
+│   ├── audit
+│   │   └── event.go
+│   ├── config
+│   │   └── config.go
+│   ├── db
+│   │   └── postgres.go
+│   ├── dto
+│   │   ├── account.go
+│   │   ├── admin.go
+│   │   ├── analytics.go
+│   │   ├── auth.go
+│   │   ├── card.go
+│   │   ├── common.go
+│   │   ├── credit.go
+│   │   ├── mfa.go
+│   │   ├── rate.go
+│   │   └── transfer.go
+│   ├── handlers
+│   │   ├── account_handler.go
+│   │   ├── admin_handler.go
+│   │   ├── analytics_handler.go
+│   │   ├── audit.go
+│   │   ├── auth_context.go
+│   │   ├── auth_handler.go
+│   │   ├── card_handler.go
+│   │   ├── credit_handler.go
+│   │   ├── endpoint.go
+│   │   ├── error_mapping.go
+│   │   ├── health_handler.go
+│   │   ├── mfa_handler.go
+│   │   ├── notification_handler.go
+│   │   ├── path_params.go
+│   │   ├── rate_handler.go
+│   │   ├── request.go
+│   │   ├── response.go
+│   │   └── transfer_handler.go
+│   ├── integrations
+│   │   ├── cbr
+│   │   │   └── client.go
+│   │   └── smtp
+│   │       └── client.go
+│   ├── middleware
+│   │   ├── admin_middleware.go
+│   │   ├── auth_middleware.go
+│   │   ├── body_limit.go
+│   │   ├── error_response.go
+│   │   ├── idempotency.go
+│   │   ├── logging_middleware.go
+│   │   ├── rate_limiter.go
+│   │   ├── request_id.go
+│   │   └── security_headers.go
+│   ├── models
+│   │   ├── account.go
+│   │   ├── card.go
+│   │   ├── credit.go
+│   │   ├── payment_schedule.go
+│   │   ├── transaction.go
+│   │   └── user.go
+│   ├── repositories
+│   │   ├── account_repository.go
+│   │   ├── admin_repository.go
+│   │   ├── analytics_repository.go
+│   │   ├── audit_repository.go
+│   │   ├── card_repository.go
+│   │   ├── credit_payment_repository.go
+│   │   ├── credit_repository.go
+│   │   ├── idempotency_repository.go
+│   │   ├── mfa_repository.go
+│   │   ├── token_repository.go
+│   │   ├── user_repository.go
+│   │   └── user_session_repository.go
+│   ├── router
+│   │   └── router.go
+│   ├── scheduler
+│   │   ├── credit_payment_scheduler.go
+│   │   ├── idempotency_cleanup_scheduler.go
+│   │   ├── mfa_cleanup_scheduler.go
+│   │   └── token_cleanup_scheduler.go
+│   ├── security
+│   │   ├── card.go
+│   │   ├── jwt.go
+│   │   ├── password.go
+│   │   └── token.go
+│   └── services
+│       ├── account_service.go
+│       ├── admin_service.go
+│       ├── analytics_service.go
+│       ├── attempt_limiter.go
+│       ├── audit_service.go
+│       ├── auth_service.go
+│       ├── card_processing_service.go
+│       ├── card_service.go
+│       ├── credit_payment_service.go
+│       ├── credit_service.go
+│       ├── limits.go
+│       ├── mfa_service.go
+│       ├── money.go
+│       ├── notification_service.go
+│       ├── rate_service.go
+│       └── transfer_service.go
+├── migrations
+│   └── 001_init.sql
+├── README.md
+└── test.http
+
 
 ## Переменные окружения
 

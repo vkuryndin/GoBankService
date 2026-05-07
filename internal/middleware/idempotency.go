@@ -157,5 +157,5 @@ func isIdempotentProtectedOperation(r *http.Request) bool {
 	return path == "/transfer" ||
 		path == "/credits" ||
 		(strings.HasPrefix(path, "/accounts/") && (strings.HasSuffix(path, "/deposit") || strings.HasSuffix(path, "/withdraw"))) ||
-		(strings.HasPrefix(path, "/cards/") && (strings.HasSuffix(path, "/pay") || strings.HasSuffix(path, "/close")))
+		(strings.HasPrefix(path, "/cards/") && (strings.HasSuffix(path, "/pay") || strings.HasSuffix(path, "/close") || strings.HasSuffix(path, "/transfer")))
 }

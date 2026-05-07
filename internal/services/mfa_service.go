@@ -22,6 +22,7 @@ import (
 const (
 	MFAPurposeTransfer     = "transfer"
 	MFAPurposeCardPayment  = "card_payment"
+	MFAPurposeCardTransfer = "card_transfer"
 	MFAPurposeCreditCreate = "credit_create"
 	MFAPurposeWithdraw     = "withdraw"
 )
@@ -46,6 +47,7 @@ type mfaAccountStore interface {
 
 type mfaCardStore interface {
 	FindAccountIDByIDAndUserID(ctx context.Context, cardID, userID int64) (int64, error)
+	FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error)
 }
 
 type mfaNotificationSender interface {
@@ -159,6 +161,31 @@ func (s *MFAService) VerifyCardPaymentCode(
 	}
 
 	return s.verifyCode(ctx, userID, MFAPurposeCardPayment, mfaRequest, code)
+}
+
+func (s *MFAService) VerifyCardTransferCode(
+	ctx context.Context,
+	userID int64,
+	fromCardID int64,
+	request dto.CardTransferRequest,
+) error {
+	code := strings.TrimSpace(request.MFACode)
+	if code == "" {
+		return ErrMFACodeRequired
+	}
+
+	if !isValidMFACodeFormat(code) {
+		return ErrInvalidMFACode
+	}
+
+	mfaRequest := dto.MFARequest{
+		Purpose:  MFAPurposeCardTransfer,
+		CardID:   fromCardID,
+		ToCardID: request.ToCardID,
+		Amount:   request.Amount,
+	}
+
+	return s.verifyCode(ctx, userID, MFAPurposeCardTransfer, mfaRequest, code)
 }
 
 func (s *MFAService) VerifyCreditCreateCode(
@@ -284,6 +311,9 @@ func (s *MFAService) buildOperationHash(
 	case MFAPurposeCardPayment:
 		return s.buildCardPaymentOperationHash(ctx, userID, request)
 
+	case MFAPurposeCardTransfer:
+		return s.buildCardTransferOperationHash(ctx, userID, request)
+
 	case MFAPurposeCreditCreate:
 		return s.buildCreditCreateOperationHash(ctx, userID, request)
 
@@ -383,6 +413,72 @@ func (s *MFAService) buildCardPaymentOperationHash(
 		userID,
 		MFAPurposeCardPayment,
 		request.CardID,
+		amount,
+	)
+
+	return hashOperation(raw), nil
+}
+
+func (s *MFAService) buildCardTransferOperationHash(
+	ctx context.Context,
+	userID int64,
+	request dto.MFARequest,
+) (string, error) {
+	if request.CardID <= 0 || request.ToCardID <= 0 {
+		return "", ErrInvalidMFAOperation
+	}
+
+	if request.CardID == request.ToCardID {
+		return "", ErrInvalidMFAOperation
+	}
+
+	amount, err := canonicalMoneyAmount(request.Amount)
+	if err != nil {
+		return "", err
+	}
+
+	fromAccountID, err := s.cardRepository.FindAccountIDByIDAndUserID(ctx, request.CardID, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return "", ErrCardNotFound
+		}
+
+		return "", err
+	}
+
+	toAccountID, err := s.cardRepository.FindActiveAccountIDByID(ctx, request.ToCardID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return "", ErrCardNotFound
+		}
+
+		return "", err
+	}
+
+	if fromAccountID == toAccountID {
+		return "", ErrInvalidMFAOperation
+	}
+
+	if err := s.accountRepository.ValidateTransferAccounts(ctx, userID, fromAccountID, toAccountID); err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return "", ErrAccountNotFound
+		}
+
+		if errors.Is(err, repositories.ErrAccountBlocked) {
+			return "", ErrAccountBlocked
+		}
+
+		return "", err
+	}
+
+	raw := fmt.Sprintf(
+		"user_id=%d|purpose=%s|from_card_id=%d|to_card_id=%d|from_account_id=%d|to_account_id=%d|amount=%s",
+		userID,
+		MFAPurposeCardTransfer,
+		request.CardID,
+		request.ToCardID,
+		fromAccountID,
+		toAccountID,
 		amount,
 	)
 
@@ -496,6 +592,7 @@ func normalizePurpose(purpose string) string {
 func isAllowedPurpose(purpose string) bool {
 	return purpose == MFAPurposeTransfer ||
 		purpose == MFAPurposeCardPayment ||
+		purpose == MFAPurposeCardTransfer ||
 		purpose == MFAPurposeCreditCreate ||
 		purpose == MFAPurposeWithdraw
 }

@@ -29,6 +29,19 @@ var (
 		mfaErrorRules,
 		accountErrorRules,
 	)
+
+	cardTransferErrorRules = joinErrorRules(
+		errorRules{
+			{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"},
+			{target: services.ErrInvalidDescription, status: http.StatusBadRequest, message: "invalid description"},
+			{target: services.ErrInvalidCVV, status: http.StatusForbidden, message: "invalid cvv"},
+			{target: services.ErrCVVAttemptsBlocked, status: http.StatusForbidden, message: "invalid cvv"},
+			{target: services.ErrInvalidCardTransfer, status: http.StatusBadRequest, message: "invalid card transfer"},
+		},
+		cardErrorRules,
+		mfaErrorRules,
+		accountErrorRules,
+	)
 )
 
 type CardHandler struct {
@@ -116,6 +129,32 @@ func (h *CardHandler) PayByCard(w http.ResponseWriter, r *http.Request) {
 		})
 }
 
+func (h *CardHandler) TransferByCard(w http.ResponseWriter, r *http.Request) {
+	fromCardID, err := parseCardID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid card id")
+		return
+	}
+
+	handleAuthedJSON[dto.CardTransferRequest](w, r, cardTransferErrorRules, "card transfer failed",
+		func(ctx context.Context, userID int64, request dto.CardTransferRequest) (int, any, error) {
+			response, err := h.cardService.TransferByCard(ctx, userID, fromCardID, request)
+			if err != nil {
+				h.recordCardTransferFailure(r, userID, fromCardID, request, err)
+				return http.StatusOK, nil, err
+			}
+
+			recordFinancialAudit(h.auditRecorder, r, userID, "finance.card_transfer.success", "transaction", response.TransactionID, audit.StatusSuccess, map[string]any{
+				"from_card_id":    fromCardID,
+				"to_card_id":      request.ToCardID,
+				"from_account_id": response.FromAccountID,
+				"to_account_id":   response.ToAccountID,
+				"amount":          request.Amount,
+			})
+			return http.StatusOK, response, nil
+		})
+}
+
 func (h *CardHandler) recordCardFailure(
 	r *http.Request,
 	userID int64,
@@ -134,5 +173,28 @@ func (h *CardHandler) recordCardFailure(
 
 	recordFinancialAudit(h.auditRecorder, r, userID, action, "card", cardID, status, map[string]any{
 		"amount": request.Amount,
+	})
+}
+
+func (h *CardHandler) recordCardTransferFailure(
+	r *http.Request,
+	userID int64,
+	fromCardID int64,
+	request dto.CardTransferRequest,
+	err error,
+) {
+	action := "finance.card_transfer.failed"
+	status := audit.StatusFailed
+	if errors.Is(err, services.ErrCVVAttemptsBlocked) {
+		action = "card.cvv.blocked"
+		status = audit.StatusBlocked
+	} else if errors.Is(err, services.ErrInvalidCVV) {
+		action = "card.cvv.failed"
+	}
+
+	recordFinancialAudit(h.auditRecorder, r, userID, action, "card", fromCardID, status, map[string]any{
+		"from_card_id": fromCardID,
+		"to_card_id":   request.ToCardID,
+		"amount":       request.Amount,
 	})
 }

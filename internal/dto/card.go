@@ -38,3 +38,21 @@ type CloseCardResponse struct {
 	Status    string `json:"status"`
 	ClosedAt  string `json:"closed_at"`
 }
+
+type CardTransferRequest struct {
+	ToCardID    int64  `json:"to_card_id"`
+	Amount      string `json:"amount"`
+	CVV         string `json:"cvv"`
+	MFACode     string `json:"mfa_code"`
+	Description string `json:"description"`
+}
+
+type CardTransferResponse struct {
+	TransactionID int64  `json:"transaction_id"`
+	FromCardID    int64  `json:"from_card_id"`
+	ToCardID      int64  `json:"to_card_id"`
+	FromAccountID int64  `json:"from_account_id"`
+	ToAccountID   int64  `json:"to_account_id"`
+	Amount        string `json:"amount"`
+	Status        string `json:"status"`
+}

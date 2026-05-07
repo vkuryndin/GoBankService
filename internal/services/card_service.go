@@ -15,23 +15,26 @@ import (
 )
 
 var (
-	ErrCardNotFound       = errors.New("card not found")
-	ErrInvalidCardData    = errors.New("invalid card data")
-	ErrCardCreateRetries  = errors.New("card create retries exceeded")
-	ErrCVVAttemptsBlocked = errors.New("cvv attempts blocked")
-	ErrCardClosed         = errors.New("card is closed")
-	ErrCardAlreadyClosed  = errors.New("card already closed")
+	ErrCardNotFound        = errors.New("card not found")
+	ErrInvalidCardData     = errors.New("invalid card data")
+	ErrCardCreateRetries   = errors.New("card create retries exceeded")
+	ErrCVVAttemptsBlocked  = errors.New("cvv attempts blocked")
+	ErrCardClosed          = errors.New("card is closed")
+	ErrCardAlreadyClosed   = errors.New("card already closed")
+	ErrInvalidCardTransfer = errors.New("invalid card transfer")
 )
 
 type cardStore interface {
 	Create(ctx context.Context, userID int64, accountID int64, number string, expiry string, cvvHash string, numberHMAC string, pgpKey string) (*models.CardDetails, error)
 	FindByUserID(ctx context.Context, userID int64, pgpKey string) ([]models.CardDetails, error)
 	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
+	FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error)
 	Close(ctx context.Context, userID int64, cardID int64) (*models.CardDetails, error)
 }
 
 type cardPaymentAccountStore interface {
 	CardPayment(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
+	Transfer(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string) (int64, error)
 }
 
 type cardProcessor interface {
@@ -41,6 +44,7 @@ type cardProcessor interface {
 
 type cardPaymentMFAVerifier interface {
 	VerifyCardPaymentCode(ctx context.Context, userID int64, cardID int64, request dto.CardPaymentRequest) error
+	VerifyCardTransferCode(ctx context.Context, userID int64, fromCardID int64, request dto.CardTransferRequest) error
 }
 
 type CardService struct {
@@ -232,6 +236,108 @@ func (s *CardService) PayByCard(
 		TransactionID: transactionID,
 		CardID:        cardID,
 		AccountID:     card.AccountID,
+		Amount:        amount,
+		Status:        "completed",
+	}, nil
+}
+
+func (s *CardService) TransferByCard(
+	ctx context.Context,
+	userID int64,
+	fromCardID int64,
+	request dto.CardTransferRequest,
+) (*dto.CardTransferResponse, error) {
+	amount, err := normalizeAmount(request.Amount)
+	if err != nil {
+		return nil, err
+	}
+
+	if request.ToCardID <= 0 || request.ToCardID == fromCardID {
+		return nil, ErrInvalidCardTransfer
+	}
+
+	description := strings.TrimSpace(request.Description)
+	if description == "" {
+		description = "card to card transfer"
+	}
+
+	if len(description) > maxDescriptionLength {
+		return nil, ErrInvalidDescription
+	}
+
+	fromCard, err := s.cardRepository.FindByIDAndUserID(ctx, fromCardID, userID, s.pgpKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	if fromCard.Status == models.CardStatusClosed {
+		return nil, ErrCardClosed
+	}
+
+	if err := s.verifyCardHMAC(fromCard); err != nil {
+		return nil, err
+	}
+
+	cvvAttemptKey := fmt.Sprintf("cvv:%d:%d", userID, fromCardID)
+	if s.cvvAttemptLimiter.isLocked(cvvAttemptKey) {
+		return nil, ErrCVVAttemptsBlocked
+	}
+
+	if err := s.cardProcessingService.VerifyCVV(fromCard, request.CVV); err != nil {
+		s.cvvAttemptLimiter.recordFailure(cvvAttemptKey)
+		if s.cvvAttemptLimiter.isLocked(cvvAttemptKey) {
+			return nil, ErrCVVAttemptsBlocked
+		}
+
+		return nil, err
+	}
+
+	s.cvvAttemptLimiter.reset(cvvAttemptKey)
+
+	toAccountID, err := s.cardRepository.FindActiveAccountIDByID(ctx, request.ToCardID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	if fromCard.AccountID == toAccountID {
+		return nil, ErrInvalidCardTransfer
+	}
+
+	if err := s.mfaService.VerifyCardTransferCode(ctx, userID, fromCardID, request); err != nil {
+		return nil, err
+	}
+
+	transactionID, err := s.accountRepository.Transfer(ctx, userID, fromCard.AccountID, toAccountID, amount, description)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return nil, ErrAccountNotFound
+		}
+
+		if errors.Is(err, repositories.ErrInsufficientFunds) {
+			return nil, ErrInsufficientFunds
+		}
+
+		if errors.Is(err, repositories.ErrAccountBlocked) {
+			return nil, ErrAccountBlocked
+		}
+
+		return nil, err
+	}
+
+	return &dto.CardTransferResponse{
+		TransactionID: transactionID,
+		FromCardID:    fromCardID,
+		ToCardID:      request.ToCardID,
+		FromAccountID: fromCard.AccountID,
+		ToAccountID:   toAccountID,
 		Amount:        amount,
 		Status:        "completed",
 	}, nil

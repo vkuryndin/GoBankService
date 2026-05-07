@@ -221,6 +221,27 @@ func (r *CardRepository) FindAccountIDByIDAndUserID(ctx context.Context, cardID 
 	return accountID, nil
 }
 
+func (r *CardRepository) FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error) {
+	query := `
+		SELECT account_id
+		FROM cards
+		WHERE id = $1 AND status = 'active'
+	`
+
+	var accountID int64
+
+	err := r.db.QueryRowContext(ctx, query, cardID).Scan(&accountID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrCardNotFound
+		}
+
+		return 0, fmt.Errorf("find active card account id by id: %w", err)
+	}
+
+	return accountID, nil
+}
+
 func (r *CardRepository) Close(ctx context.Context, userID int64, cardID int64) (*models.CardDetails, error) {
 	query := `
 		UPDATE cards

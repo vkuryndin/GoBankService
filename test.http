@@ -1,11 +1,11 @@
 ### Variables
-@baseUrl = http://18.185.7.63:8081
+@baseUrl2 = http://18.185.7.63:8081
 
 
-@baseUrl2 = http://localhost:8080
+@baseUrl = http://localhost:8080
 
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MjQyNDQ1LCJpYXQiOjE3NzgxNTYwNDUsImp0aSI6IjhlOWI2Y2NiNWUyN2U2MmRmODA2N2U2MGU4MzE3MzA0In0.I2Fv7MudDh9W4kBUhvaFQL7CxaHQbskl7Vro4NkyG2Y
-@token2 =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJzdWIiOiIyIiwiZXhwIjoxNzc4MjQzMzU2LCJpYXQiOjE3NzgxNTY5NTYsImp0aSI6ImI5ZWIwMTk5NDJiZTM1MTFhMWRhMWJiN2I0NDg3N2U5In0.NKUQbqvpY3nEe6ZdKMF9lip5wreOoRVpT2Fn5_Y6GL8
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MjQ0NjQxLCJpYXQiOjE3NzgxNTgyNDEsImp0aSI6IjQ2ZDY3ZmU4MTgyZmJiY2FkMGRmNjYzZjM4MTQxMTQyIn0.rk2FkKAehYdrintTIYr3e_Og2YLdGzuWIWqhALF2hEs
+@token2 =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MjQ0NjUzLCJpYXQiOjE3NzgxNTgyNTMsImp0aSI6IjBmNTJhZmJjNGFlNDc2OTgzNWM1ZGVjZjhjNmUxM2FjIn0.jXvfmroAqQA0zv5Optr6Bn4cp5ClGvNuCuZRtQadI9g
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
@@ -591,20 +591,20 @@ Content-Type: application/json
 
 {
   "purpose": "card_payment",
-  "card_id": 3,
+  "card_id": 4,
   "amount": "50.00"
 }
 
 ### Pay by card user 2 with CVV and MFA
-POST {{baseUrl}}/cards/3/pay
+POST {{baseUrl}}/cards/4/pay
 Authorization: Bearer {{token2}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
   "amount": "50.00",
-  "cvv": "{{cvvForCardID3}}",
-  "mfa_code": "019797",
+  "cvv": "{{cvvForCardID41}}",
+  "mfa_code": "241539",
   "description": "card payment with mfa"
 }
 
@@ -677,6 +677,86 @@ Idempotency-Key: {{$guid}}
 
 
 
+###-------------------------###
+### BETWEEN CARDS TRANSFERS ###
+###-------------------------###
+
+
+@fromCardId = 2
+@toCardId = 3
+@cvv = 123
+@mfaCode = 000000
+
+### Request MFA for card-to-card transfer
+### Update @mfaCode from email before running the next request.
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "purpose": "card_transfer",
+  "card_id": {{fromCardId}},
+  "to_card_id": {{toCardId}},
+  "amount": "100.00"
+}
+
+### Card-to-card transfer should work
+POST {{baseUrl}}/cards/{{fromCardId}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": {{toCardId}},
+  "amount": "100.00",
+  "cvv": "{{cvvForCardID2}}",
+  "mfa_code": "794075",
+  "description": "card to card transfer test"
+}
+
+### Card-to-card transfer without MFA should fail
+POST {{baseUrl}}/cards/{{fromCardId}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": {{toCardId}},
+  "amount": "100.00",
+  "cvv": "{{cvv}}",
+  "description": "missing mfa"
+}
+
+### Card-to-card transfer with wrong CVV should fail
+POST {{baseUrl}}/cards/{{fromCardId}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": {{toCardId}},
+  "amount": "100.00",
+  "cvv": "999",
+  "mfa_code": "{{mfaCode}}",
+  "description": "wrong cvv"
+}
+
+### User 2 cannot transfer from user 1 card
+POST {{baseUrl}}/cards/{{fromCardId}}/transfer
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": {{toCardId}},
+  "amount": "100.00",
+  "cvv": "{{cvv}}",
+  "mfa_code": "{{mfaCode}}",
+  "description": "foreign card attempt"
+}
+
+
+
 
 ###-------------------------###
 ### RATES ###
@@ -725,7 +805,7 @@ Idempotency-Key: {{$guid}}
   "account_id": {{accountId1user1}},
   "principal_amount": "50000.00",
   "term_months": 12,
-  "mfa_code": "{{mfaCode}}"
+  "mfa_code": "514320"
 }
 
 ### Request MFA for credit create user 2
@@ -751,7 +831,7 @@ Idempotency-Key: {{$guid}}
   "account_id": {{accountId1user2}},
   "principal_amount": "50000.00",
   "term_months": 6,
-  "mfa_code": "{{mfaCode}}"
+  "mfa_code": "005456"
 }
 
 ### Get my credits user 1
@@ -899,3 +979,5 @@ Authorization: Bearer {{token2}}
 ### Check auth after logout user 2 should fail
 GET {{baseUrl}}/auth/check
 Authorization: Bearer {{token2}}
+
+
