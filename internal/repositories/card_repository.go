@@ -200,6 +200,48 @@ func (r *CardRepository) FindByIDAndUserID(
 	return card, nil
 }
 
+func (r *CardRepository) FindActiveByID(ctx context.Context, cardID int64, pgpKey string) (*models.CardDetails, error) {
+	query := `
+		SELECT
+			id,
+			user_id,
+			account_id,
+			pgp_sym_decrypt(encrypted_number, $2),
+			pgp_sym_decrypt(encrypted_expiry, $2),
+			cvv_hash,
+			number_hmac,
+			status,
+			closed_at,
+			created_at
+		FROM cards
+		WHERE id = $1 AND status = 'active'
+	`
+
+	card := &models.CardDetails{}
+
+	err := r.db.QueryRowContext(ctx, query, cardID, pgpKey).Scan(
+		&card.ID,
+		&card.UserID,
+		&card.AccountID,
+		&card.Number,
+		&card.Expiry,
+		&card.CVVHash,
+		&card.NumberHMAC,
+		&card.Status,
+		&card.ClosedAt,
+		&card.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, fmt.Errorf("find active card by id: %w", err)
+	}
+
+	return card, nil
+}
+
 func (r *CardRepository) FindAccountIDByIDAndUserID(ctx context.Context, cardID int64, userID int64) (int64, error) {
 	query := `
 		SELECT account_id

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ var (
 	ErrCardCreateRetries   = errors.New("card create retries exceeded")
 	ErrCVVAttemptsBlocked  = errors.New("cvv attempts blocked")
 	ErrCardClosed          = errors.New("card is closed")
+	ErrCardExpired         = errors.New("card is expired")
 	ErrCardAlreadyClosed   = errors.New("card already closed")
 	ErrInvalidCardTransfer = errors.New("invalid card transfer")
 )
@@ -28,6 +30,7 @@ type cardStore interface {
 	Create(ctx context.Context, userID int64, accountID int64, number string, expiry string, cvvHash string, numberHMAC string, pgpKey string) (*models.CardDetails, error)
 	FindByUserID(ctx context.Context, userID int64, pgpKey string) ([]models.CardDetails, error)
 	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
+	FindActiveByID(ctx context.Context, cardID int64, pgpKey string) (*models.CardDetails, error)
 	FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error)
 	Close(ctx context.Context, userID int64, cardID int64) (*models.CardDetails, error)
 }
@@ -191,6 +194,10 @@ func (s *CardService) PayByCard(
 		return nil, ErrCardClosed
 	}
 
+	if err := ensureCardNotExpired(card); err != nil {
+		return nil, err
+	}
+
 	if err := s.verifyCardHMAC(card); err != nil {
 		return nil, err
 	}
@@ -278,6 +285,10 @@ func (s *CardService) TransferByCard(
 		return nil, ErrCardClosed
 	}
 
+	if err := ensureCardNotExpired(fromCard); err != nil {
+		return nil, err
+	}
+
 	if err := s.verifyCardHMAC(fromCard); err != nil {
 		return nil, err
 	}
@@ -298,7 +309,7 @@ func (s *CardService) TransferByCard(
 
 	s.cvvAttemptLimiter.reset(cvvAttemptKey)
 
-	toAccountID, err := s.cardRepository.FindActiveAccountIDByID(ctx, request.ToCardID)
+	toCard, err := s.cardRepository.FindActiveByID(ctx, request.ToCardID, s.pgpKey)
 	if err != nil {
 		if errors.Is(err, repositories.ErrCardNotFound) {
 			return nil, ErrCardNotFound
@@ -307,7 +318,11 @@ func (s *CardService) TransferByCard(
 		return nil, err
 	}
 
-	if fromCard.AccountID == toAccountID {
+	if err := ensureCardNotExpired(toCard); err != nil {
+		return nil, err
+	}
+
+	if fromCard.AccountID == toCard.AccountID {
 		return nil, ErrInvalidCardTransfer
 	}
 
@@ -315,7 +330,7 @@ func (s *CardService) TransferByCard(
 		return nil, err
 	}
 
-	transactionID, err := s.accountRepository.Transfer(ctx, userID, fromCard.AccountID, toAccountID, amount, description)
+	transactionID, err := s.accountRepository.Transfer(ctx, userID, fromCard.AccountID, toCard.AccountID, amount, description)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
@@ -337,7 +352,7 @@ func (s *CardService) TransferByCard(
 		FromCardID:    fromCardID,
 		ToCardID:      request.ToCardID,
 		FromAccountID: fromCard.AccountID,
-		ToAccountID:   toAccountID,
+		ToAccountID:   toCard.AccountID,
 		Amount:        amount,
 		Status:        "completed",
 	}, nil
@@ -426,6 +441,64 @@ func toCloseCardResponse(card *models.CardDetails) *dto.CloseCardResponse {
 		Status:    normalizeCardStatus(card.Status),
 		ClosedAt:  formatNullableTime(card.ClosedAt),
 	}
+}
+
+func ensureCardNotExpired(card *models.CardDetails) error {
+	expiresAt, err := parseCardExpiry(card.Expiry)
+	if err != nil {
+		return ErrInvalidCardData
+	}
+
+	if !time.Now().UTC().Before(expiresAt) {
+		return ErrCardExpired
+	}
+
+	return nil
+}
+
+func parseCardExpiry(expiry string) (time.Time, error) {
+	expiry = strings.TrimSpace(expiry)
+	if expiry == "" {
+		return time.Time{}, ErrInvalidCardData
+	}
+
+	if parsed, err := time.Parse("2006-01", expiry); err == nil {
+		return time.Date(parsed.Year(), parsed.Month()+1, 1, 0, 0, 0, 0, time.UTC), nil
+	}
+
+	if parsed, err := time.Parse("2006-01-02", expiry); err == nil {
+		return time.Date(parsed.Year(), parsed.Month()+1, 1, 0, 0, 0, 0, time.UTC), nil
+	}
+
+	separator := "/"
+	if strings.Contains(expiry, "-") {
+		separator = "-"
+	}
+
+	parts := strings.Split(expiry, separator)
+	if len(parts) != 2 {
+		return time.Time{}, ErrInvalidCardData
+	}
+
+	month, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil || month < 1 || month > 12 {
+		return time.Time{}, ErrInvalidCardData
+	}
+
+	year, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return time.Time{}, ErrInvalidCardData
+	}
+
+	if year < 100 {
+		year += 2000
+	}
+
+	if year < 2000 {
+		return time.Time{}, ErrInvalidCardData
+	}
+
+	return time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, time.UTC), nil
 }
 
 func normalizeCardStatus(status string) string {

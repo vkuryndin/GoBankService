@@ -48,6 +48,8 @@ type mfaAccountStore interface {
 type mfaCardStore interface {
 	FindAccountIDByIDAndUserID(ctx context.Context, cardID, userID int64) (int64, error)
 	FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error)
+	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
+	FindActiveByID(ctx context.Context, cardID int64, pgpKey string) (*models.CardDetails, error)
 }
 
 type mfaNotificationSender interface {
@@ -61,6 +63,7 @@ type MFAService struct {
 	notificationService mfaNotificationSender
 	attemptLimiter      *attemptLimiter
 	auditRecorder       audit.Recorder
+	pgpKey              string
 }
 
 func NewMFAService(
@@ -71,6 +74,7 @@ func NewMFAService(
 	maxFailedAttempts int,
 	lockout time.Duration,
 	auditRecorder audit.Recorder,
+	pgpKey string,
 ) *MFAService {
 	return &MFAService{
 		mfaRepository:       mfaRepository,
@@ -79,6 +83,7 @@ func NewMFAService(
 		notificationService: notificationService,
 		attemptLimiter:      newAttemptLimiter(maxFailedAttempts, lockout),
 		auditRecorder:       auditRecorder,
+		pgpKey:              pgpKey,
 	}
 }
 
@@ -386,7 +391,7 @@ func (s *MFAService) buildCardPaymentOperationHash(
 		return "", err
 	}
 
-	accountID, err := s.cardRepository.FindAccountIDByIDAndUserID(ctx, request.CardID, userID)
+	card, err := s.cardRepository.FindByIDAndUserID(ctx, request.CardID, userID, s.pgpKey)
 	if err != nil {
 		if errors.Is(err, repositories.ErrCardNotFound) {
 			return "", ErrCardNotFound
@@ -395,7 +400,15 @@ func (s *MFAService) buildCardPaymentOperationHash(
 		return "", err
 	}
 
-	account, err := s.accountRepository.FindByIDAndUserID(ctx, accountID, userID)
+	if card.Status == models.CardStatusClosed {
+		return "", ErrCardClosed
+	}
+
+	if err := ensureCardNotExpired(card); err != nil {
+		return "", err
+	}
+
+	account, err := s.accountRepository.FindByIDAndUserID(ctx, card.AccountID, userID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return "", ErrAccountNotFound
@@ -437,7 +450,7 @@ func (s *MFAService) buildCardTransferOperationHash(
 		return "", err
 	}
 
-	fromAccountID, err := s.cardRepository.FindAccountIDByIDAndUserID(ctx, request.CardID, userID)
+	fromCard, err := s.cardRepository.FindByIDAndUserID(ctx, request.CardID, userID, s.pgpKey)
 	if err != nil {
 		if errors.Is(err, repositories.ErrCardNotFound) {
 			return "", ErrCardNotFound
@@ -446,7 +459,15 @@ func (s *MFAService) buildCardTransferOperationHash(
 		return "", err
 	}
 
-	toAccountID, err := s.cardRepository.FindActiveAccountIDByID(ctx, request.ToCardID)
+	if fromCard.Status == models.CardStatusClosed {
+		return "", ErrCardClosed
+	}
+
+	if err := ensureCardNotExpired(fromCard); err != nil {
+		return "", err
+	}
+
+	toCard, err := s.cardRepository.FindActiveByID(ctx, request.ToCardID, s.pgpKey)
 	if err != nil {
 		if errors.Is(err, repositories.ErrCardNotFound) {
 			return "", ErrCardNotFound
@@ -455,11 +476,15 @@ func (s *MFAService) buildCardTransferOperationHash(
 		return "", err
 	}
 
-	if fromAccountID == toAccountID {
+	if err := ensureCardNotExpired(toCard); err != nil {
+		return "", err
+	}
+
+	if fromCard.AccountID == toCard.AccountID {
 		return "", ErrInvalidMFAOperation
 	}
 
-	if err := s.accountRepository.ValidateTransferAccounts(ctx, userID, fromAccountID, toAccountID); err != nil {
+	if err := s.accountRepository.ValidateTransferAccounts(ctx, userID, fromCard.AccountID, toCard.AccountID); err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return "", ErrAccountNotFound
 		}
@@ -477,8 +502,8 @@ func (s *MFAService) buildCardTransferOperationHash(
 		MFAPurposeCardTransfer,
 		request.CardID,
 		request.ToCardID,
-		fromAccountID,
-		toAccountID,
+		fromCard.AccountID,
+		toCard.AccountID,
 		amount,
 	)
 

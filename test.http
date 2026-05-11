@@ -1,11 +1,11 @@
 ### Variables
-@baseUrl2 = http://18.185.7.63:8081
+@baseUrl2 = http://18.185.7.63
 
 
 @baseUrl = http://localhost:8080
 
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4MjQ0NjQxLCJpYXQiOjE3NzgxNTgyNDEsImp0aSI6IjQ2ZDY3ZmU4MTgyZmJiY2FkMGRmNjYzZjM4MTQxMTQyIn0.rk2FkKAehYdrintTIYr3e_Og2YLdGzuWIWqhALF2hEs
-@token2 =eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4MjQ0NjUzLCJpYXQiOjE3NzgxNTgyNTMsImp0aSI6IjBmNTJhZmJjNGFlNDc2OTgzNWM1ZGVjZjhjNmUxM2FjIn0.jXvfmroAqQA0zv5Optr6Bn4cp5ClGvNuCuZRtQadI9g
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4NTc3OTA5LCJpYXQiOjE3Nzg0OTE1MDksImp0aSI6ImZiYmM4YjllMDc2YjdhYzQxYTc4MmU5Njc3ZTkyNTFjIn0.Vy2hqMGUYYmkB9rs2nLF_SUG54mNYOluvI1g253Vp30
+@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJzdWIiOiIyIiwiZXhwIjoxNzc4NTc3OTI3LCJpYXQiOjE3Nzg0OTE1MjcsImp0aSI6IjFmZWYwNDEzNWRlNTUyMzQ1ZWRjOGYwYmQ4NWZmNDJlIn0.9GBEdsMc7_LI41wGh8qEob1SgJbP9pTA0bE1T2K6OPE
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
@@ -258,7 +258,7 @@ Idempotency-Key: {{$guid}}
 
 {
   "amount": "250.00",
-  "mfa_code": "130092"
+  "mfa_code": "219192"
 }
 
 ### Request MFA for withdraw user 2 account 1
@@ -357,7 +357,7 @@ Idempotency-Key: {{$guid}}
   "to_account_id": {{accountId2user1}},
   "amount": "100.00",
   "description": "transfer between user 1 accounts",
-  "mfa_code": "135876"
+  "mfa_code": "795010"
 }
 
 ### Request MFA for transfer from user 1 to user 2
@@ -604,7 +604,7 @@ Idempotency-Key: {{$guid}}
 {
   "amount": "50.00",
   "cvv": "{{cvvForCardID41}}",
-  "mfa_code": "241539",
+  "mfa_code": "181573",
   "description": "card payment with mfa"
 }
 
@@ -682,8 +682,8 @@ Idempotency-Key: {{$guid}}
 ###-------------------------###
 
 
-@fromCardId = 2
-@toCardId = 3
+@fromCardId = 3
+@toCardId = 4
 @cvv = 123
 @mfaCode = 000000
 
@@ -709,8 +709,8 @@ Idempotency-Key: {{$guid}}
 {
   "to_card_id": {{toCardId}},
   "amount": "100.00",
-  "cvv": "{{cvvForCardID2}}",
-  "mfa_code": "794075",
+  "cvv": "{{cvvForCardID31}}",
+  "mfa_code": "147739",
   "description": "card to card transfer test"
 }
 
@@ -723,7 +723,7 @@ Idempotency-Key: {{$guid}}
 {
   "to_card_id": {{toCardId}},
   "amount": "100.00",
-  "cvv": "{{cvv}}",
+  "cvv": "{{cvvForCardID31}}",
   "description": "missing mfa"
 }
 
@@ -805,7 +805,7 @@ Idempotency-Key: {{$guid}}
   "account_id": {{accountId1user1}},
   "principal_amount": "50000.00",
   "term_months": 12,
-  "mfa_code": "514320"
+  "mfa_code": "409897"
 }
 
 ### Request MFA for credit create user 2
@@ -831,7 +831,7 @@ Idempotency-Key: {{$guid}}
   "account_id": {{accountId1user2}},
   "principal_amount": "50000.00",
   "term_months": 6,
-  "mfa_code": "005456"
+  "mfa_code": "688497"
 }
 
 ### Get my credits user 1
@@ -904,11 +904,11 @@ Authorization: Bearer {{token2}}
 
 ### Admin users
 GET {{baseUrl}}/admin/users
-Authorization: Bearer {{token}}
+Authorization: Bearer {{token}
 
 ### Admin logged in users
 GET {{baseUrl}}/admin/logged-in-users
-Authorization: Bearer {{token2}}
+Authorization: Bearer {{token}}
 
 ### User 2 tries admin users
 GET {{baseUrl}}/admin/users
@@ -1021,4 +1021,45 @@ Content-Type: application/json
   "account_id": {{accountId}},
   "principal_amount": "999999999.00",
   "term_months": 12
+}
+
+
+### Close account requires JWT, ownership, zero balance and no active/overdue credits.
+### Use real values from your main test.http.
+@baseUrl = http://localhost:8080
+@token = paste_user_token_here
+@accountId = 1
+
+### Check account before close
+GET {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+
+### Close account should work only when balance is 0 and no active/overdue credits exist
+POST {{baseUrl}}/accounts/{{accountId}}/close
+Authorization: Bearer {{token}}
+Idempotency-Key: {{$guid}}
+
+### Account should remain visible with status=closed
+GET {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+
+### Deposit to closed account should fail
+POST {{baseUrl}}/accounts/{{accountId}}/deposit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "amount": "100.00"
+}
+
+### Withdraw from closed account should fail before money movement
+POST {{baseUrl}}/accounts/{{accountId}}/withdraw
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "amount": "10.00",
+  "mfa_code": "000000"
 }

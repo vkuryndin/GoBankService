@@ -119,6 +119,7 @@ func main() {
 		cfg.Security.MFA.MaxFailures,
 		cfg.Security.MFA.Lockout,
 		auditService,
+		cfg.CardPGPKey,
 	)
 	accountService := services.NewAccountService(accountRepository, mfaService)
 	transferService := services.NewTransferService(accountRepository, mfaService)

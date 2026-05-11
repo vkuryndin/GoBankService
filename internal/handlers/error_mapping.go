@@ -85,6 +85,7 @@ var mfaErrorRules = errorRules{
 var cardErrorRules = errorRules{
 	{target: services.ErrCardNotFound, status: http.StatusNotFound, message: "card not found"},
 	{target: services.ErrCardClosed, status: http.StatusConflict, message: "card is closed"},
+	{target: services.ErrCardExpired, status: http.StatusConflict, message: "card is expired"},
 	{target: services.ErrCardAlreadyClosed, status: http.StatusConflict, message: "card already closed"},
 	{target: services.ErrInvalidCardData, status: http.StatusBadRequest, message: "invalid card data"},
 }
