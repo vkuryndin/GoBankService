@@ -33,12 +33,14 @@
 ### Если хочешь проверить повторную отправку одной операции, временно замени {{$guid}} в двух одинаковых запросах на один и тот же фиксированный ключ.
 
 ###-------------------------###
-### Health check
+### HEALTH ###
 ###-------------------------###
+
+### Health check
 GET {{baseUrl}}/health
 
 ###-------------------------###
-### REGISTER ###
+### AUTH / USERS ###
 ###-------------------------###
 
 ### Register user 1
@@ -70,10 +72,6 @@ Content-Type: application/json
   "username": "testuser_duplicate",
   "password": "password123"
 }
-
-###-------------------------###
-### LOGIN ###
-###-------------------------###
 
 ### Login by email user 1
 POST {{baseUrl}}/login
@@ -119,10 +117,6 @@ Content-Type: application/json
   "login": "test@example.com",
   "password": "wrong_password"
 }
-
-###-------------------------###
-### CHECK AUTH ###
-###-------------------------###
 
 ### Check auth without token
 GET {{baseUrl}}/auth/check
@@ -329,29 +323,21 @@ Idempotency-Key: {{$guid}}
   "mfa_code": "000000"
 }
 
-
-###-------------------------###
-### CLOSE ACCOUNT ###
-###-------------------------###
-
-
-@accountId = 16
-
 ### Check account before close
-GET {{baseUrl}}/accounts/{{accountId}}
-Authorization: Bearer {{token2}}
-
-### Close account should work only when balance is 0 and no active/overdue credits exist
-POST {{baseUrl}}/accounts/{{accountId}}/close
-Authorization: Bearer {{token2}}
-Idempotency-Key: {{$guid}}
-
-### Account should remain visible with status=closed
-GET {{baseUrl}}/accounts/{{accountId}}
+GET {{baseUrl}}/accounts/{{accountId1user1}}
 Authorization: Bearer {{token}}
 
-### Deposit to closed account should fail
-POST {{baseUrl}}/accounts/{{accountId}}/deposit
+### Close account should work only when balance is 0 and no active/overdue credits exist
+POST {{baseUrl}}/accounts/{{accountId1user1}}/close
+Authorization: Bearer {{token}}
+Idempotency-Key: {{$guid}}
+
+### Account should remain visible after close attempt
+GET {{baseUrl}}/accounts/{{accountId1user1}}
+Authorization: Bearer {{token}}
+
+### Deposit to closed account should fail if account was closed
+POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
 Authorization: Bearer {{token}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
@@ -360,8 +346,8 @@ Idempotency-Key: {{$guid}}
   "amount": "100.00"
 }
 
-### Withdraw from closed account should fail before money movement
-POST {{baseUrl}}/accounts/{{accountId}}/withdraw
+### Withdraw from closed account should fail if account was closed
+POST {{baseUrl}}/accounts/{{accountId1user1}}/withdraw
 Authorization: Bearer {{token}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
@@ -370,10 +356,6 @@ Idempotency-Key: {{$guid}}
   "amount": "10.00",
   "mfa_code": "000000"
 }
-
-
-
-
 
 ###-------------------------###
 ### TRANSFERS WITH MFA ###
@@ -679,9 +661,73 @@ Idempotency-Key: {{$guid}}
   "description": "too much"
 }
 
-###-------------------------###
-### CLOSED CARDS ###
-###-------------------------###
+### Request MFA for card-to-card transfer
+### После получения письма обнови @mfaCode перед следующим запросом.
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "purpose": "card_transfer",
+  "card_id": 3,
+  "to_card_id": 4,
+  "amount": "100.00"
+}
+
+### Card-to-card transfer should work
+POST {{baseUrl}}/cards/3/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": 4,
+  "amount": "100.00",
+  "cvv": "{{cvvForCardID31}}",
+  "mfa_code": "147739",
+  "description": "card to card transfer test"
+}
+
+### Card-to-card transfer without MFA should fail
+POST {{baseUrl}}/cards/3/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": 4,
+  "amount": "100.00",
+  "cvv": "{{cvvForCardID31}}",
+  "description": "missing mfa"
+}
+
+### Card-to-card transfer with wrong CVV should fail
+POST {{baseUrl}}/cards/3/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": 4,
+  "amount": "100.00",
+  "cvv": "999",
+  "mfa_code": "{{mfaCode}}",
+  "description": "wrong cvv"
+}
+
+### User 2 cannot transfer from user 1 card
+POST {{baseUrl}}/cards/3/transfer
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "to_card_id": 4,
+  "amount": "100.00",
+  "cvv": "{{cvvForCardID31}}",
+  "mfa_code": "{{mfaCode}}",
+  "description": "foreign card attempt"
+}
 
 ### Close card
 POST {{baseUrl}}/cards/{{cardId1user2}}/close
@@ -689,23 +735,23 @@ Authorization: Bearer {{token2}}
 Idempotency-Key: {{$guid}}
 
 ### Get closed card: status should be closed
-GET {{baseUrl}}/cards/{{cardId1user1}}
-Authorization: Bearer {{token}}
+GET {{baseUrl}}/cards/{{cardId1user2}}
+Authorization: Bearer {{token2}}
 
 ### Request MFA for payment by closed card should fail
 POST {{baseUrl}}/mfa/request
-Authorization: Bearer {{token}}
+Authorization: Bearer {{token2}}
 Content-Type: application/json
 
 {
   "purpose": "card_payment",
-  "card_id": {{cardId1user1}},
+  "card_id": {{cardId1user2}},
   "amount": "100.00"
 }
 
 ### Pay by closed card should fail: card is closed
-POST {{baseUrl}}/cards/{{cardId1user1}}/pay
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/cards/{{cardId1user2}}/pay
+Authorization: Bearer {{token2}}
 Idempotency-Key: {{$guid}}
 Content-Type: application/json
 
@@ -717,104 +763,24 @@ Content-Type: application/json
 }
 
 ### Close already closed card should fail: card already closed
-POST {{baseUrl}}/cards/{{cardId1user1}}/close
-Authorization: Bearer {{token}}
-Idempotency-Key: {{$guid}}
-
-
-
-###-------------------------###
-### BETWEEN CARDS TRANSFERS ###
-###-------------------------###
-
-
-@fromCardId = 3
-@toCardId = 4
-@cvv = 123
-@mfaCode = 000000
-
-### Request MFA for card-to-card transfer
-### Update @mfaCode from email before running the next request.
-POST {{baseUrl}}/mfa/request
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "purpose": "card_transfer",
-  "card_id": {{fromCardId}},
-  "to_card_id": {{toCardId}},
-  "amount": "100.00"
-}
-
-### Card-to-card transfer should work
-POST {{baseUrl}}/cards/{{fromCardId}}/transfer
-Authorization: Bearer {{token}}
-Content-Type: application/json
-Idempotency-Key: {{$guid}}
-
-{
-  "to_card_id": {{toCardId}},
-  "amount": "100.00",
-  "cvv": "{{cvvForCardID31}}",
-  "mfa_code": "147739",
-  "description": "card to card transfer test"
-}
-
-### Card-to-card transfer without MFA should fail
-POST {{baseUrl}}/cards/{{fromCardId}}/transfer
-Authorization: Bearer {{token}}
-Content-Type: application/json
-Idempotency-Key: {{$guid}}
-
-{
-  "to_card_id": {{toCardId}},
-  "amount": "100.00",
-  "cvv": "{{cvvForCardID31}}",
-  "description": "missing mfa"
-}
-
-### Card-to-card transfer with wrong CVV should fail
-POST {{baseUrl}}/cards/{{fromCardId}}/transfer
-Authorization: Bearer {{token}}
-Content-Type: application/json
-Idempotency-Key: {{$guid}}
-
-{
-  "to_card_id": {{toCardId}},
-  "amount": "100.00",
-  "cvv": "999",
-  "mfa_code": "{{mfaCode}}",
-  "description": "wrong cvv"
-}
-
-### User 2 cannot transfer from user 1 card
-POST {{baseUrl}}/cards/{{fromCardId}}/transfer
+POST {{baseUrl}}/cards/{{cardId1user2}}/close
 Authorization: Bearer {{token2}}
-Content-Type: application/json
 Idempotency-Key: {{$guid}}
-
-{
-  "to_card_id": {{toCardId}},
-  "amount": "100.00",
-  "cvv": "{{cvv}}",
-  "mfa_code": "{{mfaCode}}",
-  "description": "foreign card attempt"
-}
-
-
-
-
-###-------------------------###
-### RATES ###
-###-------------------------###
-
-### Get CBR key rate
-GET {{baseUrl}}/rates/key
-Authorization: Bearer {{token}}
 
 ###-------------------------###
 ### CREDITS WITH MFA ###
 ###-------------------------###
+
+### Check credit policy before MFA
+POST {{baseUrl}}/credits/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "account_id": {{accountId1user1}},
+  "principal_amount": "50000.00",
+  "term_months": 12
+}
 
 ### Create credit without MFA should fail
 POST {{baseUrl}}/credits
@@ -900,6 +866,25 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/credits/1
 Authorization: Bearer {{token2}}
 
+### Check rejection by too large principal
+POST {{baseUrl}}/credits/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "account_id": {{accountId1user1}},
+  "principal_amount": "999999999.00",
+  "term_months": 12
+}
+
+###-------------------------###
+### RATES ###
+###-------------------------###
+
+### Get CBR key rate
+GET {{baseUrl}}/rates/key
+Authorization: Bearer {{token}}
+
 ###-------------------------###
 ### NOTIFICATIONS ###
 ###-------------------------###
@@ -950,11 +935,11 @@ Authorization: Bearer {{token2}}
 
 ### Admin users
 GET {{baseUrl}}/admin/users
-Authorization: Bearer {{token2}
+Authorization: Bearer {{token}}
 
 ### Admin logged in users
 GET {{baseUrl}}/admin/logged-in-users
-Authorization: Bearer {{token2}}
+Authorization: Bearer {{token}}
 
 ### User 2 tries admin users
 GET {{baseUrl}}/admin/users
@@ -965,7 +950,7 @@ POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/block
 Authorization: Bearer {{token}}
 
 ### Deposit to blocked account should fail
-POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
+POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
 Authorization: Bearer {{token2}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
@@ -981,28 +966,28 @@ Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
-  "from_account_id": {{accountId1user1}},
-  "to_account_id": {{accountId1user2}},
+  "from_account_id": {{accountId1user2}},
+  "to_account_id": {{accountId1user1}},
   "amount": "10.00",
   "description": "blocked account transfer",
   "mfa_code": "{{mfaCode}}"
 }
 
 ### Admin block already blocked account should fail
-POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/block
-Authorization: Bearer {{token2}}
+POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/block
+Authorization: Bearer {{token}}
 
 ### Admin unblock user 2 account
 POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/unblock
 Authorization: Bearer {{token}}
 
 ### Admin unblock already unblocked account should fail
-POST {{baseUrl}}/admin/accounts/{{accountId1user1}}/unblock
+POST {{baseUrl}}/admin/accounts/{{accountId1user2}}/unblock
 Authorization: Bearer {{token}}
 
 ### Deposit after unblock should work
-POST {{baseUrl}}/accounts/{{accountId1user1}}/deposit
-Authorization: Bearer {{token}}
+POST {{baseUrl}}/accounts/{{accountId1user2}}/deposit
+Authorization: Bearer {{token2}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
@@ -1025,47 +1010,3 @@ Authorization: Bearer {{token2}}
 ### Check auth after logout user 2 should fail
 GET {{baseUrl}}/auth/check
 Authorization: Bearer {{token2}}
-
-###-------------------------###
-### CREDITS HISTORY CHECK ###
-###-------------------------###
-
-
-
-###@accountId = 1
-
-### Check credit policy before MFA
-POST {{baseUrl}}/credits/check
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "account_id": {{accountId}},
-  "principal_amount": "50000.00",
-  "term_months": 12
-}
-
-### Create credit after successful check
-### Request MFA first, then paste code into mfa_code.
-POST {{baseUrl}}/credits
-Authorization: Bearer {{token}}
-Idempotency-Key: {{$guid}}
-Content-Type: application/json
-
-{
-  "account_id": {{accountId}},
-  "principal_amount": "50000.00",
-  "term_months": 12,
-  "mfa_code": "paste_mfa_code_here"
-}
-
-### Check rejection by too large principal
-POST {{baseUrl}}/credits/check
-Authorization: Bearer {{token}}
-Content-Type: application/json
-
-{
-  "account_id": {{accountId}},
-  "principal_amount": "999999999.00",
-  "term_months": 12
-}

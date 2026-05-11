@@ -353,6 +353,9 @@ golangci-lint run ./...
 govulncheck ./...
 ```
 
+`golangci-lint` настроен в `.golangci.yml`.
+Для проверки уязвимостей используется `govulncheck`.
+
 ## Основные endpoints
 
 ### Public
