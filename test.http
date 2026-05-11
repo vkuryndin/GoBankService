@@ -1,8 +1,8 @@
 ### Variables
-@baseUrl2 = http://18.185.7.63
+@baseUrl = http://18.185.7.63
 
 
-@baseUrl = http://localhost:8080
+@baseUrl2 = http://localhost:8080
 
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4NTg0MzY5LCJpYXQiOjE3Nzg0OTc5NjksImp0aSI6IjZlNjU1ZjM2MjcyZjI3Yjg1YjY4NDk3MzEwMDQ5ZWVlIn0.jxo8ehCaDn_G31Ilc5UjooDWx-KJA_E7QljgAnCSsqU
 @token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4NTgzMDYzLCJpYXQiOjE3Nzg0OTY2NjMsImp0aSI6ImI0YzczMWY1N2JjNGY4NTEwNTM1ODcxZTAwNTgwZDc0In0.oj572oXwGo0Il4V1SyJjJQixlwr6Jvc5VKDX1Cxxdeo
@@ -328,6 +328,52 @@ Idempotency-Key: {{$guid}}
   "amount": "10.00",
   "mfa_code": "000000"
 }
+
+
+###-------------------------###
+### CLOSE ACCOUNT ###
+###-------------------------###
+
+
+@accountId = 16
+
+### Check account before close
+GET {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token2}}
+
+### Close account should work only when balance is 0 and no active/overdue credits exist
+POST {{baseUrl}}/accounts/{{accountId}}/close
+Authorization: Bearer {{token2}}
+Idempotency-Key: {{$guid}}
+
+### Account should remain visible with status=closed
+GET {{baseUrl}}/accounts/{{accountId}}
+Authorization: Bearer {{token}}
+
+### Deposit to closed account should fail
+POST {{baseUrl}}/accounts/{{accountId}}/deposit
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "amount": "100.00"
+}
+
+### Withdraw from closed account should fail before money movement
+POST {{baseUrl}}/accounts/{{accountId}}/withdraw
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "amount": "10.00",
+  "mfa_code": "000000"
+}
+
+
+
+
 
 ###-------------------------###
 ### TRANSFERS WITH MFA ###
@@ -985,7 +1031,8 @@ Authorization: Bearer {{token2}}
 ###-------------------------###
 
 
-@accountId = 1
+
+###@accountId = 1
 
 ### Check credit policy before MFA
 POST {{baseUrl}}/credits/check
@@ -1021,45 +1068,4 @@ Content-Type: application/json
   "account_id": {{accountId}},
   "principal_amount": "999999999.00",
   "term_months": 12
-}
-
-
-### Close account requires JWT, ownership, zero balance and no active/overdue credits.
-### Use real values from your main test.http.
-@baseUrl = http://localhost:8080
-
-@accountId = 1
-
-### Check account before close
-GET {{baseUrl}}/accounts/{{accountId}}
-Authorization: Bearer {{token}}
-
-### Close account should work only when balance is 0 and no active/overdue credits exist
-POST {{baseUrl}}/accounts/{{accountId}}/close
-Authorization: Bearer {{token}}
-Idempotency-Key: {{$guid}}
-
-### Account should remain visible with status=closed
-GET {{baseUrl}}/accounts/{{accountId}}
-Authorization: Bearer {{token}}
-
-### Deposit to closed account should fail
-POST {{baseUrl}}/accounts/{{accountId}}/deposit
-Authorization: Bearer {{token}}
-Content-Type: application/json
-Idempotency-Key: {{$guid}}
-
-{
-  "amount": "100.00"
-}
-
-### Withdraw from closed account should fail before money movement
-POST {{baseUrl}}/accounts/{{accountId}}/withdraw
-Authorization: Bearer {{token}}
-Content-Type: application/json
-Idempotency-Key: {{$guid}}
-
-{
-  "amount": "10.00",
-  "mfa_code": "000000"
 }
