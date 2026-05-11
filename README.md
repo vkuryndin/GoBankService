@@ -8,7 +8,7 @@ REST API банковского сервиса на Go. Проект реали�
 
 ## Стек
 
-- Go 1.23+
+- Go 1.26.3
 - gorilla/mux
 - PostgreSQL + lib/pq
 - pgcrypto
@@ -56,12 +56,15 @@ REST API банковского сервиса на Go. Проект реали�
 - bcrypt-хеширование CVV;
 - PGP-шифрование номера и срока карты через pgcrypto;
 - HMAC-SHA256 для проверки целостности данных карты;
+- HMAC карты используется только внутри сервиса и не возвращается в API-ответах;
+- сравнение HMAC выполняется через constant-time compare;
 - JWT-аутентификация;
 - JWT `jti`;
 - single-session login;
 - revoked tokens;
 - проверка владельца счетов, карт и кредитов;
 - MFA для критических операций: withdraw, transfer, card payment, card transfer, credit create;
+- MFA-код атомарно помечается использованным, чтобы исключить повторное применение одного кода при параллельных запросах;
 - ограничение попыток MFA и CVV;
 - Idempotency-Key для финансовых POST-операций;
 - request_hash для защиты от переиспользования Idempotency-Key с другим body;
@@ -71,11 +74,10 @@ REST API банковского сервиса на Go. Проект реали�
 - security headers;
 - request id;
 - strict JSON decoding;
+- strict parsing конфигурации: ошибки в bool/int env-переменных не подменяются молча default-значениями;
 - audit logs;
 - DB CHECK constraints;
 - graceful shutdown.
-
-## Структура проекта
 
 ## Структура проекта
 
@@ -100,6 +102,7 @@ docker-compose.yml      запуск API, PostgreSQL и nginx
 bank-service.conf       nginx reverse proxy
 index.html              стартовая страница API
 test.http               ручные сценарии проверки API
+```
 
 ### Полная структура проекта
 
@@ -337,6 +340,17 @@ bank-nginx — nginx reverse proxy и стартовая страница.
 ```
 docker compose ps
 docker compose logs -f bank-api
+```
+
+### Проверка качества кода
+
+Перед сдачей проект проверялся следующими командами:
+
+```bash
+gofmt -w ./cmd ./internal
+go mod tidy
+golangci-lint run ./...
+govulncheck ./...
 ```
 
 ## Основные endpoints
