@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Go Bank Service API</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f6f7f9;
+      color: #1f2937;
+      line-height: 1.5;
+    }
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 28px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+    h2 {
+      margin-top: 28px;
+      font-size: 20px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 8px;
+    }
+    code, pre {
+      background: #f3f4f6;
+      border-radius: 8px;
+    }
+    code {
+      padding: 2px 6px;
+    }
+    pre {
+      padding: 14px;
+      overflow-x: auto;
+      border: 1px solid #e5e7eb;
+    }
+    a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .muted {
+      color: #6b7280;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+    .section {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Go Bank Service API</h1>
+    <p class="muted">
+      REST API банковского сервиса на Go: пользователи, счета, карты, переводы, кредиты,
+      аналитика, MFA, audit logs, idempotency и интеграция с ЦБ РФ.
+    </p>
+
+    <h2>Быстрая проверка</h2>
+    <pre>GET /health</pre>
+
+    <h2>Документация</h2>
+    <p>
+      Полное описание проекта, env-переменные, запуск и сценарии тестирования:
+      <a href="https://github.com/vkuryndin/GoBankService/blob/main/README.md">README.md на GitHub</a>.
+    </p>
+    <p>
+      Короткая ссылка с этого сервера: <a href="/docs">/docs</a>.
+    </p>
+
+    <h2>Авторизация</h2>
+    <pre>Authorization: Bearer &lt;token&gt;</pre>
+    <p class="muted">
+      Токен получается через <code>POST /login</code>. Первый зарегистрированный пользователь становится администратором.
+    </p>
+
+    <h2>Основные endpoint-ы</h2>
+    <div class="grid">
+      <div class="section">
+        <strong>Public</strong>
+        <ul>
+          <li><code>POST /register</code></li>
+          <li><code>POST /login</code></li>
+          <li><code>GET /health</code></li>
+        </ul>
+      </div>
+      <div class="section">
+        <strong>Accounts</strong>
+        <ul>
+          <li><code>POST /accounts</code></li>
+          <li><code>GET /accounts</code></li>
+          <li><code>POST /accounts/{accountId}/deposit</code></li>
+          <li><code>POST /accounts/{accountId}/withdraw</code></li>
+        </ul>
+      </div>
+      <div class="section">
+        <strong>Cards</strong>
+        <ul>
+          <li><code>POST /cards</code></li>
+          <li><code>GET /cards</code></li>
+          <li><code>POST /cards/{cardId}/pay</code></li>
+          <li><code>POST /cards/{cardId}/transfer</code></li>
+          <li><code>POST /cards/{cardId}/close</code></li>
+        </ul>
+      </div>
+      <div class="section">
+        <strong>Credits</strong>
+        <ul>
+          <li><code>POST /credits/check</code></li>
+          <li><code>POST /credits</code></li>
+          <li><code>GET /credits</code></li>
+          <li><code>GET /credits/{creditId}/schedule</code></li>
+        </ul>
+      </div>
+      <div class="section">
+        <strong>Other</strong>
+        <ul>
+          <li><code>POST /transfer</code></li>
+          <li><code>POST /mfa/request</code></li>
+          <li><code>GET /analytics</code></li>
+          <li><code>GET /rates/key</code></li>
+        </ul>
+      </div>
+      <div class="section">
+        <strong>Admin</strong>
+        <ul>
+          <li><code>GET /admin/users</code></li>
+          <li><code>GET /admin/logged-in-users</code></li>
+          <li><code>POST /admin/accounts/{accountId}/block</code></li>
+          <li><code>POST /admin/accounts/{accountId}/unblock</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>Важно</h2>
+    <ul>
+      <li>Для финансовых POST-запросов используется <code>Idempotency-Key</code>.</li>
+      <li>MFA требуется для withdraw, transfer, card payment, card transfer и credit create.</li>
+      <li>Доступ к API без HTTPS подходит только для тестового стенда. Для production нужен домен и HTTPS.</li>
+    </ul>
+  </div>
+</main>
+</body>
+</html>
