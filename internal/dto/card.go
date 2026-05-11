@@ -11,7 +11,6 @@ type CardResponse struct {
 	MaskedNumber string `json:"masked_number"`
 	Expiry       string `json:"expiry,omitempty"`
 	CVV          string `json:"cvv,omitempty"`
-	NumberHMAC   string `json:"number_hmac,omitempty"`
 	Status       string `json:"status"`
 	ClosedAt     string `json:"closed_at,omitempty"`
 	CreatedAt    string `json:"created_at"`

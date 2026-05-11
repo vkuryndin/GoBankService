@@ -2,12 +2,12 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/dto"
+	"bank-service/internal/security/httpauth"
 	"bank-service/internal/services"
 )
 
@@ -99,7 +99,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString, err := extractBearerToken(r)
+	tokenString, err := httpauth.ExtractBearerToken(r)
 	if err != nil {
 		recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.failed", "user", audit.Int64Ptr(userID), audit.StatusFailed, nil)
 		writeError(w, http.StatusUnauthorized, "invalid token")
@@ -121,22 +121,4 @@ func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
 		func(ctx context.Context, userID int64) (int, any, error) {
 			return http.StatusOK, map[string]any{"authenticated": true, "user_id": userID}, nil
 		})
-}
-
-func extractBearerToken(r *http.Request) (string, error) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		return "", errors.New("authorization header is required")
-	}
-
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return "", errors.New("authorization header must start with Bearer")
-	}
-
-	tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-	if tokenString == "" {
-		return "", errors.New("token is required")
-	}
-
-	return tokenString, nil
 }

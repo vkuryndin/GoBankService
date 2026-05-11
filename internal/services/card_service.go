@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"crypto/hmac"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -398,7 +399,7 @@ func (s *CardService) createCardOnce(ctx context.Context, userID, accountID int6
 func (s *CardService) verifyCardHMAC(card *models.CardDetails) error {
 	// PGP protects card confidentiality; HMAC gives us an integrity check without storing the plain card number.
 	expectedHMAC := security.ComputeHMAC(card.Number, s.hmacSecret)
-	if expectedHMAC != card.NumberHMAC {
+	if !hmac.Equal([]byte(expectedHMAC), []byte(card.NumberHMAC)) {
 		return fmt.Errorf("card hmac verification failed")
 	}
 
@@ -410,7 +411,6 @@ func toMaskedCardResponse(card *models.CardDetails) *dto.CardResponse {
 		ID:           card.ID,
 		AccountID:    card.AccountID,
 		MaskedNumber: security.MaskCardNumber(card.Number),
-		NumberHMAC:   card.NumberHMAC,
 		Status:       normalizeCardStatus(card.Status),
 		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),
@@ -424,7 +424,6 @@ func toFullCardResponse(card *models.CardDetails) *dto.CardResponse {
 		Number:       card.Number,
 		MaskedNumber: security.MaskCardNumber(card.Number),
 		Expiry:       card.Expiry,
-		NumberHMAC:   card.NumberHMAC,
 		Status:       normalizeCardStatus(card.Status),
 		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),
@@ -439,7 +438,6 @@ func toIssuedCardResponse(card *models.CardDetails) *dto.CardResponse {
 		MaskedNumber: security.MaskCardNumber(card.Number),
 		Expiry:       card.Expiry,
 		CVV:          card.CVV,
-		NumberHMAC:   card.NumberHMAC,
 		Status:       normalizeCardStatus(card.Status),
 		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),

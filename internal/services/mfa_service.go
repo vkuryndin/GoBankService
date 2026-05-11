@@ -275,12 +275,16 @@ func (s *MFAService) verifyCode(
 		return ErrInvalidMFACode
 	}
 
-	s.attemptLimiter.reset(attemptKey)
-
 	if err := s.mfaRepository.MarkUsed(ctx, activeCode.ID); err != nil {
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			s.recordMFAVerification(ctx, userID, purpose, audit.StatusFailed, "not_found_or_used")
+			return ErrInvalidMFACode
+		}
+
 		return err
 	}
 
+	s.attemptLimiter.reset(attemptKey)
 	s.recordMFAVerification(ctx, userID, purpose, audit.StatusSuccess, "verified")
 
 	return nil

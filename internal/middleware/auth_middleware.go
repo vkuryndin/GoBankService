@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"bank-service/internal/dto"
 	"bank-service/internal/repositories"
 	"bank-service/internal/security"
+	"bank-service/internal/security/httpauth"
 )
 
 type contextKey string
@@ -21,20 +21,9 @@ func AuthMiddleware(
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				writeAuthError(w, http.StatusUnauthorized, "authorization header is required")
-				return
-			}
-
-			if !strings.HasPrefix(authHeader, "Bearer ") {
-				writeAuthError(w, http.StatusUnauthorized, "authorization header must start with Bearer")
-				return
-			}
-
-			tokenString := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-			if tokenString == "" {
-				writeAuthError(w, http.StatusUnauthorized, "token is required")
+			tokenString, err := httpauth.ExtractBearerToken(r)
+			if err != nil {
+				writeAuthError(w, http.StatusUnauthorized, err.Error())
 				return
 			}
 

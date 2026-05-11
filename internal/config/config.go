@@ -188,8 +188,13 @@ func loadCreditPolicyConfig() (CreditPolicyConfig, error) {
 		return CreditPolicyConfig{}, errors.New("CREDIT_MAX_DEBT_LOAD_PERCENT must be between 0 and 100")
 	}
 
+	enabled, err := envBool("CREDIT_POLICY_ENABLED", true)
+	if err != nil {
+		return CreditPolicyConfig{}, err
+	}
+
 	return CreditPolicyConfig{
-		Enabled:                 envBool("CREDIT_POLICY_ENABLED", true),
+		Enabled:                 enabled,
 		MaxActiveCredits:        maxActiveCredits,
 		MaxPrincipalAmount:      maxPrincipalAmount,
 		MaxTotalPrincipalAmount: maxTotalPrincipalAmount,
@@ -198,8 +203,10 @@ func loadCreditPolicyConfig() (CreditPolicyConfig, error) {
 }
 
 func loadSMTPConfig() (SMTPConfig, error) {
-	enabledRaw := strings.TrimSpace(os.Getenv("SMTP_ENABLED"))
-	enabled := strings.EqualFold(enabledRaw, "true")
+	enabled, err := envBool("SMTP_ENABLED", false)
+	if err != nil {
+		return SMTPConfig{}, err
+	}
 
 	port, err := envInt("SMTP_PORT", 587)
 	if err != nil {
@@ -309,6 +316,16 @@ func loadSecurityConfig() (SecurityConfig, error) {
 		return SecurityConfig{}, err
 	}
 
+	idempotencyEnabled, err := envBool("IDEMPOTENCY_ENABLED", true)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
+	idempotencyRequired, err := envBool("IDEMPOTENCY_REQUIRED", false)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
 	return SecurityConfig{
 		MaxRequestBodyBytes: maxRequestBodyBytes,
 		RateLimit:           rateLimitConfig,
@@ -316,8 +333,8 @@ func loadSecurityConfig() (SecurityConfig, error) {
 		CVV:                 cvvConfig,
 		CBRCacheTTL:         cbrCacheTTL,
 		Idempotency: IdempotencyConfig{
-			Enabled:         envBool("IDEMPOTENCY_ENABLED", true),
-			Required:        envBool("IDEMPOTENCY_REQUIRED", false),
+			Enabled:         idempotencyEnabled,
+			Required:        idempotencyRequired,
 			Retention:       idempotencyRetention,
 			CleanupInterval: idempotencyCleanupInterval,
 		},
@@ -330,7 +347,17 @@ func loadRateLimitConfig() (RateLimitConfig, error) {
 		return RateLimitConfig{}, err
 	}
 
+	globalRequests, err := envInt("RATE_LIMIT_GLOBAL_REQUESTS", 1000)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
 	globalWindow, err := envDurationSeconds("RATE_LIMIT_GLOBAL_WINDOW_SECONDS", time.Minute)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
+	loginRequests, err := envInt("RATE_LIMIT_LOGIN_REQUESTS", 30)
 	if err != nil {
 		return RateLimitConfig{}, err
 	}
@@ -340,7 +367,17 @@ func loadRateLimitConfig() (RateLimitConfig, error) {
 		return RateLimitConfig{}, err
 	}
 
+	registerRequests, err := envInt("RATE_LIMIT_REGISTER_REQUESTS", 30)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
 	registerWindow, err := envDurationSeconds("RATE_LIMIT_REGISTER_WINDOW_SECONDS", time.Minute)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
+	mfaRequests, err := envInt("RATE_LIMIT_MFA_REQUESTS", 30)
 	if err != nil {
 		return RateLimitConfig{}, err
 	}
@@ -350,7 +387,17 @@ func loadRateLimitConfig() (RateLimitConfig, error) {
 		return RateLimitConfig{}, err
 	}
 
+	financialRequests, err := envInt("RATE_LIMIT_FINANCIAL_REQUESTS", 120)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
 	financialWindow, err := envDurationSeconds("RATE_LIMIT_FINANCIAL_WINDOW_SECONDS", time.Minute)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
+	adminRequests, err := envInt("RATE_LIMIT_ADMIN_REQUESTS", 120)
 	if err != nil {
 		return RateLimitConfig{}, err
 	}
@@ -360,27 +407,37 @@ func loadRateLimitConfig() (RateLimitConfig, error) {
 		return RateLimitConfig{}, err
 	}
 
+	rateRequests, err := envInt("RATE_LIMIT_RATE_REQUESTS", 120)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
 	rateWindow, err := envDurationSeconds("RATE_LIMIT_RATE_WINDOW_SECONDS", time.Minute)
 	if err != nil {
 		return RateLimitConfig{}, err
 	}
 
+	enabled, err := envBool("RATE_LIMIT_ENABLED", true)
+	if err != nil {
+		return RateLimitConfig{}, err
+	}
+
 	return RateLimitConfig{
-		Enabled:           envBool("RATE_LIMIT_ENABLED", true),
+		Enabled:           enabled,
 		CleanupInterval:   cleanupInterval,
-		GlobalRequests:    mustEnvInt("RATE_LIMIT_GLOBAL_REQUESTS", 1000),
+		GlobalRequests:    globalRequests,
 		GlobalWindow:      globalWindow,
-		LoginRequests:     mustEnvInt("RATE_LIMIT_LOGIN_REQUESTS", 30),
+		LoginRequests:     loginRequests,
 		LoginWindow:       loginWindow,
-		RegisterRequests:  mustEnvInt("RATE_LIMIT_REGISTER_REQUESTS", 30),
+		RegisterRequests:  registerRequests,
 		RegisterWindow:    registerWindow,
-		MFARequests:       mustEnvInt("RATE_LIMIT_MFA_REQUESTS", 30),
+		MFARequests:       mfaRequests,
 		MFAWindow:         mfaWindow,
-		FinancialRequests: mustEnvInt("RATE_LIMIT_FINANCIAL_REQUESTS", 120),
+		FinancialRequests: financialRequests,
 		FinancialWindow:   financialWindow,
-		AdminRequests:     mustEnvInt("RATE_LIMIT_ADMIN_REQUESTS", 120),
+		AdminRequests:     adminRequests,
 		AdminWindow:       adminWindow,
-		RateRequests:      mustEnvInt("RATE_LIMIT_RATE_REQUESTS", 120),
+		RateRequests:      rateRequests,
 		RateWindow:        rateWindow,
 	}, nil
 }
@@ -420,13 +477,20 @@ func envMoney(name string, defaultValue string) (string, error) {
 	return raw, nil
 }
 
-func envBool(name string, defaultValue bool) bool {
+func envBool(name string, defaultValue bool) (bool, error) {
 	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
-		return defaultValue
+		return defaultValue, nil
 	}
 
-	return strings.EqualFold(raw, "true") || raw == "1"
+	switch strings.ToLower(raw) {
+	case "true", "1":
+		return true, nil
+	case "false", "0":
+		return false, nil
+	default:
+		return false, errors.New(name + " must be true/false or 1/0")
+	}
 }
 
 func envInt(name string, defaultValue int) (int, error) {
@@ -441,15 +505,6 @@ func envInt(name string, defaultValue int) (int, error) {
 	}
 
 	return value, nil
-}
-
-func mustEnvInt(name string, defaultValue int) int {
-	value, err := envInt(name, defaultValue)
-	if err != nil {
-		return defaultValue
-	}
-
-	return value
 }
 
 func envInt64(name string, defaultValue int64) (int64, error) {

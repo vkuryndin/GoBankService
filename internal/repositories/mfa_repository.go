@@ -114,10 +114,22 @@ func (r *MFARepository) MarkUsed(ctx context.Context, codeID int64) error {
 		UPDATE mfa_codes
 		SET used_at = NOW()
 		WHERE id = $1
+		  AND used_at IS NULL
+		  AND expires_at > NOW()
 	`
 
-	if _, err := r.db.ExecContext(ctx, query, codeID); err != nil {
+	result, err := r.db.ExecContext(ctx, query, codeID)
+	if err != nil {
 		return fmt.Errorf("mark mfa code used: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get marked mfa code count: %w", err)
+	}
+
+	if affected == 0 {
+		return ErrMFACodeNotFound
 	}
 
 	return nil
