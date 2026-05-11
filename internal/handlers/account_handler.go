@@ -10,9 +10,14 @@ import (
 )
 
 var (
-	getAccountErrorRules = errorRules{{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"}}
-	depositErrorRules    = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules)
-	withdrawErrorRules   = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules, mfaErrorRules)
+	getAccountErrorRules   = errorRules{{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"}}
+	depositErrorRules      = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules)
+	withdrawErrorRules     = joinErrorRules(errorRules{{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"}}, accountErrorRules, mfaErrorRules)
+	closeAccountErrorRules = joinErrorRules(errorRules{
+		{target: services.ErrAccountAlreadyClosed, status: http.StatusConflict, message: "account already closed"},
+		{target: services.ErrAccountBalanceMustBeZero, status: http.StatusConflict, message: "account balance must be zero"},
+		{target: services.ErrAccountHasActiveCredit, status: http.StatusConflict, message: "account has active credit"},
+	}, accountErrorRules)
 )
 
 type AccountHandler struct {
@@ -94,6 +99,26 @@ func (h *AccountHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		})
 }
 
+func (h *AccountHandler) CloseAccount(w http.ResponseWriter, r *http.Request) {
+	accountID, err := parseAccountID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid account id")
+		return
+	}
+
+	handleAuthed(w, r, closeAccountErrorRules, "close account failed",
+		func(ctx context.Context, userID int64) (int, any, error) {
+			response, err := h.accountService.CloseAccount(ctx, userID, accountID)
+			if err != nil {
+				h.recordAccountOperation(r, userID, accountID, "account.close.failed", audit.StatusFailed, "")
+				return http.StatusOK, nil, err
+			}
+
+			h.recordAccountOperation(r, userID, accountID, "account.close.success", audit.StatusSuccess, "")
+			return http.StatusOK, response, nil
+		})
+}
+
 func (h *AccountHandler) recordAccountOperation(
 	r *http.Request,
 	userID int64,
@@ -102,7 +127,10 @@ func (h *AccountHandler) recordAccountOperation(
 	status string,
 	amount string,
 ) {
-	recordFinancialAudit(h.auditRecorder, r, userID, action, "account", accountID, status, map[string]any{
-		"amount": amount,
-	})
+	details := map[string]any{}
+	if amount != "" {
+		details["amount"] = amount
+	}
+
+	recordFinancialAudit(h.auditRecorder, r, userID, action, "account", accountID, status, details)
 }

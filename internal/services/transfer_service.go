@@ -78,6 +78,10 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 			return nil, ErrAccountBlocked
 		}
 
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
+		}
+
 		return nil, err
 	}
 

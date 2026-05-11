@@ -138,6 +138,10 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 			return nil, ErrAccountBlocked
 		}
 
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
+		}
+
 		return nil, err
 	}
 
@@ -177,6 +181,10 @@ func (s *CreditService) CheckCredit(
 	}
 	if account.IsBlocked {
 		return nil, ErrAccountBlocked
+	}
+
+	if account.IsClosed() {
+		return nil, ErrAccountClosed
 	}
 
 	annualRate, err := s.rateService.GetBankRateValue(ctx)

@@ -80,20 +80,28 @@ func (r *TokenRepository) RevokeActiveUserTokens(ctx context.Context, userID int
 
 func (r *TokenRepository) IsTokenRevoked(ctx context.Context, tokenHash string) (bool, error) {
 	query := `
-		SELECT EXISTS (
-			SELECT 1
-			FROM revoked_tokens
-			WHERE token_hash = $1
-		)
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM revoked_tokens
+				WHERE token_hash = $1
+			)
+			OR NOT EXISTS (
+				SELECT 1
+				FROM user_sessions
+				WHERE token_hash = $1
+				  AND revoked_at IS NULL
+				  AND expires_at > NOW()
+			)
 	`
 
-	var revoked bool
+	var revokedOrInactive bool
 
-	if err := r.db.QueryRowContext(ctx, query, tokenHash).Scan(&revoked); err != nil {
-		return false, fmt.Errorf("check revoked token: %w", err)
+	if err := r.db.QueryRowContext(ctx, query, tokenHash).Scan(&revokedOrInactive); err != nil {
+		return false, fmt.Errorf("check revoked or inactive token: %w", err)
 	}
 
-	return revoked, nil
+	return revokedOrInactive, nil
 }
 
 func (r *TokenRepository) DeleteExpired(ctx context.Context) (int64, error) {

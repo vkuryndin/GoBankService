@@ -69,6 +69,7 @@ func NewRouter(
 	protected.HandleFunc("/accounts/{accountId}", accountHandler.GetAccount).Methods(http.MethodGet)
 	protected.HandleFunc("/accounts/{accountId}/deposit", accountHandler.Deposit).Methods(http.MethodPost)
 	protected.HandleFunc("/accounts/{accountId}/withdraw", accountHandler.Withdraw).Methods(http.MethodPost)
+	protected.HandleFunc("/accounts/{accountId}/close", accountHandler.CloseAccount).Methods(http.MethodPost)
 	protected.HandleFunc("/accounts/{accountId}/predict", analyticsHandler.PredictBalance).Methods(http.MethodGet)
 
 	protected.HandleFunc("/transfer", transferHandler.Transfer).Methods(http.MethodPost)
@@ -174,7 +175,7 @@ func isFinancialEndpoint(r *http.Request) bool {
 	}
 
 	if r.Method == http.MethodPost && strings.HasPrefix(path, "/accounts/") {
-		return strings.HasSuffix(path, "/deposit") || strings.HasSuffix(path, "/withdraw")
+		return strings.HasSuffix(path, "/deposit") || strings.HasSuffix(path, "/withdraw") || strings.HasSuffix(path, "/close")
 	}
 
 	if r.Method == http.MethodPost && strings.HasPrefix(path, "/cards/") {

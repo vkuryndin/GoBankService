@@ -72,6 +72,7 @@ func joinErrorRules(groups ...errorRules) errorRules {
 var accountErrorRules = errorRules{
 	{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"},
 	{target: services.ErrAccountBlocked, status: http.StatusForbidden, message: "account is blocked"},
+	{target: services.ErrAccountClosed, status: http.StatusConflict, message: "account is closed"},
 	{target: services.ErrInsufficientFunds, status: http.StatusConflict, message: "insufficient funds"},
 }
 

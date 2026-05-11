@@ -4,8 +4,8 @@
 
 @baseUrl = http://localhost:8080
 
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4NTc3OTA5LCJpYXQiOjE3Nzg0OTE1MDksImp0aSI6ImZiYmM4YjllMDc2YjdhYzQxYTc4MmU5Njc3ZTkyNTFjIn0.Vy2hqMGUYYmkB9rs2nLF_SUG54mNYOluvI1g253Vp30
-@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoyLCJzdWIiOiIyIiwiZXhwIjoxNzc4NTc3OTI3LCJpYXQiOjE3Nzg0OTE1MjcsImp0aSI6IjFmZWYwNDEzNWRlNTUyMzQ1ZWRjOGYwYmQ4NWZmNDJlIn0.9GBEdsMc7_LI41wGh8qEob1SgJbP9pTA0bE1T2K6OPE
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4NTg0MzY5LCJpYXQiOjE3Nzg0OTc5NjksImp0aSI6IjZlNjU1ZjM2MjcyZjI3Yjg1YjY4NDk3MzEwMDQ5ZWVlIn0.jxo8ehCaDn_G31Ilc5UjooDWx-KJA_E7QljgAnCSsqU
+@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4NTgzMDYzLCJpYXQiOjE3Nzg0OTY2NjMsImp0aSI6ImI0YzczMWY1N2JjNGY4NTEwNTM1ODcxZTAwNTgwZDc0In0.oj572oXwGo0Il4V1SyJjJQixlwr6Jvc5VKDX1Cxxdeo
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
@@ -904,11 +904,11 @@ Authorization: Bearer {{token2}}
 
 ### Admin users
 GET {{baseUrl}}/admin/users
-Authorization: Bearer {{token}
+Authorization: Bearer {{token2}
 
 ### Admin logged in users
 GET {{baseUrl}}/admin/logged-in-users
-Authorization: Bearer {{token}}
+Authorization: Bearer {{token2}}
 
 ### User 2 tries admin users
 GET {{baseUrl}}/admin/users
@@ -1027,7 +1027,7 @@ Content-Type: application/json
 ### Close account requires JWT, ownership, zero balance and no active/overdue credits.
 ### Use real values from your main test.http.
 @baseUrl = http://localhost:8080
-@token = paste_user_token_here
+
 @accountId = 1
 
 ### Check account before close

@@ -14,11 +14,15 @@ import (
 )
 
 var (
-	ErrAccountNotFound    = errors.New("account not found")
-	ErrInvalidAmount      = errors.New("invalid amount")
-	ErrInsufficientFunds  = errors.New("insufficient funds")
-	ErrInvalidDescription = errors.New("invalid description")
-	ErrAccountBlocked     = errors.New("account is blocked")
+	ErrAccountNotFound          = errors.New("account not found")
+	ErrInvalidAmount            = errors.New("invalid amount")
+	ErrInsufficientFunds        = errors.New("insufficient funds")
+	ErrInvalidDescription       = errors.New("invalid description")
+	ErrAccountBlocked           = errors.New("account is blocked")
+	ErrAccountClosed            = errors.New("account is closed")
+	ErrAccountAlreadyClosed     = errors.New("account already closed")
+	ErrAccountBalanceMustBeZero = errors.New("account balance must be zero")
+	ErrAccountHasActiveCredit   = errors.New("account has active credit")
 )
 
 type accountStore interface {
@@ -27,6 +31,7 @@ type accountStore interface {
 	FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error)
 	Deposit(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
 	Withdraw(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
+	Close(ctx context.Context, userID int64, accountID int64) (*models.Account, error)
 }
 
 type withdrawMFAVerifier interface {
@@ -98,9 +103,11 @@ func (s *AccountService) Deposit(ctx context.Context, userID, accountID int64, r
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
 		}
-
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
+		}
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
 		}
 
 		return nil, err
@@ -125,13 +132,14 @@ func (s *AccountService) Withdraw(ctx context.Context, userID, accountID int64, 
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
 		}
-
 		if errors.Is(err, repositories.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
 		}
-
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
+		}
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
 		}
 
 		return nil, err
@@ -140,14 +148,65 @@ func (s *AccountService) Withdraw(ctx context.Context, userID, accountID int64, 
 	return toAccountResponse(account), nil
 }
 
+func (s *AccountService) CloseAccount(ctx context.Context, userID int64, accountID int64) (*dto.CloseAccountResponse, error) {
+	if accountID <= 0 {
+		return nil, ErrAccountNotFound
+	}
+
+	// Accounts are soft-closed instead of deleted so transactions, credits and audit records remain intact.
+	account, err := s.accountRepository.Close(ctx, userID, accountID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return nil, ErrAccountNotFound
+		}
+		if errors.Is(err, repositories.ErrAccountBlocked) {
+			return nil, ErrAccountBlocked
+		}
+		if errors.Is(err, repositories.ErrAccountAlreadyClosed) {
+			return nil, ErrAccountAlreadyClosed
+		}
+		if errors.Is(err, repositories.ErrAccountBalanceMustBeZero) {
+			return nil, ErrAccountBalanceMustBeZero
+		}
+		if errors.Is(err, repositories.ErrAccountHasActiveCredit) {
+			return nil, ErrAccountHasActiveCredit
+		}
+
+		return nil, err
+	}
+
+	return toCloseAccountResponse(account), nil
+}
+
 func toAccountResponse(account *models.Account) *dto.AccountResponse {
-	return &dto.AccountResponse{
+	response := &dto.AccountResponse{
 		ID:            account.ID,
 		AccountNumber: account.AccountNumber,
 		Balance:       account.Balance,
 		Currency:      account.Currency,
 		CreatedAt:     account.CreatedAt.Format(time.RFC3339),
 		IsBlocked:     account.IsBlocked,
+		Status:        account.Status,
+	}
+	if account.ClosedAt.Valid {
+		response.ClosedAt = account.ClosedAt.Time.Format(time.RFC3339)
+	}
+
+	return response
+}
+
+func toCloseAccountResponse(account *models.Account) *dto.CloseAccountResponse {
+	closedAt := ""
+	if account.ClosedAt.Valid {
+		closedAt = account.ClosedAt.Time.Format(time.RFC3339)
+	}
+
+	return &dto.CloseAccountResponse{
+		ID:            account.ID,
+		AccountNumber: account.AccountNumber,
+		Status:        account.Status,
+		ClosedAt:      closedAt,
+		Message:       "account closed",
 	}
 }
 

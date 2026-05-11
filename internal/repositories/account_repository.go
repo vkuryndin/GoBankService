@@ -10,9 +10,13 @@ import (
 )
 
 var (
-	ErrAccountNotFound   = errors.New("account not found")
-	ErrInsufficientFunds = errors.New("insufficient funds")
-	ErrAccountBlocked    = errors.New("account is blocked")
+	ErrAccountNotFound          = errors.New("account not found")
+	ErrInsufficientFunds        = errors.New("insufficient funds")
+	ErrAccountBlocked           = errors.New("account is blocked")
+	ErrAccountClosed            = errors.New("account is closed")
+	ErrAccountAlreadyClosed     = errors.New("account already closed")
+	ErrAccountBalanceMustBeZero = errors.New("account balance must be zero")
+	ErrAccountHasActiveCredit   = errors.New("account has active credit")
 )
 
 type AccountRepository struct {
@@ -27,7 +31,7 @@ func (r *AccountRepository) Create(ctx context.Context, userID int64, accountNum
 	query := `
 		INSERT INTO accounts (user_id, account_number)
 		VALUES ($1, $2)
-		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, created_at
+		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 	`
 
 	account := &models.Account{}
@@ -39,6 +43,8 @@ func (r *AccountRepository) Create(ctx context.Context, userID int64, accountNum
 		&account.Balance,
 		&account.Currency,
 		&account.IsBlocked,
+		&account.Status,
+		&account.ClosedAt,
 		&account.CreatedAt,
 	)
 	if err != nil {
@@ -50,7 +56,7 @@ func (r *AccountRepository) Create(ctx context.Context, userID int64, accountNum
 
 func (r *AccountRepository) FindByUserID(ctx context.Context, userID int64) ([]models.Account, error) {
 	query := `
-		SELECT id, user_id, account_number, balance::text, currency, is_blocked, created_at
+		SELECT id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 		FROM accounts
 		WHERE user_id = $1
 		ORDER BY id
@@ -74,6 +80,8 @@ func (r *AccountRepository) FindByUserID(ctx context.Context, userID int64) ([]m
 			&account.Balance,
 			&account.Currency,
 			&account.IsBlocked,
+			&account.Status,
+			&account.ClosedAt,
 			&account.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan account: %w", err)
@@ -91,7 +99,7 @@ func (r *AccountRepository) FindByUserID(ctx context.Context, userID int64) ([]m
 
 func (r *AccountRepository) FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error) {
 	query := `
-		SELECT id, user_id, account_number, balance::text, currency, is_blocked, created_at
+		SELECT id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 		FROM accounts
 		WHERE id = $1 AND user_id = $2
 	`
@@ -105,6 +113,8 @@ func (r *AccountRepository) FindByIDAndUserID(ctx context.Context, accountID, us
 		&account.Balance,
 		&account.Currency,
 		&account.IsBlocked,
+		&account.Status,
+		&account.ClosedAt,
 		&account.CreatedAt,
 	)
 	if err != nil {
@@ -144,6 +154,14 @@ func (r *AccountRepository) ValidateTransferAccounts(
 			EXISTS (
 				SELECT 1 FROM accounts
 				WHERE id = $3 AND is_blocked = TRUE
+			),
+			EXISTS (
+				SELECT 1 FROM accounts
+				WHERE id = $1 AND user_id = $2 AND status = 'closed'
+			),
+			EXISTS (
+				SELECT 1 FROM accounts
+				WHERE id = $3 AND status = 'closed'
 			)
 	`
 
@@ -151,12 +169,16 @@ func (r *AccountRepository) ValidateTransferAccounts(
 	var toExists bool
 	var fromBlocked bool
 	var toBlocked bool
+	var fromClosed bool
+	var toClosed bool
 
 	err := r.db.QueryRowContext(ctx, query, fromAccountID, userID, toAccountID).Scan(
 		&fromExists,
 		&toExists,
 		&fromBlocked,
 		&toBlocked,
+		&fromClosed,
+		&toClosed,
 	)
 	if err != nil {
 		return fmt.Errorf("validate transfer accounts: %w", err)
@@ -164,6 +186,10 @@ func (r *AccountRepository) ValidateTransferAccounts(
 
 	if !fromExists || !toExists {
 		return ErrAccountNotFound
+	}
+
+	if fromClosed || toClosed {
+		return ErrAccountClosed
 	}
 
 	if fromBlocked || toBlocked {
@@ -310,11 +336,55 @@ func (r *AccountRepository) Transfer(
 	return transactionID, nil
 }
 
+func (r *AccountRepository) Close(ctx context.Context, userID int64, accountID int64) (*models.Account, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin close account transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	account, balanceIsZero, err := lockAccountForClose(ctx, tx, accountID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if account.IsClosed() {
+		return nil, ErrAccountAlreadyClosed
+	}
+
+	if account.IsBlocked {
+		return nil, ErrAccountBlocked
+	}
+
+	if !balanceIsZero {
+		return nil, ErrAccountBalanceMustBeZero
+	}
+
+	hasBlockingCredit, err := accountHasBlockingCredit(ctx, tx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if hasBlockingCredit {
+		return nil, ErrAccountHasActiveCredit
+	}
+
+	closedAccount, err := closeAccountRow(ctx, tx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit close account transaction: %w", err)
+	}
+
+	return closedAccount, nil
+}
+
 // lockAccount prevents concurrent balance changes and verifies ownership in the same database transaction.
 // This prevents a user from modifying another user's balance even if they guess an account ID.
 func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error {
 	query := `
-		SELECT id, is_blocked
+		SELECT id, is_blocked, status
 		FROM accounts
 		WHERE id = $1 AND user_id = $2
 		FOR UPDATE
@@ -322,14 +392,19 @@ func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error
 
 	var id int64
 	var isBlocked bool
+	var status string
 
-	err := tx.QueryRowContext(ctx, query, accountID, userID).Scan(&id, &isBlocked)
+	err := tx.QueryRowContext(ctx, query, accountID, userID).Scan(&id, &isBlocked, &status)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrAccountNotFound
 		}
 
 		return fmt.Errorf("lock account: %w", err)
+	}
+
+	if status == models.AccountStatusClosed {
+		return ErrAccountClosed
 	}
 
 	if isBlocked {
@@ -343,7 +418,7 @@ func lockAccount(ctx context.Context, tx *sql.Tx, accountID, userID int64) error
 // Only the source account must belong to the authenticated user; the destination account may belong to another user.
 func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID, toAccountID int64) error {
 	query := `
-		SELECT id, user_id, is_blocked
+		SELECT id, user_id, is_blocked, status
 		FROM accounts
 		WHERE id IN ($1, $2)
 		ORDER BY id
@@ -360,14 +435,20 @@ func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID
 	foundTo := false
 	fromOwnedByUser := false
 	hasBlockedAccount := false
+	hasClosedAccount := false
 
 	for rows.Next() {
 		var accountID int64
 		var accountUserID int64
 		var isBlocked bool
+		var status string
 
-		if err := rows.Scan(&accountID, &accountUserID, &isBlocked); err != nil {
+		if err := rows.Scan(&accountID, &accountUserID, &isBlocked, &status); err != nil {
 			return fmt.Errorf("scan locked account: %w", err)
+		}
+
+		if status == models.AccountStatusClosed {
+			hasClosedAccount = true
 		}
 
 		if isBlocked {
@@ -392,6 +473,10 @@ func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID
 		return ErrAccountNotFound
 	}
 
+	if hasClosedAccount {
+		return ErrAccountClosed
+	}
+
 	if hasBlockedAccount {
 		return ErrAccountBlocked
 	}
@@ -399,12 +484,109 @@ func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID
 	return nil
 }
 
+func lockAccountForClose(ctx context.Context, tx *sql.Tx, accountID int64, userID int64) (*models.Account, bool, error) {
+	query := `
+		SELECT
+			id,
+			user_id,
+			account_number,
+			balance::text,
+			currency,
+			is_blocked,
+			status,
+			closed_at,
+			created_at,
+			balance = 0
+		FROM accounts
+		WHERE id = $1 AND user_id = $2
+		FOR UPDATE
+	`
+
+	account := &models.Account{}
+	var balanceIsZero bool
+
+	err := tx.QueryRowContext(ctx, query, accountID, userID).Scan(
+		&account.ID,
+		&account.UserID,
+		&account.AccountNumber,
+		&account.Balance,
+		&account.Currency,
+		&account.IsBlocked,
+		&account.Status,
+		&account.ClosedAt,
+		&account.CreatedAt,
+		&balanceIsZero,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, ErrAccountNotFound
+		}
+
+		return nil, false, fmt.Errorf("lock account for close: %w", err)
+	}
+
+	return account, balanceIsZero, nil
+}
+
+func accountHasBlockingCredit(ctx context.Context, tx *sql.Tx, accountID int64) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM credits c
+			WHERE c.account_id = $1
+			  AND (
+				c.status IN ('active', 'overdue')
+				OR EXISTS (
+					SELECT 1
+					FROM payment_schedules ps
+					WHERE ps.credit_id = c.id
+					  AND ps.status IN ('pending', 'overdue')
+				)
+			  )
+		)
+	`
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, query, accountID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check account active credits: %w", err)
+	}
+
+	return exists, nil
+}
+
+func closeAccountRow(ctx context.Context, tx *sql.Tx, accountID int64) (*models.Account, error) {
+	query := `
+		UPDATE accounts
+		SET status = 'closed', closed_at = NOW()
+		WHERE id = $1
+		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
+	`
+
+	account := &models.Account{}
+	err := tx.QueryRowContext(ctx, query, accountID).Scan(
+		&account.ID,
+		&account.UserID,
+		&account.AccountNumber,
+		&account.Balance,
+		&account.Currency,
+		&account.IsBlocked,
+		&account.Status,
+		&account.ClosedAt,
+		&account.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("close account row: %w", err)
+	}
+
+	return account, nil
+}
+
 func updateAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, amount, operation string) (*models.Account, error) {
 	query := fmt.Sprintf(`
 		UPDATE accounts
 		SET balance = balance %s $1::numeric
 		WHERE id = $2
-		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, created_at
+		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 	`, operation)
 
 	account := &models.Account{}
@@ -416,6 +598,8 @@ func updateAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, amou
 		&account.Balance,
 		&account.Currency,
 		&account.IsBlocked,
+		&account.Status,
+		&account.ClosedAt,
 		&account.CreatedAt,
 	)
 	if err != nil {
@@ -430,7 +614,7 @@ func withdrawAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, am
 		UPDATE accounts
 		SET balance = balance - $1::numeric
 		WHERE id = $2 AND balance >= $1::numeric
-		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, created_at
+		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 	`
 
 	account := &models.Account{}
@@ -442,6 +626,8 @@ func withdrawAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, am
 		&account.Balance,
 		&account.Currency,
 		&account.IsBlocked,
+		&account.Status,
+		&account.ClosedAt,
 		&account.CreatedAt,
 	)
 	if err != nil {

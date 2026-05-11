@@ -362,6 +362,10 @@ func (s *MFAService) buildTransferOperationHash(
 			return "", ErrAccountBlocked
 		}
 
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return "", ErrAccountClosed
+		}
+
 		return "", err
 	}
 
@@ -419,6 +423,10 @@ func (s *MFAService) buildCardPaymentOperationHash(
 
 	if account.IsBlocked {
 		return "", ErrAccountBlocked
+	}
+
+	if account.IsClosed() {
+		return "", ErrAccountClosed
 	}
 
 	raw := fmt.Sprintf(
@@ -493,6 +501,10 @@ func (s *MFAService) buildCardTransferOperationHash(
 			return "", ErrAccountBlocked
 		}
 
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return "", ErrAccountClosed
+		}
+
 		return "", err
 	}
 
@@ -541,6 +553,10 @@ func (s *MFAService) buildCreditCreateOperationHash(
 		return "", ErrAccountBlocked
 	}
 
+	if account.IsClosed() {
+		return "", ErrAccountClosed
+	}
+
 	raw := fmt.Sprintf(
 		"user_id=%d|purpose=%s|account_id=%d|principal_amount=%s|term_months=%d",
 		userID,
@@ -578,6 +594,10 @@ func (s *MFAService) buildWithdrawOperationHash(
 
 	if account.IsBlocked {
 		return "", ErrAccountBlocked
+	}
+
+	if account.IsClosed() {
+		return "", ErrAccountClosed
 	}
 
 	raw := fmt.Sprintf(

@@ -14,10 +14,14 @@ CREATE TABLE IF NOT EXISTS accounts (
     account_number VARCHAR(32) NOT NULL UNIQUE,
     balance NUMERIC(14,2) NOT NULL DEFAULT 0.00,
     currency CHAR(3) NOT NULL DEFAULT 'RUB',
+    is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    closed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT accounts_balance_non_negative CHECK (balance >= 0),
-    CONSTRAINT accounts_currency_rub CHECK (currency = 'RUB')
+    CONSTRAINT accounts_currency_rub CHECK (currency = 'RUB'),
+    CONSTRAINT accounts_status_check CHECK (status IN ('active', 'closed'))
 );
 
 CREATE TABLE IF NOT EXISTS cards (
@@ -158,6 +162,15 @@ ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE accounts
 ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE accounts
+ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+
+ALTER TABLE accounts
+ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_accounts_user_status
+ON accounts(user_id, status);
+
 CREATE TABLE IF NOT EXISTS user_sessions (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -247,6 +260,13 @@ BEGIN
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_currency_rub') THEN
         ALTER TABLE accounts ADD CONSTRAINT accounts_currency_rub CHECK (currency = 'RUB');
+    END IF;
+
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active';
+    ALTER TABLE accounts ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'accounts_status_check') THEN
+        ALTER TABLE accounts ADD CONSTRAINT accounts_status_check CHECK (status IN ('active', 'closed'));
     END IF;
 
 

@@ -7,7 +7,17 @@ type AccountResponse struct {
 	Balance       string `json:"balance"`
 	Currency      string `json:"currency"`
 	IsBlocked     bool   `json:"is_blocked"`
+	Status        string `json:"status"`
+	ClosedAt      string `json:"closed_at,omitempty"`
 	CreatedAt     string `json:"created_at"`
+}
+
+type CloseAccountResponse struct {
+	ID            int64  `json:"id"`
+	AccountNumber string `json:"account_number"`
+	Status        string `json:"status"`
+	ClosedAt      string `json:"closed_at"`
+	Message       string `json:"message"`
 }
 
 type DepositRequest struct {

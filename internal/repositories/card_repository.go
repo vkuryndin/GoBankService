@@ -54,7 +54,7 @@ func (r *CardRepository) Create(
 		WHERE EXISTS (
 			SELECT 1
 			FROM accounts
-			WHERE id = $2 AND user_id = $1
+			WHERE id = $2 AND user_id = $1 AND is_blocked = FALSE AND status = 'active'
 		)
 		RETURNING
 			id,

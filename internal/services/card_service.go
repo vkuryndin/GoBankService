@@ -187,6 +187,10 @@ func (s *CardService) PayByCard(
 			return nil, ErrAccountBlocked
 		}
 
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
+		}
+
 		return nil, err
 	}
 
@@ -234,6 +238,10 @@ func (s *CardService) PayByCard(
 
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
+		}
+
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
 		}
 
 		return nil, err
@@ -342,6 +350,10 @@ func (s *CardService) TransferByCard(
 
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
+		}
+
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
 		}
 
 		return nil, err
