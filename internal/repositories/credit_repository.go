@@ -51,7 +51,7 @@ func (r *CreditRepository) CreateWithScheduleAndIssue(
 	if err != nil {
 		return nil, fmt.Errorf("begin credit transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (r *CreditRepository) FindByUserID(ctx context.Context, userID int64) ([]mo
 	if err != nil {
 		return nil, fmt.Errorf("find credits by user id: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	credits := make([]models.Credit, 0)
 
@@ -218,7 +218,7 @@ func (r *CreditRepository) FindScheduleByCreditIDAndUserID(
 	if err != nil {
 		return nil, fmt.Errorf("find payment schedule: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	schedule := make([]models.PaymentSchedule, 0)
 

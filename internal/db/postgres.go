@@ -27,7 +27,10 @@ func Connect(databaseURL string) (*sql.DB, error) {
 	database.SetMaxIdleConns(5)
 	database.SetConnMaxLifetime(30 * time.Minute)
 
-	if err := database.Ping(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := database.PingContext(ctx); err != nil {
 		_ = database.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}

@@ -41,7 +41,7 @@ func (r *TokenRepository) RevokeActiveUserTokens(ctx context.Context, userID int
 	if err != nil {
 		return fmt.Errorf("begin revoke active user tokens transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	// JWTs remain valid until their hash is added to revoked_tokens. Updating
 	// user_sessions alone would only hide the session from admin views, so both

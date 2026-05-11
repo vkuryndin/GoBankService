@@ -66,7 +66,7 @@ func (r *AdminRepository) FindUsers(ctx context.Context) ([]AdminUser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("find admin users: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	users := make([]AdminUser, 0)
 
@@ -115,7 +115,7 @@ func (r *AdminRepository) FindActiveSessions(ctx context.Context) ([]AdminActive
 	if err != nil {
 		return nil, fmt.Errorf("find active sessions: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	sessions := make([]AdminActiveSession, 0)
 

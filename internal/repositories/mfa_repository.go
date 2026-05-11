@@ -37,7 +37,7 @@ func (r *MFARepository) SaveCode(
 	if err != nil {
 		return fmt.Errorf("begin mfa transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	invalidateQuery := `
 		UPDATE mfa_codes

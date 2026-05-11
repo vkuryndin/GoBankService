@@ -82,7 +82,9 @@ func (c *Client) sendRequest(ctx context.Context, soapRequest string) ([]byte, e
 	if err != nil {
 		return nil, fmt.Errorf("send cbr request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	rawBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -165,11 +167,11 @@ func parseKeyRateElement(element *etree.Element) (*parsedKeyRate, error) {
 		}, nil
 	}
 
-	date, err := parseDate(dateText)
-	if err != nil {
+	date, hasDate := parseOptionalDate(dateText)
+	if !hasDate {
 		return &parsedKeyRate{
 			rate:     rate,
-			dateText: dateText,
+			dateText: strings.TrimSpace(dateText),
 		}, nil
 	}
 
@@ -179,6 +181,15 @@ func parseKeyRateElement(element *etree.Element) (*parsedKeyRate, error) {
 		dateText: date.Format("2006-01-02"),
 		hasDate:  true,
 	}, nil
+}
+
+func parseOptionalDate(dateText string) (time.Time, bool) {
+	date, err := parseDate(dateText)
+	if err != nil {
+		return time.Time{}, false
+	}
+
+	return date, true
 }
 
 func parseRate(rateText string) (float64, error) {

@@ -121,7 +121,7 @@ func (r *CardRepository) FindByUserID(ctx context.Context, userID int64, pgpKey 
 	if err != nil {
 		return nil, fmt.Errorf("find cards by user id: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	cards := make([]models.CardDetails, 0)
 

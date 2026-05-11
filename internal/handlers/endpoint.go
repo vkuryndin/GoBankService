@@ -52,27 +52,6 @@ func handleAuthedJSON[T any](
 	writeEndpointResponse(w, statusCode, response)
 }
 
-func handleJSON[T any](
-	w http.ResponseWriter,
-	r *http.Request,
-	rules errorRules,
-	fallbackMessage string,
-	action func(ctx context.Context, request T) (int, any, error),
-) {
-	var request T
-	if !decodeJSON(w, r, &request) {
-		return
-	}
-
-	statusCode, response, err := action(r.Context(), request)
-	if err != nil {
-		writeMappedError(w, r, err, rules, fallbackMessage)
-		return
-	}
-
-	writeEndpointResponse(w, statusCode, response)
-}
-
 func writeEndpointResponse(w http.ResponseWriter, statusCode int, response any) {
 	if response == nil {
 		w.WriteHeader(statusCode)

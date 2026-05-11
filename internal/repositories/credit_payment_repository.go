@@ -64,7 +64,7 @@ func (r *CreditPaymentRepository) FindDuePayments(ctx context.Context, limit int
 	if err != nil {
 		return nil, fmt.Errorf("find due credit payments: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	payments := make([]DueCreditPayment, 0)
 
@@ -101,7 +101,7 @@ func (r *CreditPaymentRepository) ProcessPayment(
 	if err != nil {
 		return nil, fmt.Errorf("begin credit payment transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	lockedPayment, err := lockPaymentSchedule(ctx, tx, payment.ScheduleID)
 	if err != nil {

@@ -66,7 +66,7 @@ func (r *AccountRepository) FindByUserID(ctx context.Context, userID int64) ([]m
 	if err != nil {
 		return nil, fmt.Errorf("find accounts by user id: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	accounts := make([]models.Account, 0)
 
@@ -204,7 +204,7 @@ func (r *AccountRepository) Deposit(ctx context.Context, userID, accountID int64
 	if err != nil {
 		return nil, 0, fmt.Errorf("begin deposit transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
 		return nil, 0, err
@@ -232,7 +232,7 @@ func (r *AccountRepository) Withdraw(ctx context.Context, userID, accountID int6
 	if err != nil {
 		return nil, 0, fmt.Errorf("begin withdraw transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
 		return nil, 0, err
@@ -266,7 +266,7 @@ func (r *AccountRepository) CardPayment(
 	if err != nil {
 		return nil, 0, fmt.Errorf("begin card payment transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
 		return nil, 0, err
@@ -301,7 +301,7 @@ func (r *AccountRepository) Transfer(
 	if err != nil {
 		return 0, fmt.Errorf("begin transfer transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	if err := lockTransferAccounts(ctx, tx, userID, fromAccountID, toAccountID); err != nil {
 		return 0, err
@@ -341,7 +341,7 @@ func (r *AccountRepository) Close(ctx context.Context, userID int64, accountID i
 	if err != nil {
 		return nil, fmt.Errorf("begin close account transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer rollbackTx(tx)
 
 	account, balanceIsZero, err := lockAccountForClose(ctx, tx, accountID, userID)
 	if err != nil {
@@ -429,7 +429,7 @@ func lockTransferAccounts(ctx context.Context, tx *sql.Tx, userID, fromAccountID
 	if err != nil {
 		return fmt.Errorf("lock transfer accounts: %w", err)
 	}
-	defer rows.Close()
+	defer closeRows(rows)
 
 	foundFrom := false
 	foundTo := false
@@ -582,12 +582,26 @@ func closeAccountRow(ctx context.Context, tx *sql.Tx, accountID int64) (*models.
 }
 
 func updateAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, amount, operation string) (*models.Account, error) {
-	query := fmt.Sprintf(`
-		UPDATE accounts
-		SET balance = balance %s $1::numeric
-		WHERE id = $2
-		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
-	`, operation)
+	var query string
+
+	switch operation {
+	case "+":
+		query = `
+			UPDATE accounts
+			SET balance = balance + $1::numeric
+			WHERE id = $2
+			RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
+		`
+	case "-":
+		query = `
+			UPDATE accounts
+			SET balance = balance - $1::numeric
+			WHERE id = $2
+			RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
+		`
+	default:
+		return nil, fmt.Errorf("unsupported balance operation: %s", operation)
+	}
 
 	account := &models.Account{}
 

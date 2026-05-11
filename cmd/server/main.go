@@ -63,7 +63,11 @@ func main() {
 	if err != nil {
 		logger.Fatalf("database connection error: %v", err)
 	}
-	defer database.Close()
+	defer func() {
+		if err := database.Close(); err != nil {
+			logger.Warnf("close database: %v", err)
+		}
+	}()
 
 	logger.Info("database connected")
 
