@@ -32,12 +32,33 @@ type CreditPolicy struct {
 	MaxDebtLoadPercent      int
 }
 
+type CreditPolicyError struct {
+	Err     error
+	Details *dto.CreditCheckResponse
+}
+
+func (e *CreditPolicyError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *CreditPolicyError) Unwrap() error {
+	return e.Err
+}
+
+func (e *CreditPolicyError) PublicDetails() any {
+	return e.Details
+}
+
 type creditStore interface {
 	CreateWithScheduleAndIssue(ctx context.Context, userID int64, accountID int64, principalAmount string, interestRate string, termMonths int, monthlyPayment string, schedule []repositories.PaymentScheduleInput) (*models.Credit, error)
 	FindByUserID(ctx context.Context, userID int64) ([]models.Credit, error)
 	FindByIDAndUserID(ctx context.Context, creditID, userID int64) (*models.Credit, error)
 	FindScheduleByCreditIDAndUserID(ctx context.Context, creditID, userID int64) ([]models.PaymentSchedule, error)
 	GetCreditRiskSummary(ctx context.Context, userID int64) (*repositories.CreditRiskSummary, error)
+}
+
+type creditAccountStore interface {
+	FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error)
 }
 
 type bankRateProvider interface {
@@ -49,27 +70,85 @@ type creditMFAVerifier interface {
 }
 
 type CreditService struct {
-	creditRepository creditStore
-	rateService      bankRateProvider
-	mfaService       creditMFAVerifier
-	policy           CreditPolicy
+	creditRepository  creditStore
+	accountRepository creditAccountStore
+	rateService       bankRateProvider
+	mfaService        creditMFAVerifier
+	policy            CreditPolicy
 }
 
 func NewCreditService(
 	creditRepository creditStore,
+	accountRepository creditAccountStore,
 	rateService bankRateProvider,
 	mfaService creditMFAVerifier,
 	policy CreditPolicy,
 ) *CreditService {
 	return &CreditService{
-		creditRepository: creditRepository,
-		rateService:      rateService,
-		mfaService:       mfaService,
-		policy:           policy,
+		creditRepository:  creditRepository,
+		accountRepository: accountRepository,
+		rateService:       rateService,
+		mfaService:        mfaService,
+		policy:            policy,
 	}
 }
 
 func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request dto.CreateCreditRequest) (*dto.CreditResponse, error) {
+	checkRequest := dto.CheckCreditRequest{
+		AccountID:       request.AccountID,
+		PrincipalAmount: request.PrincipalAmount,
+		TermMonths:      request.TermMonths,
+	}
+
+	decision, err := s.CheckCredit(ctx, userID, checkRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	if !decision.Eligible {
+		return nil, &CreditPolicyError{
+			Err:     creditPolicyReasonError(decision.Reason),
+			Details: decision,
+		}
+	}
+
+	// MFA is verified after the credit policy check so a valid one-time code is not consumed
+	// when the bank would reject the credit anyway.
+	if err := s.mfaService.VerifyCreditCreateCode(ctx, userID, request); err != nil {
+		return nil, err
+	}
+
+	schedule := buildPaymentSchedule(request.TermMonths, decision.MonthlyPayment)
+
+	credit, err := s.creditRepository.CreateWithScheduleAndIssue(
+		ctx,
+		userID,
+		request.AccountID,
+		decision.PrincipalAmount,
+		decision.InterestRate,
+		request.TermMonths,
+		decision.MonthlyPayment,
+		schedule,
+	)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return nil, ErrAccountNotFound
+		}
+		if errors.Is(err, repositories.ErrAccountBlocked) {
+			return nil, ErrAccountBlocked
+		}
+
+		return nil, err
+	}
+
+	return toCreditResponse(credit), nil
+}
+
+func (s *CreditService) CheckCredit(
+	ctx context.Context,
+	userID int64,
+	request dto.CheckCreditRequest,
+) (*dto.CreditCheckResponse, error) {
 	if request.AccountID <= 0 {
 		return nil, ErrInvalidCreditData
 	}
@@ -88,6 +167,18 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 		return nil, ErrInvalidAmount
 	}
 
+	account, err := s.accountRepository.FindByIDAndUserID(ctx, request.AccountID, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return nil, ErrAccountNotFound
+		}
+
+		return nil, err
+	}
+	if account.IsBlocked {
+		return nil, ErrAccountBlocked
+	}
+
 	annualRate, err := s.rateService.GetBankRateValue(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get bank rate: %w", err)
@@ -95,117 +186,157 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 
 	monthlyPaymentValue := calculateAnnuityPayment(principalValue, annualRate, request.TermMonths)
 	monthlyPayment := formatMoney(monthlyPaymentValue)
-	interestRate := formatPercent(annualRate)
 
-	if err := s.checkCreditPolicy(ctx, userID, principalAmount, monthlyPayment); err != nil {
-		return nil, err
-	}
-
-	// MFA is verified after the credit policy check so a valid one-time code is not consumed
-	// when the bank would reject the credit anyway.
-	if err := s.mfaService.VerifyCreditCreateCode(ctx, userID, request); err != nil {
-		return nil, err
-	}
-
-	schedule := buildPaymentSchedule(request.TermMonths, monthlyPayment)
-
-	credit, err := s.creditRepository.CreateWithScheduleAndIssue(
+	decision, err := s.buildCreditPolicyDecision(
 		ctx,
 		userID,
 		request.AccountID,
 		principalAmount,
-		interestRate,
 		request.TermMonths,
+		formatPercent(annualRate),
 		monthlyPayment,
-		schedule,
 	)
 	if err != nil {
-		if errors.Is(err, repositories.ErrAccountNotFound) {
-			return nil, ErrAccountNotFound
-		}
-		if errors.Is(err, repositories.ErrAccountBlocked) {
-			return nil, ErrAccountBlocked
-		}
-
 		return nil, err
 	}
 
-	return toCreditResponse(credit), nil
+	return decision, nil
 }
 
-func (s *CreditService) checkCreditPolicy(ctx context.Context, userID int64, principalAmount string, monthlyPayment string) error {
-	if !s.policy.Enabled {
-		return nil
-	}
-
+func (s *CreditService) buildCreditPolicyDecision(
+	ctx context.Context,
+	userID int64,
+	accountID int64,
+	principalAmount string,
+	termMonths int,
+	interestRate string,
+	monthlyPayment string,
+) (*dto.CreditCheckResponse, error) {
 	principal, err := moneyRat(principalAmount)
 	if err != nil {
-		return ErrInvalidAmount
+		return nil, ErrInvalidAmount
 	}
-	newMonthlyPayment, err := moneyRat(monthlyPayment)
+	requestedMonthlyPayment, err := moneyRat(monthlyPayment)
 	if err != nil {
-		return ErrInvalidAmount
+		return nil, ErrInvalidAmount
+	}
+
+	summary, err := s.creditRepository.GetCreditRiskSummary(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	monthlyIncome, err := moneyRat(summary.MonthlyIncome)
+	if err != nil {
+		return nil, err
+	}
+	existingMonthlyPayment, err := moneyRat(summary.TotalMonthlyPayment)
+	if err != nil {
+		return nil, err
+	}
+	totalPrincipal, err := moneyRat(summary.TotalPrincipalAmount)
+	if err != nil {
+		return nil, err
+	}
+
+	totalMonthlyPayments := new(big.Rat).Add(existingMonthlyPayment, requestedMonthlyPayment)
+	maxAllowedMonthlyPayments := big.NewRat(0, 1)
+	debtLoadPercent := "0.00"
+	if monthlyIncome.Sign() > 0 && s.policy.MaxDebtLoadPercent > 0 {
+		maxAllowedMonthlyPayments = new(big.Rat).Mul(monthlyIncome, big.NewRat(int64(s.policy.MaxDebtLoadPercent), 100))
+		debtLoadPercent = formatPercentRat(totalMonthlyPayments, monthlyIncome)
+	}
+
+	decision := &dto.CreditCheckResponse{
+		Eligible:                  true,
+		PolicyEnabled:             s.policy.Enabled,
+		AccountID:                 accountID,
+		PrincipalAmount:           principalAmount,
+		MaxPrincipalAmount:        s.policy.MaxPrincipalAmount,
+		TermMonths:                termMonths,
+		InterestRate:              interestRate,
+		MonthlyPayment:            monthlyPayment,
+		ActiveCreditsCount:        summary.ActiveCreditsCount,
+		MaxActiveCredits:          s.policy.MaxActiveCredits,
+		HasOverdueCredit:          summary.OverdueCreditsCount > 0,
+		TotalPrincipalAmount:      summary.TotalPrincipalAmount,
+		MaxTotalPrincipalAmount:   s.policy.MaxTotalPrincipalAmount,
+		MonthlyIncome:             summary.MonthlyIncome,
+		CurrentMonthlyPayments:    summary.TotalMonthlyPayment,
+		RequestedMonthlyPayment:   monthlyPayment,
+		TotalMonthlyPayments:      formatMoneyRat(totalMonthlyPayments),
+		MaxAllowedMonthlyPayments: formatMoneyRat(maxAllowedMonthlyPayments),
+		DebtLoadPercent:           debtLoadPercent,
+		MaxDebtLoadPercent:        s.policy.MaxDebtLoadPercent,
+	}
+
+	if !s.policy.Enabled {
+		return decision, nil
 	}
 
 	if s.policy.MaxPrincipalAmount != "" {
 		maxPrincipal, err := moneyRat(s.policy.MaxPrincipalAmount)
 		if err != nil {
-			return ErrInvalidCreditData
+			return nil, ErrInvalidCreditData
 		}
 		if principal.Cmp(maxPrincipal) > 0 {
-			return ErrCreditPrincipalLimitExceeded
+			addCreditDecisionReason(decision, ErrCreditPrincipalLimitExceeded)
 		}
-	}
-
-	summary, err := s.creditRepository.GetCreditRiskSummary(ctx, userID)
-	if err != nil {
-		return err
 	}
 
 	if summary.OverdueCreditsCount > 0 {
-		return ErrActiveOverdueCreditExists
+		addCreditDecisionReason(decision, ErrActiveOverdueCreditExists)
 	}
 
 	if s.policy.MaxActiveCredits > 0 && summary.ActiveCreditsCount >= s.policy.MaxActiveCredits {
-		return ErrActiveCreditLimitExceeded
+		addCreditDecisionReason(decision, ErrActiveCreditLimitExceeded)
 	}
 
 	if s.policy.MaxTotalPrincipalAmount != "" {
-		totalPrincipal, err := moneyRat(summary.TotalPrincipalAmount)
-		if err != nil {
-			return err
-		}
 		maxTotalPrincipal, err := moneyRat(s.policy.MaxTotalPrincipalAmount)
 		if err != nil {
-			return ErrInvalidCreditData
+			return nil, ErrInvalidCreditData
 		}
 		if new(big.Rat).Add(totalPrincipal, principal).Cmp(maxTotalPrincipal) > 0 {
-			return ErrCreditTotalPrincipalLimitExceeded
+			addCreditDecisionReason(decision, ErrCreditTotalPrincipalLimitExceeded)
 		}
 	}
 
 	// Debt load is checked only when the user has actual income in the last 30 days.
 	// This keeps local demos usable while still rejecting risky extra borrowing for active customers.
-	if s.policy.MaxDebtLoadPercent > 0 {
-		monthlyIncome, err := moneyRat(summary.MonthlyIncome)
-		if err != nil {
-			return err
-		}
-		if monthlyIncome.Sign() > 0 {
-			existingMonthlyPayment, err := moneyRat(summary.TotalMonthlyPayment)
-			if err != nil {
-				return err
-			}
-
-			allowedDebtLoad := new(big.Rat).Mul(monthlyIncome, big.NewRat(int64(s.policy.MaxDebtLoadPercent), 100))
-			newDebtLoad := new(big.Rat).Add(existingMonthlyPayment, newMonthlyPayment)
-			if newDebtLoad.Cmp(allowedDebtLoad) > 0 {
-				return ErrCreditDebtLoadTooHigh
-			}
+	if s.policy.MaxDebtLoadPercent > 0 && monthlyIncome.Sign() > 0 {
+		if totalMonthlyPayments.Cmp(maxAllowedMonthlyPayments) > 0 {
+			addCreditDecisionReason(decision, ErrCreditDebtLoadTooHigh)
 		}
 	}
 
-	return nil
+	return decision, nil
+}
+
+func addCreditDecisionReason(decision *dto.CreditCheckResponse, reason error) {
+	decision.Eligible = false
+	message := reason.Error()
+	if decision.Reason == "" {
+		decision.Reason = message
+	}
+	decision.Reasons = append(decision.Reasons, message)
+}
+
+func creditPolicyReasonError(reason string) error {
+	switch reason {
+	case ErrActiveOverdueCreditExists.Error():
+		return ErrActiveOverdueCreditExists
+	case ErrActiveCreditLimitExceeded.Error():
+		return ErrActiveCreditLimitExceeded
+	case ErrCreditPrincipalLimitExceeded.Error():
+		return ErrCreditPrincipalLimitExceeded
+	case ErrCreditTotalPrincipalLimitExceeded.Error():
+		return ErrCreditTotalPrincipalLimitExceeded
+	case ErrCreditDebtLoadTooHigh.Error():
+		return ErrCreditDebtLoadTooHigh
+	default:
+		return ErrInvalidCreditData
+	}
 }
 
 func (s *CreditService) GetUserCredits(ctx context.Context, userID int64) ([]dto.CreditResponse, error) {
@@ -319,6 +450,22 @@ func moneyRat(amount string) (*big.Rat, error) {
 		return nil, ErrInvalidAmount
 	}
 	return value, nil
+}
+
+func formatMoneyRat(value *big.Rat) string {
+	asFloat, _ := value.Float64()
+	return formatMoney(asFloat)
+}
+
+func formatPercentRat(numerator *big.Rat, denominator *big.Rat) string {
+	if denominator.Sign() == 0 {
+		return "0.00"
+	}
+
+	percent := new(big.Rat).Quo(numerator, denominator)
+	percent.Mul(percent, big.NewRat(100, 1))
+	asFloat, _ := percent.Float64()
+	return formatPercent(asFloat)
 }
 
 func formatMoney(value float64) string {

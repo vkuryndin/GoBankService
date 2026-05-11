@@ -136,6 +136,7 @@ func main() {
 	rateService := services.NewRateService(cbrClient, cfg.Security.CBRCacheTTL)
 	creditService := services.NewCreditService(
 		creditRepository,
+		accountRepository,
 		rateService,
 		mfaService,
 		services.CreditPolicy{

@@ -908,7 +908,7 @@ Authorization: Bearer {{token}}
 
 ### Admin logged in users
 GET {{baseUrl}}/admin/logged-in-users
-Authorization: Bearer {{token}}
+Authorization: Bearer {{token2}}
 
 ### User 2 tries admin users
 GET {{baseUrl}}/admin/users
@@ -980,4 +980,45 @@ Authorization: Bearer {{token2}}
 GET {{baseUrl}}/auth/check
 Authorization: Bearer {{token2}}
 
+###-------------------------###
+### CREDITS HISTORY CHECK ###
+###-------------------------###
 
+
+@accountId = 1
+
+### Check credit policy before MFA
+POST {{baseUrl}}/credits/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "account_id": {{accountId}},
+  "principal_amount": "50000.00",
+  "term_months": 12
+}
+
+### Create credit after successful check
+### Request MFA first, then paste code into mfa_code.
+POST {{baseUrl}}/credits
+Authorization: Bearer {{token}}
+Idempotency-Key: {{$guid}}
+Content-Type: application/json
+
+{
+  "account_id": {{accountId}},
+  "principal_amount": "50000.00",
+  "term_months": 12,
+  "mfa_code": "paste_mfa_code_here"
+}
+
+### Check rejection by too large principal
+POST {{baseUrl}}/credits/check
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "account_id": {{accountId}},
+  "principal_amount": "999999999.00",
+  "term_months": 12
+}

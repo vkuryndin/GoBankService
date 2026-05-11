@@ -19,3 +19,10 @@ func writeError(w http.ResponseWriter, statusCode int, message string) {
 		Error: message,
 	})
 }
+
+func writeErrorWithDetails(w http.ResponseWriter, statusCode int, message string, details any) {
+	writeJSON(w, statusCode, dto.ErrorResponse{
+		Error:   message,
+		Details: details,
+	})
+}

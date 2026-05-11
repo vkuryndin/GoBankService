@@ -19,6 +19,13 @@ var (
 		accountErrorRules,
 		mfaErrorRules,
 	)
+	checkCreditErrorRules = joinErrorRules(
+		errorRules{
+			{target: services.ErrInvalidCreditData, status: http.StatusBadRequest, message: "invalid credit data"},
+			{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"},
+		},
+		accountErrorRules,
+	)
 	getCreditErrorRules = errorRules{{target: services.ErrCreditNotFound, status: http.StatusNotFound, message: "credit not found"}}
 )
 
@@ -45,6 +52,14 @@ func (h *CreditHandler) CreateCredit(w http.ResponseWriter, r *http.Request) {
 
 			h.recordCreditCreate(r, userID, response.ID, "finance.credit_create.success", audit.StatusSuccess, request)
 			return http.StatusCreated, response, nil
+		})
+}
+
+func (h *CreditHandler) CheckCredit(w http.ResponseWriter, r *http.Request) {
+	handleAuthedJSON[dto.CheckCreditRequest](w, r, checkCreditErrorRules, "check credit failed",
+		func(ctx context.Context, userID int64, request dto.CheckCreditRequest) (int, any, error) {
+			response, err := h.creditService.CheckCredit(ctx, userID, request)
+			return http.StatusOK, response, err
 		})
 }
 

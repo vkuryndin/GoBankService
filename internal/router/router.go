@@ -82,6 +82,7 @@ func NewRouter(
 
 	protected.HandleFunc("/rates/key", rateHandler.GetKeyRate).Methods(http.MethodGet)
 
+	protected.HandleFunc("/credits/check", creditHandler.CheckCredit).Methods(http.MethodPost)
 	protected.HandleFunc("/credits", creditHandler.CreateCredit).Methods(http.MethodPost)
 	protected.HandleFunc("/credits", creditHandler.GetUserCredits).Methods(http.MethodGet)
 	protected.HandleFunc("/credits/{creditId}", creditHandler.GetCredit).Methods(http.MethodGet)

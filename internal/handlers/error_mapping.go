@@ -18,9 +18,18 @@ type httpErrorMapping struct {
 
 type errorRules []httpErrorMapping
 
+type errorWithPublicDetails interface {
+	PublicDetails() any
+}
+
 func writeMappedError(w http.ResponseWriter, r *http.Request, err error, rules errorRules, fallbackMessage string) {
 	for _, rule := range rules {
 		if errors.Is(err, rule.target) {
+			if detailedError, ok := err.(errorWithPublicDetails); ok {
+				writeErrorWithDetails(w, rule.status, rule.message, detailedError.PublicDetails())
+				return
+			}
+
 			writeError(w, rule.status, rule.message)
 			return
 		}
