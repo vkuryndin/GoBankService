@@ -4,7 +4,7 @@
 
 REST API банковского сервиса на Go. Проект реализует регистрацию пользователей, JWT-аутентификацию, счета, карты, переводы, кредиты, аналитику, интеграцию с ЦБ РФ и SMTP-уведомления.
 
-Сервис также доступен по адресу http://18.185.7.63:8081. Можно  использовать test.http и в переменной baseUrl указать данный адрес. Это позводит сразу тестировать и проверять рабочий вариант. Сервер будет доступен временно.
+Сервис также доступен по адресу http://18.185.7.63. Можно  использовать test.http и в переменной baseUrl указать данный адрес. Это позволит сразу тестировать и проверять рабочий вариант. Сервер будет доступен временно.
 
 ## Стек
 
@@ -26,14 +26,17 @@ REST API банковского сервиса на Go. Проект реали�
 - Повторный login инвалидирует старые активные токены пользователя.
 - Logout и revoked tokens.
 - Создание и просмотр счетов.
+- Закрытие счета через soft close.
 - Пополнение счета.
 - Списание со счета с MFA.
 - Переводы между счетами с MFA.
 - Выпуск виртуальных карт.
 - Просмотр своих карт.
 - Оплата картой с CVV и MFA.
+- Перевод с карты на карту с CVV и MFA.
 - Закрытие карты через soft close.
 - Оформление кредита с MFA.
+- Предварительная проверка кредита с понятными причинами отказа.
 - Расчет аннуитетных платежей.
 - График платежей по кредиту.
 - Автоматическое списание кредитных платежей.
@@ -58,7 +61,7 @@ REST API банковского сервиса на Go. Проект реали�
 - single-session login;
 - revoked tokens;
 - проверка владельца счетов, карт и кредитов;
-- MFA для критических операций: withdraw, transfer, card payment, credit create;
+- MFA для критических операций: withdraw, transfer, card payment, card transfer, credit create;
 - ограничение попыток MFA и CVV;
 - Idempotency-Key для финансовых POST-операций;
 - request_hash для защиты от переиспользования Idempotency-Key с другим body;
@@ -74,9 +77,10 @@ REST API банковского сервиса на Go. Проект реали�
 
 ## Структура проекта
 
+## Структура проекта
+
 ```text
-main.go                 точка входа, инициализация зависимостей, запуск HTTP-сервера.
-cmd/server              запуск приложения
+cmd/server              точка входа, инициализация зависимостей, запуск HTTP-сервера
 internal/config         конфигурация приложения
 internal/db             подключение к PostgreSQL
 internal/models         модели БД
@@ -87,22 +91,33 @@ internal/handlers       HTTP handlers
 internal/middleware     middleware
 internal/router         маршрутизация и регистрация маршрутов
 internal/security       JWT, bcrypt, карты, HMAC
-internal/integrations   внешние интеграции (внешние сервисы: ЦБ РФ и SMTP)
+internal/integrations   внешние интеграции: ЦБ РФ и SMTP
 internal/scheduler      фоновые задачи
 internal/audit          audit events
 migrations              SQL-миграции
-```
+Dockerfile              сборка приложения
+docker-compose.yml      запуск API, PostgreSQL и nginx
+bank-service.conf       nginx reverse proxy
+index.html              стартовая страница API
+test.http               ручные сценарии проверки API
 
 ### Полная структура проекта
+
+```text
 .
-├── .env
+├── .dockerignore
 ├── .env.example
 ├── .gitignore
+├── .golangci.yml
+├── Dockerfile
+├── docker-compose.yml
+├── bank-service.conf
+├── index.html
+├── go.mod
+├── go.sum
 ├── cmd
 │   └── server
 │       └── main.go
-├── go.mod
-├── go.sum
 ├── internal
 │   ├── audit
 │   │   └── event.go
@@ -301,6 +316,29 @@ go run ./cmd/server
 GET http://localhost:8080/health
 ```
 
+## Запуск через Docker Compose
+
+Для серверного запуска используется `docker-compose.yml`.
+
+```bash
+docker compose up -d --build
+```
+
+В compose поднимаются:
+
+```
+bank-api — Go API;
+bank-postgres — PostgreSQL;
+bank-nginx — nginx reverse proxy и стартовая страница.
+```
+
+Проверка:
+
+```
+docker compose ps
+docker compose logs -f bank-api
+```
+
 ## Основные endpoints
 
 ### Public
@@ -327,6 +365,7 @@ GET  /accounts
 GET  /accounts/{accountId}
 POST /accounts/{accountId}/deposit
 POST /accounts/{accountId}/withdraw
+POST /accounts/{accountId}/close
 GET  /accounts/{accountId}/predict
 ```
 
@@ -343,12 +382,14 @@ POST /cards
 GET  /cards
 GET  /cards/{cardId}
 POST /cards/{cardId}/pay
+POST /cards/{cardId}/transfer
 POST /cards/{cardId}/close
 ```
 
 ### Credits
 
 ```text
+POST /credits/check
 POST /credits
 GET  /credits
 GET  /credits/{creditId}
@@ -402,10 +443,11 @@ Content-Type: application/json
 withdraw
 transfer
 card_payment
+card_transfer
 credit_create
 ```
 
-Код действует 5 минут и привязан к конкретной операции.
+Код действует 5 минут и привязан к конкретной операции: типу операции, счетам/картам и сумме.
 
 ## Idempotency-Key
 
@@ -420,8 +462,10 @@ Idempotency-Key: <uuid>
 ```text
 POST /accounts/{accountId}/deposit
 POST /accounts/{accountId}/withdraw
+POST /accounts/{accountId}/close
 POST /transfer
 POST /cards/{cardId}/pay
+POST /cards/{cardId}/transfer
 POST /cards/{cardId}/close
 POST /credits
 ```
@@ -464,20 +508,24 @@ CREDIT_POLICY_ENABLED=false
 1. `GET /health`
 2. `POST /register`
 3. `POST /login`
-4. создать счета;
-5. выполнить deposit;
-6. запросить MFA для withdraw;
-7. выполнить withdraw;
-8. запросить MFA для transfer;
-9. выполнить transfer;
-10. выпустить карту;
-11. выполнить card payment с MFA;
-12. закрыть карту;
-13. оформить кредит с MFA;
-14. проверить график платежей;
-15. проверить analytics и predict;
-16. проверить admin routes;
-17. проверить logout и revoked token.
+4. `GET /auth/check`
+5. создать счета;
+6. выполнить deposit;
+7. запросить MFA для withdraw;
+8. выполнить withdraw;
+9. запросить MFA для transfer;
+10. выполнить transfer;
+11. выпустить карту;
+12. выполнить card payment с MFA;
+13. выполнить card transfer с MFA;
+14. закрыть карту;
+15. проверить кредит через `POST /credits/check`;
+16. оформить кредит с MFA;
+17. проверить график платежей;
+18. проверить analytics и predict;
+19. проверить admin routes;
+20. проверить logout и revoked token;
+21. проверить повторный login и инвалидирование старого токена.
 
 ## Проверка audit logs
 
@@ -502,4 +550,5 @@ LIMIT 20;
 - Поддерживается только валюта RUB.
 - Максимальный период прогноза баланса — 365 дней.
 - Закрытая карта не открывается повторно. Если нужна новая карта, пользователь выпускает новую.
+- Закрытый счет не открывается повторно. Счет остается в истории, но финансовые операции по нему запрещены.
 - Защита от volumetric DDoS должна выполняться на уровне reverse proxy или cloud provider.
