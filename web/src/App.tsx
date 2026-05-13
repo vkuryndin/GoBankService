@@ -6,7 +6,7 @@ type MenuKey =
   | 'health'
   | 'register'
   | 'auth'
-  | 'adminSessions'
+  | 'admin'
   | 'accounts'
   | 'cards'
   | 'transfers'
@@ -52,6 +52,16 @@ type CurrentUser = {
   is_admin: boolean
 }
 
+type AdminUser = {
+  id: number
+  email: string
+  username: string
+  is_admin: boolean
+  accounts_count: number
+  blocked_accounts_count: number
+  created_at: string
+}
+
 type AdminSession = {
   session_id: number
   user_id: number
@@ -59,6 +69,14 @@ type AdminSession = {
   username: string
   created_at: string
   expires_at: string
+}
+
+type AdminAccountStatusResponse = {
+  id: number
+  user_id: number
+  account_number: string
+  is_blocked: boolean
+  message: string
 }
 
 type AccountResponse = {
@@ -122,13 +140,13 @@ const menuItems: Array<{
   {
     key: 'auth',
     title: 'Auth',
-    description: 'Login, JWT и текущий пользователь',
+    description: 'Login, logout и текущий пользователь',
     implemented: true,
   },
   {
-    key: 'adminSessions',
-    title: 'Admin sessions',
-    description: 'Залогиненные пользователи',
+    key: 'admin',
+    title: 'Admin',
+    description: 'Пользователи, сессии, блокировка счетов',
     implemented: true,
   },
   {
@@ -282,7 +300,10 @@ function App() {
   const [loginState, setLoginState] = useState<RequestState>(emptyState)
   const [authCheckState, setAuthCheckState] = useState<RequestState>(emptyState)
   const [logoutState, setLogoutState] = useState<RequestState>(emptyState)
-  const [sessionsState, setSessionsState] = useState<RequestState>(emptyState)
+
+  const [adminUsersState, setAdminUsersState] = useState<RequestState>(emptyState)
+  const [adminSessionsState, setAdminSessionsState] = useState<RequestState>(emptyState)
+  const [adminAccountState, setAdminAccountState] = useState<RequestState>(emptyState)
 
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [createAccountState, setCreateAccountState] = useState<RequestState>(emptyState)
@@ -295,7 +316,11 @@ function App() {
 
   const [healthResult, setHealthResult] = useState<HealthResult | null>(null)
   const [registeredUser, setRegisteredUser] = useState<RegisterResponse | null>(null)
-  const [sessions, setSessions] = useState<AdminSession[]>([])
+
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [adminSessions, setAdminSessions] = useState<AdminSession[]>([])
+  const [adminAccountId, setAdminAccountId] = useState('')
+  const [adminAccountResult, setAdminAccountResult] = useState<AdminAccountStatusResponse | null>(null)
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState('')
@@ -332,7 +357,6 @@ function App() {
     setCurrentUser(null)
   }, [token])
 
-
   const authHeaders = (withJSON = false): Record<string, string> => {
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -354,6 +378,24 @@ function App() {
     setState({
       loading: false,
       error: 'Сначала нужно войти в систему.',
+      success: '',
+    })
+
+    return false
+  }
+
+  const requireAdmin = (setState: (state: RequestState) => void): boolean => {
+    if (!requireToken(setState)) {
+      return false
+    }
+
+    if (currentUser?.is_admin) {
+      return true
+    }
+
+    setState({
+      loading: false,
+      error: 'Доступ разрешен только администратору.',
       success: '',
     })
 
@@ -407,10 +449,34 @@ function App() {
     )
   }
 
+  const applyAdminAccountStatus = (response: AdminAccountStatusResponse) => {
+    setAccounts((current) =>
+      current.map((account) =>
+        account.id === response.id
+          ? {
+              ...account,
+              is_blocked: response.is_blocked,
+            }
+          : account,
+      ),
+    )
+
+    setSelectedAccount((account) =>
+      account && account.id === response.id
+        ? {
+            ...account,
+            is_blocked: response.is_blocked,
+          }
+        : account,
+    )
+  }
+
   const resetUserData = () => {
     setToken('')
     setCurrentUser(null)
-    setSessions([])
+    setAdminUsers([])
+    setAdminSessions([])
+    setAdminAccountResult(null)
     setAccounts([])
     setSelectedAccount(null)
     setSelectedAccountId('')
@@ -418,7 +484,9 @@ function App() {
     setCloseResult(null)
     setLoginState(emptyState)
     setAuthCheckState(emptyState)
-    setSessionsState(emptyState)
+    setAdminUsersState(emptyState)
+    setAdminSessionsState(emptyState)
+    setAdminAccountState(emptyState)
     setAccountsState(emptyState)
     setCreateAccountState(emptyState)
     setAccountDetailsState(emptyState)
@@ -520,8 +588,6 @@ function App() {
     })
     setAuthCheckState(emptyState)
     setLogoutState(emptyState)
-    setSessionsState(emptyState)
-    setSessions([])
 
     try {
       const response = await fetch('/api/login', {
@@ -598,16 +664,16 @@ function App() {
         }.`,
       })
     } catch (error) {
-setToken('')
-setCurrentUser(null)
-setAuthCheckState({
-  loading: false,
-  error:
-    error instanceof Error
-      ? error.message
-      : 'Failed to check current user',
-  success: '',
-})
+      setToken('')
+      setCurrentUser(null)
+      setAuthCheckState({
+        loading: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Failed to check current user',
+        success: '',
+      })
     }
   }
 
@@ -646,17 +712,51 @@ setAuthCheckState({
     }
   }
 
-  const loadLoggedInUsers = async () => {
-    if (!requireToken(setSessionsState)) {
+  const loadAdminUsers = async () => {
+    if (!requireAdmin(setAdminUsersState)) {
       return
     }
 
-    setSessionsState({
+    setAdminUsersState({
       loading: true,
       error: '',
       success: '',
     })
-    setSessions([])
+
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'GET',
+        headers: authHeaders(),
+      })
+
+      const data = await parseResponse<AdminUser[]>(response)
+
+      setAdminUsers(Array.isArray(data) ? data : [])
+      setAdminUsersState({
+        loading: false,
+        error: '',
+        success: 'Список пользователей загружен.',
+      })
+    } catch (error) {
+      setAdminUsersState({
+        loading: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to load users',
+        success: '',
+      })
+    }
+  }
+
+  const loadAdminSessions = async () => {
+    if (!requireAdmin(setAdminSessionsState)) {
+      return
+    }
+
+    setAdminSessionsState({
+      loading: true,
+      error: '',
+      success: '',
+    })
 
     try {
       const response = await fetch('/api/admin/logged-in-users', {
@@ -666,19 +766,66 @@ setAuthCheckState({
 
       const data = await parseResponse<AdminSession[]>(response)
 
-      setSessions(Array.isArray(data) ? data : [])
-      setSessionsState({
+      setAdminSessions(Array.isArray(data) ? data : [])
+      setAdminSessionsState({
         loading: false,
         error: '',
         success: 'Список активных сессий загружен.',
       })
     } catch (error) {
-      setSessionsState({
+      setAdminSessionsState({
         loading: false,
         error:
           error instanceof Error
             ? error.message
             : 'Failed to load logged in users',
+        success: '',
+      })
+    }
+  }
+
+  const changeAdminAccountStatus = async (action: 'block' | 'unblock') => {
+    if (!requireAdmin(setAdminAccountState)) {
+      return
+    }
+
+    const accountID = Number(adminAccountId)
+    if (!Number.isInteger(accountID) || accountID <= 0) {
+      setAdminAccountState({
+        loading: false,
+        error: 'Укажи корректный account_id.',
+        success: '',
+      })
+      return
+    }
+
+    setAdminAccountState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+    setAdminAccountResult(null)
+
+    try {
+      const response = await fetch(`/api/admin/accounts/${accountID}/${action}`, {
+        method: 'POST',
+        headers: authHeaders(),
+      })
+
+      const data = await parseResponse<AdminAccountStatusResponse>(response)
+
+      setAdminAccountResult(data)
+      applyAdminAccountStatus(data)
+      setAdminAccountState({
+        loading: false,
+        error: '',
+        success: action === 'block' ? 'Счет заблокирован.' : 'Счет разблокирован.',
+      })
+    } catch (error) {
+      setAdminAccountState({
+        loading: false,
+        error:
+          error instanceof Error ? error.message : `Failed to ${action} account`,
         success: '',
       })
     }
@@ -1075,17 +1222,17 @@ setAuthCheckState({
     }
   }
 
-const topbarUserText = currentUser
-  ? `Вы вошли как ${currentUser.email}. Роль: ${
-      currentUser.is_admin ? 'администратор' : 'пользователь'
-    }.`
-  : authCheckState.loading
-    ? 'Проверяю текущего пользователя...'
-    : authCheckState.error
-      ? 'Сессия не подтверждена. Войдите заново.'
-      : isAuthenticated
-        ? 'Токен сохранён, пользователь ещё не проверен.'
-        : 'Вы не вошли в систему.'
+  const topbarUserText = currentUser
+    ? `Вы вошли как ${currentUser.email}. Роль: ${
+        currentUser.is_admin ? 'администратор' : 'пользователь'
+      }.`
+    : authCheckState.loading
+      ? 'Проверяю текущего пользователя...'
+      : authCheckState.error
+        ? 'Сессия не подтверждена. Войдите заново.'
+        : isAuthenticated
+          ? 'Токен сохранён, пользователь ещё не проверен.'
+          : 'Вы не вошли в систему.'
 
   return (
     <main className="app">
@@ -1133,8 +1280,11 @@ const topbarUserText = currentUser
           )}
         </header>
 
-        {logoutState.error && <div className="panel slimPanel"><RequestMessage state={logoutState} /></div>}
-        {logoutState.success && <div className="panel slimPanel"><RequestMessage state={logoutState} /></div>}
+        {(logoutState.error || logoutState.success) && (
+          <div className="panel slimPanel">
+            <RequestMessage state={logoutState} />
+          </div>
+        )}
 
         {activeMenu === 'health' && (
           <section className="panel">
@@ -1314,66 +1464,193 @@ const topbarUserText = currentUser
           </section>
         )}
 
-        {activeMenu === 'adminSessions' && (
+        {activeMenu === 'admin' && (
           <section className="panel">
             <div className="panelHeader">
               <div>
-                <h2>Залогиненные пользователи</h2>
+                <h2>Администрирование</h2>
                 <p>
-                  Запрос к <code>GET /admin/logged-in-users</code>.
+                  Все admin-действия API: пользователи, активные сессии, блокировка и разблокировка счетов.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={loadLoggedInUsers}
-                disabled={sessionsState.loading || !isAuthenticated}
-              >
-                {sessionsState.loading ? 'Загружаю...' : 'Загрузить'}
-              </button>
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={loadAdminUsers}
+                  disabled={adminUsersState.loading || !isAuthenticated}
+                >
+                  {adminUsersState.loading ? 'Загружаю...' : 'Загрузить пользователей'}
+                </button>
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={loadAdminSessions}
+                  disabled={adminSessionsState.loading || !isAuthenticated}
+                >
+                  {adminSessionsState.loading ? 'Загружаю...' : 'Активные сессии'}
+                </button>
+              </div>
             </div>
 
-            <RequestMessage state={sessionsState} />
-
-            {!sessionsState.error && sessions.length === 0 && (
+            {!currentUser?.is_admin && (
               <div className="empty">
-                Войди под администратором и нажми “Загрузить”.
+                Этот раздел доступен только администратору. Войдите под admin-пользователем.
               </div>
             )}
 
-            {sessions.length > 0 && (
-              <div className="tableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Session ID</th>
-                      <th>User ID</th>
-                      <th>Email</th>
-                      <th>Username</th>
-                      <th>Created</th>
-                      <th>Expires</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sessions.map((session) => (
-                      <tr
-                        key={session.session_id}
-                        className={
-                          currentUser?.user_id === session.user_id ? 'currentRow' : ''
-                        }
-                      >
-                        <td>{session.session_id}</td>
-                        <td>{session.user_id}</td>
-                        <td>{session.email}</td>
-                        <td>{session.username}</td>
-                        <td>{formatDate(session.created_at)}</td>
-                        <td>{formatDate(session.expires_at)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <div className="adminGrid">
+              <section className="subPanel">
+                <div className="subPanelHeader">
+                  <h3>Пользователи</h3>
+                  <span>{adminUsers.length}</span>
+                </div>
+
+                <RequestMessage state={adminUsersState} />
+
+                {adminUsers.length === 0 && (
+                  <div className="empty">
+                    Нажми “Загрузить пользователей”.
+                  </div>
+                )}
+
+                {adminUsers.length > 0 && (
+                  <div className="tableWrap compactTable">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Email</th>
+                          <th>Username</th>
+                          <th>Role</th>
+                          <th>Accounts</th>
+                          <th>Blocked</th>
+                          <th>Created</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminUsers.map((user) => (
+                          <tr
+                            key={user.id}
+                            className={currentUser?.user_id === user.id ? 'currentRow' : ''}
+                          >
+                            <td>{user.id}</td>
+                            <td>{user.email}</td>
+                            <td>{user.username}</td>
+                            <td>
+                              <span className={user.is_admin ? 'badge successBadge' : 'badge mutedBadge'}>
+                                {user.is_admin ? 'admin' : 'user'}
+                              </span>
+                            </td>
+                            <td>{user.accounts_count}</td>
+                            <td>{user.blocked_accounts_count}</td>
+                            <td>{formatDate(user.created_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="subPanel">
+                <div className="subPanelHeader">
+                  <h3>Активные сессии</h3>
+                  <span>{adminSessions.length}</span>
+                </div>
+
+                <RequestMessage state={adminSessionsState} />
+
+                {adminSessions.length === 0 && (
+                  <div className="empty">
+                    Нажми “Активные сессии”.
+                  </div>
+                )}
+
+                {adminSessions.length > 0 && (
+                  <div className="tableWrap compactTable">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Session</th>
+                          <th>User</th>
+                          <th>Email</th>
+                          <th>Username</th>
+                          <th>Created</th>
+                          <th>Expires</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminSessions.map((session) => (
+                          <tr
+                            key={session.session_id}
+                            className={
+                              currentUser?.user_id === session.user_id ? 'currentRow' : ''
+                            }
+                          >
+                            <td>{session.session_id}</td>
+                            <td>{session.user_id}</td>
+                            <td>{session.email}</td>
+                            <td>{session.username}</td>
+                            <td>{formatDate(session.created_at)}</td>
+                            <td>{formatDate(session.expires_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="subPanel adminAccountPanel">
+                <div className="subPanelHeader">
+                  <h3>Блокировка счета</h3>
+                </div>
+
+                <p className="mutedText">
+                  Используй ID счета. Можно взять ID из раздела Accounts или из test.http.
+                </p>
+
+                <div className="form adminAccountForm">
+                  <label>
+                    <span>Account ID</span>
+                    <input
+                      value={adminAccountId}
+                      onChange={(event) => setAdminAccountId(event.target.value)}
+                      placeholder="например, 16"
+                    />
+                  </label>
+
+                  <div className="actions">
+                    <button
+                      className="danger"
+                      type="button"
+                      onClick={() => void changeAdminAccountStatus('block')}
+                      disabled={adminAccountState.loading || !isAuthenticated}
+                    >
+                      {adminAccountState.loading ? 'Выполняю...' : 'Заблокировать'}
+                    </button>
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={() => void changeAdminAccountStatus('unblock')}
+                      disabled={adminAccountState.loading || !isAuthenticated}
+                    >
+                      {adminAccountState.loading ? 'Выполняю...' : 'Разблокировать'}
+                    </button>
+                  </div>
+                </div>
+
+                <RequestMessage state={adminAccountState} />
+
+                {adminAccountResult && (
+                  <div className="result success">
+                    <strong>{adminAccountResult.message}</strong>
+                    <pre>{JSON.stringify(adminAccountResult, null, 2)}</pre>
+                  </div>
+                )}
+              </section>
+            </div>
           </section>
         )}
 
@@ -1434,6 +1711,7 @@ const topbarUserText = currentUser
                           setSelectedAccount(account)
                           setPredictResult(null)
                           setCloseResult(null)
+                          setAdminAccountId(String(account.id))
                         }}
                       >
                         <span className="accountNumber">{account.account_number}</span>
@@ -1673,8 +1951,8 @@ function getPageTitle(activeMenu: MenuKey): string {
       return 'Регистрация'
     case 'auth':
       return 'Авторизация'
-    case 'adminSessions':
-      return 'Активные сессии'
+    case 'admin':
+      return 'Администрирование'
     case 'accounts':
       return 'Счета'
     case 'cards':

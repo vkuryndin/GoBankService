@@ -224,7 +224,8 @@ h4 {
 }
 
 .panelHeader p,
-.actionBox p {
+.actionBox p,
+.mutedText {
   margin: 8px 0 0;
   color: #6b7280;
 }
@@ -450,6 +451,10 @@ table {
   border-collapse: collapse;
 }
 
+.compactTable table {
+  min-width: 720px;
+}
+
 th,
 td {
   padding: 12px 14px;
@@ -479,6 +484,19 @@ td {
 
 .topGap {
   margin-top: 14px;
+}
+
+.adminGrid {
+  display: grid;
+  gap: 20px;
+}
+
+.adminAccountPanel {
+  max-width: 720px;
+}
+
+.adminAccountForm {
+  margin-top: 16px;
 }
 
 .accountsLayout {
