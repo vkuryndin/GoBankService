@@ -79,6 +79,43 @@ type AdminAccountStatusResponse = {
   message: string
 }
 
+type CardResponse = {
+  id: number
+  account_id: number
+  number?: string
+  masked_number: string
+  expiry?: string
+  cvv?: string
+  status: string
+  closed_at?: string
+  created_at: string
+}
+
+type CardPaymentResponse = {
+  transaction_id: number
+  card_id: number
+  account_id: number
+  amount: string
+  status: string
+}
+
+type CardTransferResponse = {
+  transaction_id: number
+  from_card_id: number
+  to_card_id: number
+  from_account_id: number
+  to_account_id: number
+  amount: string
+  status: string
+}
+
+type CloseCardResponse = {
+  id: number
+  account_id: number
+  status: string
+  closed_at: string
+}
+
 type AccountResponse = {
   id: number
   account_number: string
@@ -158,8 +195,8 @@ const menuItems: Array<{
   {
     key: 'cards',
     title: 'Cards',
-    description: 'Карты, оплата, перевод, закрытие',
-    implemented: false,
+    description: 'Карты, выпуск, просмотр, оплата, перевод, закрытие',
+    implemented: true,
   },
   {
     key: 'transfers',
@@ -282,6 +319,30 @@ function getAccountStatusText(account: AccountResponse): string {
   return 'active'
 }
 
+function isCardClosed(card?: CardResponse | null): boolean {
+  return card?.status === 'closed'
+}
+
+function getCardBadgeClass(card: CardResponse): string {
+  if (card.status === 'closed') {
+    return 'badge mutedBadge'
+  }
+
+  return 'badge successBadge'
+}
+
+function getCardStatusText(card: CardResponse): string {
+  if (card.status === 'closed') {
+    return 'closed'
+  }
+
+  return 'active'
+}
+
+function getCardDisplayNumber(card: CardResponse): string {
+  return card.number || card.masked_number
+}
+
 function App() {
   const [activeMenu, setActiveMenu] = useState<MenuKey>('health')
 
@@ -305,6 +366,15 @@ function App() {
   const [adminSessionsState, setAdminSessionsState] = useState<RequestState>(emptyState)
   const [adminAccountState, setAdminAccountState] = useState<RequestState>(emptyState)
 
+  const [cardsState, setCardsState] = useState<RequestState>(emptyState)
+  const [createCardState, setCreateCardState] = useState<RequestState>(emptyState)
+  const [cardDetailsState, setCardDetailsState] = useState<RequestState>(emptyState)
+  const [cardPaymentMfaState, setCardPaymentMfaState] = useState<RequestState>(emptyState)
+  const [cardPaymentState, setCardPaymentState] = useState<RequestState>(emptyState)
+  const [cardTransferMfaState, setCardTransferMfaState] = useState<RequestState>(emptyState)
+  const [cardTransferState, setCardTransferState] = useState<RequestState>(emptyState)
+  const [cardCloseState, setCardCloseState] = useState<RequestState>(emptyState)
+
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [createAccountState, setCreateAccountState] = useState<RequestState>(emptyState)
   const [accountDetailsState, setAccountDetailsState] = useState<RequestState>(emptyState)
@@ -321,6 +391,24 @@ function App() {
   const [adminSessions, setAdminSessions] = useState<AdminSession[]>([])
   const [adminAccountId, setAdminAccountId] = useState('')
   const [adminAccountResult, setAdminAccountResult] = useState<AdminAccountStatusResponse | null>(null)
+
+  const [cards, setCards] = useState<CardResponse[]>([])
+  const [selectedCardId, setSelectedCardId] = useState('')
+  const [selectedCard, setSelectedCard] = useState<CardResponse | null>(null)
+  const [createCardAccountId, setCreateCardAccountId] = useState('')
+  const [createdCard, setCreatedCard] = useState<CardResponse | null>(null)
+  const [cardPaymentAmount, setCardPaymentAmount] = useState('100.00')
+  const [cardPaymentCVV, setCardPaymentCVV] = useState('')
+  const [cardPaymentMfaCode, setCardPaymentMfaCode] = useState('')
+  const [cardPaymentDescription, setCardPaymentDescription] = useState('Card payment')
+  const [cardTransferToCardId, setCardTransferToCardId] = useState('')
+  const [cardTransferAmount, setCardTransferAmount] = useState('100.00')
+  const [cardTransferCVV, setCardTransferCVV] = useState('')
+  const [cardTransferMfaCode, setCardTransferMfaCode] = useState('')
+  const [cardTransferDescription, setCardTransferDescription] = useState('Card transfer')
+  const [cardPaymentResult, setCardPaymentResult] = useState<CardPaymentResponse | null>(null)
+  const [cardTransferResult, setCardTransferResult] = useState<CardTransferResponse | null>(null)
+  const [cardCloseResult, setCardCloseResult] = useState<CloseCardResponse | null>(null)
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState('')
@@ -411,6 +499,15 @@ function App() {
     return id
   }
 
+  const selectedCardIDNumber = (): number | null => {
+    const id = Number(selectedCardId)
+    if (!Number.isInteger(id) || id <= 0) {
+      return null
+    }
+
+    return id
+  }
+
   const upsertAccount = (account: AccountResponse) => {
     setAccounts((current) => {
       const exists = current.some((item) => item.id === account.id)
@@ -471,12 +568,57 @@ function App() {
     )
   }
 
+  const upsertCard = (card: CardResponse) => {
+    setCards((current) => {
+      const exists = current.some((item) => item.id === card.id)
+      if (!exists) {
+        return [card, ...current]
+      }
+
+      return current.map((item) => (item.id === card.id ? { ...item, ...card } : item))
+    })
+
+    setSelectedCard((current) => (current?.id === card.id ? { ...current, ...card } : card))
+    setSelectedCardId(String(card.id))
+  }
+
+  const applyClosedCard = (response: CloseCardResponse) => {
+    setCards((current) =>
+      current.map((card) =>
+        card.id === response.id
+          ? {
+              ...card,
+              status: response.status,
+              closed_at: response.closed_at,
+            }
+          : card,
+      ),
+    )
+
+    setSelectedCard((card) =>
+      card && card.id === response.id
+        ? {
+            ...card,
+            status: response.status,
+            closed_at: response.closed_at,
+          }
+        : card,
+    )
+  }
+
   const resetUserData = () => {
     setToken('')
     setCurrentUser(null)
     setAdminUsers([])
     setAdminSessions([])
     setAdminAccountResult(null)
+    setCards([])
+    setSelectedCard(null)
+    setSelectedCardId('')
+    setCreatedCard(null)
+    setCardPaymentResult(null)
+    setCardTransferResult(null)
+    setCardCloseResult(null)
     setAccounts([])
     setSelectedAccount(null)
     setSelectedAccountId('')
@@ -487,6 +629,14 @@ function App() {
     setAdminUsersState(emptyState)
     setAdminSessionsState(emptyState)
     setAdminAccountState(emptyState)
+    setCardsState(emptyState)
+    setCreateCardState(emptyState)
+    setCardDetailsState(emptyState)
+    setCardPaymentMfaState(emptyState)
+    setCardPaymentState(emptyState)
+    setCardTransferMfaState(emptyState)
+    setCardTransferState(emptyState)
+    setCardCloseState(emptyState)
     setAccountsState(emptyState)
     setCreateAccountState(emptyState)
     setAccountDetailsState(emptyState)
@@ -826,6 +976,436 @@ function App() {
         loading: false,
         error:
           error instanceof Error ? error.message : `Failed to ${action} account`,
+        success: '',
+      })
+    }
+  }
+
+  const loadCards = async () => {
+    if (!requireToken(setCardsState)) {
+      return
+    }
+
+    setCardsState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+
+    try {
+      const response = await fetch('/api/cards', {
+        method: 'GET',
+        headers: authHeaders(),
+      })
+
+      const data = await parseResponse<CardResponse[]>(response)
+
+      setCards(Array.isArray(data) ? data : [])
+      setCardsState({
+        loading: false,
+        error: '',
+        success: 'Список карт загружен.',
+      })
+
+      if (Array.isArray(data) && data.length > 0) {
+        const selectedExists = data.some((card) => String(card.id) === selectedCardId)
+        const card = selectedExists
+          ? data.find((item) => String(item.id) === selectedCardId) || data[0]
+          : data[0]
+
+        setSelectedCardId(String(card.id))
+        setSelectedCard(card)
+      } else {
+        setSelectedCardId('')
+        setSelectedCard(null)
+      }
+    } catch (error) {
+      setCardsState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to load cards',
+        success: '',
+      })
+    }
+  }
+
+  const createCard = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!requireToken(setCreateCardState)) {
+      return
+    }
+
+    const accountID = Number(createCardAccountId)
+    if (!Number.isInteger(accountID) || accountID <= 0) {
+      setCreateCardState({
+        loading: false,
+        error: 'Укажи корректный account_id.',
+        success: '',
+      })
+      return
+    }
+
+    setCreateCardState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+    setCreatedCard(null)
+
+    try {
+      const response = await fetch('/api/cards', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          account_id: accountID,
+        }),
+      })
+
+      const card = await parseResponse<CardResponse>(response)
+
+      upsertCard(card)
+      setCreatedCard(card)
+      setCreateCardState({
+        loading: false,
+        error: '',
+        success: 'Карта выпущена. CVV показывается только один раз.',
+      })
+    } catch (error) {
+      setCreateCardState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to create card',
+        success: '',
+      })
+    }
+  }
+
+  const loadCardDetails = async () => {
+    if (!requireToken(setCardDetailsState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardDetailsState({
+        loading: false,
+        error: 'Выбери карту.',
+        success: '',
+      })
+      return
+    }
+
+    setCardDetailsState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+
+    try {
+      const response = await fetch(`/api/cards/${cardID}`, {
+        method: 'GET',
+        headers: authHeaders(),
+      })
+
+      const card = await parseResponse<CardResponse>(response)
+
+      upsertCard(card)
+      setCardDetailsState({
+        loading: false,
+        error: '',
+        success: 'Данные карты обновлены.',
+      })
+    } catch (error) {
+      setCardDetailsState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to load card',
+        success: '',
+      })
+    }
+  }
+
+  const requestCardPaymentMFA = async () => {
+    if (!requireToken(setCardPaymentMfaState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardPaymentMfaState({
+        loading: false,
+        error: 'Выбери карту.',
+        success: '',
+      })
+      return
+    }
+
+    setCardPaymentMfaState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+
+    try {
+      const response = await fetch('/api/mfa/request', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          purpose: 'card_payment',
+          card_id: cardID,
+          amount: cardPaymentAmount,
+        }),
+      })
+
+      await parseResponse<{ message: string }>(response)
+
+      setCardPaymentMfaState({
+        loading: false,
+        error: '',
+        success: 'MFA-код для оплаты картой отправлен.',
+      })
+    } catch (error) {
+      setCardPaymentMfaState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to request MFA code',
+        success: '',
+      })
+    }
+  }
+
+  const handleCardPayment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!requireToken(setCardPaymentState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardPaymentState({
+        loading: false,
+        error: 'Выбери карту.',
+        success: '',
+      })
+      return
+    }
+
+    setCardPaymentState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+    setCardPaymentResult(null)
+
+    try {
+      const response = await fetch(`/api/cards/${cardID}/pay`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(true),
+          'Idempotency-Key': createIdempotencyKey(),
+        },
+        body: JSON.stringify({
+          amount: cardPaymentAmount,
+          cvv: cardPaymentCVV,
+          mfa_code: cardPaymentMfaCode,
+          description: cardPaymentDescription,
+        }),
+      })
+
+      const data = await parseResponse<CardPaymentResponse>(response)
+
+      setCardPaymentResult(data)
+      setCardPaymentMfaCode('')
+      setCardPaymentState({
+        loading: false,
+        error: '',
+        success: 'Оплата картой выполнена.',
+      })
+    } catch (error) {
+      setCardPaymentState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Card payment failed',
+        success: '',
+      })
+    }
+  }
+
+  const requestCardTransferMFA = async () => {
+    if (!requireToken(setCardTransferMfaState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    const toCardID = Number(cardTransferToCardId)
+
+    if (!cardID) {
+      setCardTransferMfaState({
+        loading: false,
+        error: 'Выбери карту отправителя.',
+        success: '',
+      })
+      return
+    }
+
+    if (!Number.isInteger(toCardID) || toCardID <= 0) {
+      setCardTransferMfaState({
+        loading: false,
+        error: 'Укажи корректный to_card_id.',
+        success: '',
+      })
+      return
+    }
+
+    setCardTransferMfaState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+
+    try {
+      const response = await fetch('/api/mfa/request', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          purpose: 'card_transfer',
+          card_id: cardID,
+          to_card_id: toCardID,
+          amount: cardTransferAmount,
+        }),
+      })
+
+      await parseResponse<{ message: string }>(response)
+
+      setCardTransferMfaState({
+        loading: false,
+        error: '',
+        success: 'MFA-код для перевода с карты отправлен.',
+      })
+    } catch (error) {
+      setCardTransferMfaState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to request MFA code',
+        success: '',
+      })
+    }
+  }
+
+  const handleCardTransfer = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!requireToken(setCardTransferState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    const toCardID = Number(cardTransferToCardId)
+
+    if (!cardID) {
+      setCardTransferState({
+        loading: false,
+        error: 'Выбери карту отправителя.',
+        success: '',
+      })
+      return
+    }
+
+    if (!Number.isInteger(toCardID) || toCardID <= 0) {
+      setCardTransferState({
+        loading: false,
+        error: 'Укажи корректный to_card_id.',
+        success: '',
+      })
+      return
+    }
+
+    setCardTransferState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+    setCardTransferResult(null)
+
+    try {
+      const response = await fetch(`/api/cards/${cardID}/transfer`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(true),
+          'Idempotency-Key': createIdempotencyKey(),
+        },
+        body: JSON.stringify({
+          to_card_id: toCardID,
+          amount: cardTransferAmount,
+          cvv: cardTransferCVV,
+          mfa_code: cardTransferMfaCode,
+          description: cardTransferDescription,
+        }),
+      })
+
+      const data = await parseResponse<CardTransferResponse>(response)
+
+      setCardTransferResult(data)
+      setCardTransferMfaCode('')
+      setCardTransferState({
+        loading: false,
+        error: '',
+        success: 'Перевод с карты выполнен.',
+      })
+    } catch (error) {
+      setCardTransferState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Card transfer failed',
+        success: '',
+      })
+    }
+  }
+
+  const closeCard = async () => {
+    if (!requireToken(setCardCloseState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardCloseState({
+        loading: false,
+        error: 'Выбери карту.',
+        success: '',
+      })
+      return
+    }
+
+    const confirmed = window.confirm('Закрыть выбранную карту?')
+    if (!confirmed) {
+      return
+    }
+
+    setCardCloseState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+    setCardCloseResult(null)
+
+    try {
+      const response = await fetch(`/api/cards/${cardID}/close`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders(),
+          'Idempotency-Key': createIdempotencyKey(),
+        },
+      })
+
+      const data = await parseResponse<CloseCardResponse>(response)
+
+      setCardCloseResult(data)
+      applyClosedCard(data)
+      setCardCloseState({
+        loading: false,
+        error: '',
+        success: 'Карта закрыта.',
+      })
+    } catch (error) {
+      setCardCloseState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to close card',
         success: '',
       })
     }
@@ -1712,6 +2292,7 @@ function App() {
                           setPredictResult(null)
                           setCloseResult(null)
                           setAdminAccountId(String(account.id))
+                          setCreateCardAccountId(String(account.id))
                         }}
                       >
                         <span className="accountNumber">{account.account_number}</span>
@@ -1909,6 +2490,337 @@ function App() {
                       <div className="result success">
                         <strong>Результат закрытия счета</strong>
                         <pre>{JSON.stringify(closeResult, null, 2)}</pre>
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+            </div>
+          </section>
+        )}
+
+        {activeMenu === 'cards' && (
+          <section className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Карты пользователя</h2>
+                <p>
+                  Все действия с картами: выпуск, список, просмотр, оплата, перевод и закрытие.
+                </p>
+              </div>
+
+              <div className="actions">
+                <button type="button" onClick={loadCards} disabled={cardsState.loading || !isAuthenticated}>
+                  {cardsState.loading ? 'Загружаю...' : 'Загрузить карты'}
+                </button>
+              </div>
+            </div>
+
+            <RequestMessage state={cardsState} />
+
+            <div className="cardsLayout">
+              <section className="subPanel">
+                <div className="subPanelHeader">
+                  <h3>Выпуск карты</h3>
+                </div>
+
+                <form className="form" onSubmit={createCard}>
+                  <label>
+                    <span>Account ID</span>
+                    <input
+                      value={createCardAccountId}
+                      onChange={(event) => setCreateCardAccountId(event.target.value)}
+                      placeholder="ID счета"
+                    />
+                  </label>
+
+                  <button type="submit" disabled={createCardState.loading || !isAuthenticated}>
+                    {createCardState.loading ? 'Выпускаю...' : 'Выпустить карту'}
+                  </button>
+                </form>
+
+                <RequestMessage state={createCardState} />
+
+                {createdCard && (
+                  <div className="result success">
+                    <strong>Карта выпущена</strong>
+                    <p className="mutedText">
+                      CVV показывается только один раз. Сохрани его для тестовых операций.
+                    </p>
+                    <pre>{JSON.stringify(createdCard, null, 2)}</pre>
+                  </div>
+                )}
+              </section>
+
+              <section className="subPanel">
+                <div className="subPanelHeader">
+                  <h3>Мои карты</h3>
+                  <span>{cards.length}</span>
+                </div>
+
+                {cards.length === 0 && (
+                  <div className="empty">
+                    Список пуст. Нажми “Загрузить карты” или выпусти новую карту.
+                  </div>
+                )}
+
+                {cards.length > 0 && (
+                  <div className="cardList">
+                    {cards.map((card) => (
+                      <button
+                        key={card.id}
+                        className={
+                          selectedCardId === String(card.id)
+                            ? 'bankCardItem active'
+                            : 'bankCardItem'
+                        }
+                        type="button"
+                        onClick={() => {
+                          setSelectedCardId(String(card.id))
+                          setSelectedCard(card)
+                          setCardPaymentResult(null)
+                          setCardTransferResult(null)
+                          setCardCloseResult(null)
+                        }}
+                      >
+                        <span className="cardNumber">{getCardDisplayNumber(card)}</span>
+                        <span className="cardMeta">
+                          <span>card_id {card.id}</span>
+                          <span>account_id {card.account_id}</span>
+                          <span className={getCardBadgeClass(card)}>{getCardStatusText(card)}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="subPanel cardDetailsPanel">
+                <div className="subPanelHeader">
+                  <h3>Выбранная карта</h3>
+                  {selectedCard && (
+                    <span className={getCardBadgeClass(selectedCard)}>
+                      {getCardStatusText(selectedCard)}
+                    </span>
+                  )}
+                </div>
+
+                {!selectedCard && (
+                  <div className="empty">
+                    Выбери карту из списка.
+                  </div>
+                )}
+
+                {selectedCard && (
+                  <>
+                    <div className="detailsGrid">
+                      <div>
+                        <span>ID</span>
+                        <strong>{selectedCard.id}</strong>
+                      </div>
+                      <div>
+                        <span>Account ID</span>
+                        <strong>{selectedCard.account_id}</strong>
+                      </div>
+                      <div>
+                        <span>Number</span>
+                        <strong>{getCardDisplayNumber(selectedCard)}</strong>
+                      </div>
+                      <div>
+                        <span>Expiry</span>
+                        <strong>{selectedCard.expiry || '-'}</strong>
+                      </div>
+                      <div>
+                        <span>Status</span>
+                        <strong>{selectedCard.status}</strong>
+                      </div>
+                      <div>
+                        <span>Created</span>
+                        <strong>{formatDate(selectedCard.created_at)}</strong>
+                      </div>
+                      <div>
+                        <span>Closed at</span>
+                        <strong>{formatDate(selectedCard.closed_at)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="actions topGap">
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={loadCardDetails}
+                        disabled={cardDetailsState.loading}
+                      >
+                        {cardDetailsState.loading ? 'Обновляю...' : 'Показать детали'}
+                      </button>
+                    </div>
+
+                    <RequestMessage state={cardDetailsState} />
+
+                    <div className="cardActionsGrid">
+                      <form className="actionBox" onSubmit={handleCardPayment}>
+                        <h4>Оплата картой</h4>
+                        <p>Сначала запроси MFA-код, потом выполни оплату.</p>
+
+                        <label>
+                          <span>Amount</span>
+                          <input
+                            value={cardPaymentAmount}
+                            onChange={(event) => setCardPaymentAmount(event.target.value)}
+                            placeholder="100.00"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <label>
+                          <span>Description</span>
+                          <input
+                            value={cardPaymentDescription}
+                            onChange={(event) => setCardPaymentDescription(event.target.value)}
+                            placeholder="Card payment"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={requestCardPaymentMFA}
+                          disabled={cardPaymentMfaState.loading || isCardClosed(selectedCard)}
+                        >
+                          {cardPaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                        </button>
+                        <RequestMessage state={cardPaymentMfaState} />
+
+                        <label>
+                          <span>CVV</span>
+                          <input
+                            value={cardPaymentCVV}
+                            onChange={(event) => setCardPaymentCVV(event.target.value)}
+                            placeholder="3 цифры"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <label>
+                          <span>MFA code</span>
+                          <input
+                            value={cardPaymentMfaCode}
+                            onChange={(event) => setCardPaymentMfaCode(event.target.value)}
+                            placeholder="6 цифр"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <button type="submit" disabled={cardPaymentState.loading || isCardClosed(selectedCard)}>
+                          {cardPaymentState.loading ? 'Оплачиваю...' : 'Оплатить'}
+                        </button>
+                        <RequestMessage state={cardPaymentState} />
+                      </form>
+
+                      <form className="actionBox" onSubmit={handleCardTransfer}>
+                        <h4>Перевод с карты</h4>
+                        <p>Перевод идет с выбранной карты на карту-получатель.</p>
+
+                        <label>
+                          <span>To card ID</span>
+                          <input
+                            value={cardTransferToCardId}
+                            onChange={(event) => setCardTransferToCardId(event.target.value)}
+                            placeholder="ID карты получателя"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <label>
+                          <span>Amount</span>
+                          <input
+                            value={cardTransferAmount}
+                            onChange={(event) => setCardTransferAmount(event.target.value)}
+                            placeholder="100.00"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <label>
+                          <span>Description</span>
+                          <input
+                            value={cardTransferDescription}
+                            onChange={(event) => setCardTransferDescription(event.target.value)}
+                            placeholder="Card transfer"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <button
+                          className="secondary"
+                          type="button"
+                          onClick={requestCardTransferMFA}
+                          disabled={cardTransferMfaState.loading || isCardClosed(selectedCard)}
+                        >
+                          {cardTransferMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                        </button>
+                        <RequestMessage state={cardTransferMfaState} />
+
+                        <label>
+                          <span>CVV</span>
+                          <input
+                            value={cardTransferCVV}
+                            onChange={(event) => setCardTransferCVV(event.target.value)}
+                            placeholder="3 цифры"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <label>
+                          <span>MFA code</span>
+                          <input
+                            value={cardTransferMfaCode}
+                            onChange={(event) => setCardTransferMfaCode(event.target.value)}
+                            placeholder="6 цифр"
+                            disabled={isCardClosed(selectedCard)}
+                          />
+                        </label>
+
+                        <button type="submit" disabled={cardTransferState.loading || isCardClosed(selectedCard)}>
+                          {cardTransferState.loading ? 'Перевожу...' : 'Перевести'}
+                        </button>
+                        <RequestMessage state={cardTransferState} />
+                      </form>
+
+                      <div className="actionBox dangerZone">
+                        <h4>Закрытие карты</h4>
+                        <p>Закрытая карта больше не участвует в операциях.</p>
+                        <button
+                          className="danger"
+                          type="button"
+                          onClick={closeCard}
+                          disabled={cardCloseState.loading || isCardClosed(selectedCard)}
+                        >
+                          {cardCloseState.loading ? 'Закрываю...' : 'Закрыть карту'}
+                        </button>
+                        <RequestMessage state={cardCloseState} />
+                      </div>
+                    </div>
+
+                    {cardPaymentResult && (
+                      <div className="result success">
+                        <strong>Результат оплаты</strong>
+                        <pre>{JSON.stringify(cardPaymentResult, null, 2)}</pre>
+                      </div>
+                    )}
+
+                    {cardTransferResult && (
+                      <div className="result success">
+                        <strong>Результат перевода</strong>
+                        <pre>{JSON.stringify(cardTransferResult, null, 2)}</pre>
+                      </div>
+                    )}
+
+                    {cardCloseResult && (
+                      <div className="result success">
+                        <strong>Результат закрытия карты</strong>
+                        <pre>{JSON.stringify(cardCloseResult, null, 2)}</pre>
                       </div>
                     )}
                   </>
