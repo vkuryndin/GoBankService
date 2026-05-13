@@ -14,6 +14,10 @@
       --soft: #f9fafb;
       --code: #f3f4f6;
       --link: #2563eb;
+      --link-dark: #1d4ed8;
+      --green-bg: #f0fdf4;
+      --green-border: #bbf7d0;
+      --green-text: #15803d;
     }
 
     * {
@@ -37,7 +41,7 @@
     .card {
       background: var(--card);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 16px;
       padding: 28px;
       box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
     }
@@ -94,6 +98,53 @@
       color: var(--muted);
     }
 
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 22px 0 4px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 10px;
+      background: var(--link);
+      color: #ffffff;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .button:hover {
+      background: var(--link-dark);
+      text-decoration: none;
+    }
+
+    .button.secondary {
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+    }
+
+    .button.secondary:hover {
+      background: var(--soft);
+    }
+
+    .status {
+      display: inline-flex;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--green-border);
+      border-radius: 999px;
+      background: var(--green-bg);
+      color: var(--green-text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
@@ -136,148 +187,116 @@
       REST API банковского сервиса на Go: пользователи, счета, карты, переводы, кредиты,
       аналитика, MFA, audit logs, idempotency и интеграция с ЦБ РФ.
     </p>
-    <p class="muted">Сделано в рамках семестрового задания по дисциплине "Язык программирования GO".</p>
-
-
-    <h2>Быстрая проверка</h2>
-    <pre>GET /health</pre>
-
-    <h2>Документация</h2>
-    <p>
-      Полное описание проекта, env-переменные, запуск и сценарии тестирования:
-      <a href="https://github.com/vkuryndin/GoBankService/blob/main/README.md">README.md на GitHub</a>.
-    </p>
-    <p>
-      Короткая ссылка с этого сервера: <a href="/docs">/docs</a>.
-    </p>
-
-    <h2>Тестовый администратор</h2>
     <p class="muted">
-      Первый зарегистрированный пользователь становится администратором. Для проверки admin-сценариев уже зарегистрирован
-      следующий тестовый пользователь:
+      Стартовая страница оставлена отдельно, а React frontend доступен рядом по адресу <code>/app/</code>.
     </p>
-    <pre>{
-  "login": "test@example.com",
-  "password": "password123"
-}</pre>
 
-    <h2>Авторизация</h2>
-    <pre>Authorization: Bearer &lt;token&gt;</pre>
+    <div class="actions">
+      <a class="button" href="/app/">Открыть frontend</a>
+      <a class="button secondary" href="/api/health">Проверить API health</a>
+      <a class="button secondary" href="/docs">README.md</a>
+    </div>
+
+    <span class="status">nginx routes: / → landing, /app/ → frontend, /api/ → backend</span>
+
+    <h2>Адреса на сервере</h2>
+    <pre>Landing page:  /
+Frontend:      /app/
+API base URL:  /api
+Health check:  /api/health
+Docs:          /docs</pre>
+
+    <h2>Как тестировать API через test.http</h2>
+    <p>
+      Для серверного стенда используйте baseUrl с префиксом <code>/api</code>:
+    </p>
+    <pre>@baseUrl = http://SERVER_IP/api</pre>
     <p class="muted">
-      Токен получается через <code>POST /login</code>. После повторного login старый токен этого же пользователя
-      становится недействительным.
+      Локально для прямого запуска Go backend можно оставить <code>http://localhost:8080</code>.
     </p>
 
-    <h2>Основные endpoint-ы</h2>
+    <h2>Основные endpoint-ы API</h2>
     <div class="grid">
       <div class="section">
         <h3><span class="badge">Public</span>Публичные</h3>
         <ul>
-          <li><code>GET /health</code></li>
-          <li><code>POST /register</code></li>
-          <li><code>POST /login</code></li>
+          <li><code>GET /api/health</code></li>
+          <li><code>POST /api/register</code></li>
+          <li><code>POST /api/login</code></li>
         </ul>
       </div>
 
       <div class="section">
         <h3><span class="badge">Auth</span>Авторизация</h3>
         <ul>
-          <li><code>GET /auth/check</code></li>
-          <li><code>POST /logout</code></li>
-          <li><code>POST /mfa/request</code></li>
+          <li><code>GET /api/auth/check</code></li>
+          <li><code>POST /api/logout</code></li>
+          <li><code>POST /api/mfa/request</code></li>
         </ul>
       </div>
 
       <div class="section">
         <h3><span class="badge">Accounts</span>Счета</h3>
         <ul>
-          <li><code>POST /accounts</code></li>
-          <li><code>GET /accounts</code></li>
-          <li><code>GET /accounts/{accountId}</code></li>
-          <li><code>POST /accounts/{accountId}/deposit</code></li>
-          <li><code>POST /accounts/{accountId}/withdraw</code></li>
-          <li><code>POST /accounts/{accountId}/close</code></li>
-          <li><code>GET /accounts/{accountId}/predict</code></li>
-        </ul>
-      </div>
-
-      <div class="section">
-        <h3><span class="badge">Transfers</span>Переводы</h3>
-        <ul>
-          <li><code>POST /transfer</code></li>
+          <li><code>POST /api/accounts</code></li>
+          <li><code>GET /api/accounts</code></li>
+          <li><code>GET /api/accounts/{accountId}</code></li>
+          <li><code>POST /api/accounts/{accountId}/deposit</code></li>
+          <li><code>POST /api/accounts/{accountId}/withdraw</code></li>
+          <li><code>POST /api/accounts/{accountId}/close</code></li>
+          <li><code>GET /api/accounts/{accountId}/predict</code></li>
         </ul>
       </div>
 
       <div class="section">
         <h3><span class="badge">Cards</span>Карты</h3>
         <ul>
-          <li><code>POST /cards</code></li>
-          <li><code>GET /cards</code></li>
-          <li><code>GET /cards/{cardId}</code></li>
-          <li><code>POST /cards/{cardId}/pay</code></li>
-          <li><code>POST /cards/{cardId}/transfer</code></li>
-          <li><code>POST /cards/{cardId}/close</code></li>
+          <li><code>POST /api/cards</code></li>
+          <li><code>GET /api/cards</code></li>
+          <li><code>GET /api/cards/{cardId}</code></li>
+          <li><code>POST /api/cards/{cardId}/pay</code></li>
+          <li><code>POST /api/cards/{cardId}/transfer</code></li>
+          <li><code>POST /api/cards/{cardId}/close</code></li>
         </ul>
       </div>
 
       <div class="section">
         <h3><span class="badge">Credits</span>Кредиты</h3>
         <ul>
-          <li><code>POST /credits/check</code></li>
-          <li><code>POST /credits</code></li>
-          <li><code>GET /credits</code></li>
-          <li><code>GET /credits/{creditId}</code></li>
-          <li><code>GET /credits/{creditId}/schedule</code></li>
+          <li><code>POST /api/credits/check</code></li>
+          <li><code>POST /api/credits</code></li>
+          <li><code>GET /api/credits</code></li>
+          <li><code>GET /api/credits/{creditId}</code></li>
+          <li><code>GET /api/credits/{creditId}/schedule</code></li>
         </ul>
       </div>
 
       <div class="section">
-        <h3><span class="badge">Analytics</span>Аналитика и ставки</h3>
+        <h3><span class="badge">Other</span>Другое</h3>
         <ul>
-          <li><code>GET /analytics</code></li>
-          <li><code>GET /rates/key</code></li>
+          <li><code>POST /api/transfer</code></li>
+          <li><code>GET /api/analytics</code></li>
+          <li><code>GET /api/rates/key</code></li>
+          <li><code>GET /api/notifications/test</code></li>
         </ul>
       </div>
 
       <div class="section">
         <h3><span class="badge">Admin</span>Администрирование</h3>
         <ul>
-          <li><code>GET /admin/users</code></li>
-          <li><code>GET /admin/logged-in-users</code></li>
-          <li><code>POST /admin/accounts/{accountId}/block</code></li>
-          <li><code>POST /admin/accounts/{accountId}/unblock</code></li>
-        </ul>
-      </div>
-
-      <div class="section">
-        <h3><span class="badge">Notifications</span>Уведомления</h3>
-        <ul>
-          <li><code>GET /notifications/test</code></li>
+          <li><code>GET /api/admin/users</code></li>
+          <li><code>GET /api/admin/logged-in-users</code></li>
+          <li><code>POST /api/admin/accounts/{accountId}/block</code></li>
+          <li><code>POST /api/admin/accounts/{accountId}/unblock</code></li>
         </ul>
       </div>
     </div>
 
-    <h2>MFA</h2>
-    <p class="muted">MFA требуется для критических операций:</p>
-    <ul>
-      <li><code>withdraw</code></li>
-      <li><code>transfer</code></li>
-      <li><code>card_payment</code></li>
-      <li><code>card_transfer</code></li>
-      <li><code>credit_create</code></li>
-    </ul>
-
-    <h2>Idempotency-Key</h2>
-    <p class="muted">
-      Для финансовых POST-запросов используется заголовок <code>Idempotency-Key</code>.
-      Повтор того же запроса с тем же ключом не выполнит финансовую операцию второй раз.
-    </p>
-
     <h2>Важно</h2>
     <ul>
-      <li>Счета и карты закрываются через soft close, без физического удаления из БД.</li>
-      <li>Закрытые или просроченные карты нельзя использовать для оплаты и перевода.</li>
-      <li>HTTP-доступ сделан исключительно для тестового стенда, для production надо делать https</li>
+      <li>Для финансовых POST-запросов используется <code>Idempotency-Key</code>.</li>
+      <li>MFA требуется для withdraw, transfer, card payment, card transfer и credit create.</li>
+      <li>HTTP-доступ подходит только для тестового стенда. Для production нужен домен и HTTPS.</li>
     </ul>
   </div>
 </main>
