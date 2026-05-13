@@ -1,8 +1,8 @@
 ### Variables
-@baseUrl2 = http://18.185.7.63
+@baseUrl = http://18.185.7.63
 
 
-@baseUrl = http://localhost:8080
+@baseUrl2 = http://localhost:8080
 
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4NTg0MzY5LCJpYXQiOjE3Nzg0OTc5NjksImp0aSI6IjZlNjU1ZjM2MjcyZjI3Yjg1YjY4NDk3MzEwMDQ5ZWVlIn0.jxo8ehCaDn_G31Ilc5UjooDWx-KJA_E7QljgAnCSsqU
 @token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4NTgzMDYzLCJpYXQiOjE3Nzg0OTY2NjMsImp0aSI6ImI0YzczMWY1N2JjNGY4NTEwNTM1ODcxZTAwNTgwZDc0In0.oj572oXwGo0Il4V1SyJjJQixlwr6Jvc5VKDX1Cxxdeo
