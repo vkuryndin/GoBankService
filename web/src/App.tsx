@@ -598,15 +598,16 @@ function App() {
         }.`,
       })
     } catch (error) {
-      setCurrentUser(null)
-      setAuthCheckState({
-        loading: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to check current user',
-        success: '',
-      })
+setToken('')
+setCurrentUser(null)
+setAuthCheckState({
+  loading: false,
+  error:
+    error instanceof Error
+      ? error.message
+      : 'Failed to check current user',
+  success: '',
+})
     }
   }
 
@@ -1074,13 +1075,17 @@ function App() {
     }
   }
 
-  const topbarUserText = currentUser
-    ? `Вы вошли как ${currentUser.email}. Роль: ${
-        currentUser.is_admin ? 'администратор' : 'пользователь'
-      }.`
-    : isAuthenticated
-      ? 'Проверяю текущего пользователя...'
-      : 'Вы не вошли в систему.'
+const topbarUserText = currentUser
+  ? `Вы вошли как ${currentUser.email}. Роль: ${
+      currentUser.is_admin ? 'администратор' : 'пользователь'
+    }.`
+  : authCheckState.loading
+    ? 'Проверяю текущего пользователя...'
+    : authCheckState.error
+      ? 'Сессия не подтверждена. Войдите заново.'
+      : isAuthenticated
+        ? 'Токен сохранён, пользователь ещё не проверен.'
+        : 'Вы не вошли в систему.'
 
   return (
     <main className="app">
