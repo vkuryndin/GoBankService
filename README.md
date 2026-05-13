@@ -4,7 +4,27 @@
 
 REST API банковского сервиса на Go. Проект реализует регистрацию пользователей, JWT-аутентификацию, счета, карты, переводы, кредиты, аналитику, интеграцию с ЦБ РФ и SMTP-уведомления.
 
-Сервис также доступен по адресу http://18.185.7.63. Можно  использовать test.http и в переменной baseUrl указать данный адрес. Это позволит сразу тестировать и проверять рабочий вариант. Сервер будет доступен временно.
+Сервис также доступен на тестовом сервере:
+
+```text
+Landing page: http://18.185.7.63/
+Frontend:     http://18.185.7.63/app/
+API base URL: http://18.185.7.63/api
+```
+
+Для проверки API через test.http на сервере нужно указывать:
+
+```
+@baseUrl = http://18.185.7.63/api
+```
+
+Для локального запуска backend без nginx:
+
+```
+@baseUrl = http://localhost:8080
+```
+
+Сервер будет доступен временно.
 
 ## Стек
 
@@ -18,6 +38,11 @@ REST API банковского сервиса на Go. Проект реали�
 - logrus
 - gomail
 - beevik/etree
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- nginx
 
 ## Основные возможности
 
@@ -47,6 +72,10 @@ REST API банковского сервиса на Go. Проект реали�
 - Получение ключевой ставки ЦБ РФ через SOAP.
 - SMTP-уведомления.
 - Admin API для просмотра пользователей, активных сессий и блокировки счетов.
+- React frontend для ручной проверки всех основных сценариев.
+- Frontend доступен по `/app/`.
+- На сервере API доступен через nginx по `/api/...`.
+- Стартовая страница API доступна по `/`.
 
 ## Безопасность
 
@@ -97,10 +126,10 @@ internal/integrations   внешние интеграции: ЦБ РФ и SMTP
 internal/scheduler      фоновые задачи
 internal/audit          audit events
 migrations              SQL-миграции
-Dockerfile              сборка приложения
+Dockerfile              сборка Go API
 docker-compose.yml      запуск API, PostgreSQL и nginx
-bank-service.conf       nginx reverse proxy
-index.html              стартовая страница API
+nginx                   nginx reverse proxy и стартовая страница
+web                     React frontend
 test.http               ручные сценарии проверки API
 ```
 
@@ -114,8 +143,6 @@ test.http               ручные сценарии проверки API
 ├── .golangci.yml
 ├── Dockerfile
 ├── docker-compose.yml
-├── bank-service.conf
-├── index.html
 ├── go.mod
 ├── go.sum
 ├── cmd
@@ -201,6 +228,8 @@ test.http               ручные сценарии проверки API
 │   │   ├── mfa_cleanup_scheduler.go
 │   │   └── token_cleanup_scheduler.go
 │   ├── security
+│   │   ├── httpauth
+│   │   │   └── bearer.go
 │   │   ├── card.go
 │   │   ├── jwt.go
 │   │   ├── password.go
@@ -224,9 +253,77 @@ test.http               ручные сценарии проверки API
 │       └── transfer_service.go
 ├── migrations
 │   └── 001_init.sql
+├── nginx
+│   ├── bank-service.conf
+│   └── html
+│       └── index.html
+├── web
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── tsconfig.app.json
+│   ├── tsconfig.node.json
+│   ├── index.html
+│   └── src
+│       ├── api
+│       │   ├── adminApi.ts
+│       │   ├── analyticsApi.ts
+│       │   ├── accountsApi.ts
+│       │   ├── authApi.ts
+│       │   ├── cardsApi.ts
+│       │   ├── client.ts
+│       │   ├── creditsApi.ts
+│       │   ├── http.ts
+│       │   ├── mfaApi.ts
+│       │   ├── notificationsApi.ts
+│       │   ├── ratesApi.ts
+│       │   └── transfersApi.ts
+│       ├── components
+│       │   ├── RequestMessage.tsx
+│       │   ├── RequestStatus.tsx
+│       │   ├── Sidebar.tsx
+│       │   ├── Topbar.tsx
+│       │   └── ui
+│       │       ├── Button.tsx
+│       │       ├── Card.tsx
+│       │       └── StatusBadge.tsx
+│       ├── config
+│       │   └── menu.ts
+│       ├── pages
+│       │   ├── AccountsPage.tsx
+│       │   ├── AdminPage.tsx
+│       │   ├── AnalyticsPage.tsx
+│       │   ├── AuthPage.tsx
+│       │   ├── CardsPage.tsx
+│       │   ├── CreditsPage.tsx
+│       │   ├── HealthPage.tsx
+│       │   ├── NotificationsPage.tsx
+│       │   ├── PlaceholderPage.tsx
+│       │   ├── RatesPage.tsx
+│       │   ├── RegisterPage.tsx
+│       │   └── TransfersPage.tsx
+│       ├── types
+│       │   ├── account.ts
+│       │   ├── admin.ts
+│       │   ├── analytics.ts
+│       │   ├── auth.ts
+│       │   ├── card.ts
+│       │   ├── common.ts
+│       │   ├── credit.ts
+│       │   ├── notification.ts
+│       │   ├── rate.ts
+│       │   └── transfer.ts
+│       ├── utils
+│       │   └── format.ts
+│       ├── App.css
+│       ├── App.tsx
+│       ├── index.css
+│       ├── main.tsx
+│       └── vite-env.d.ts
 ├── README.md
 └── test.http
-
+```
 
 ## Переменные окружения
 
@@ -234,6 +331,9 @@ test.http               ручные сценарии проверки API
 
 ```env
 SERVER_PORT=8080
+
+NGINX_HTTP_PORT=80
+POSTGRES_PASSWORD=change_me
 
 DATABASE_URL=postgres://bank_user:change_me@localhost:5432/bank_service?sslmode=disable
 
@@ -301,7 +401,7 @@ GRANT ALL PRIVILEGES ON DATABASE bank_service TO bank_user;
 
 ## Запуск
 
-Установите зависимости:
+Проверьте зависимости:
 
 ```bash
 go mod tidy
@@ -332,7 +432,7 @@ docker compose up -d --build
 ```
 bank-api — Go API;
 bank-postgres — PostgreSQL;
-bank-nginx — nginx reverse proxy и стартовая страница.
+bank-nginx — nginx reverse proxy, стартовая страница и React frontend.
 ```
 
 Проверка:
@@ -340,6 +440,21 @@ bank-nginx — nginx reverse proxy и стартовая страница.
 ```
 docker compose ps
 docker compose logs -f bank-api
+docker compose logs -f bank-nginx
+```
+
+После запуска через nginx доступны адреса:
+
+```text
+/        стартовая страница API
+/app/    React frontend
+/api/... Go API
+/docs    ссылка на README
+```
+Для `test.http` на сервере используйте:
+
+```http
+@baseUrl = http://18.185.7.63/api
 ```
 
 ### Проверка качества кода
@@ -355,6 +470,60 @@ govulncheck ./...
 
 `golangci-lint` настроен в `.golangci.yml`.
 Для проверки уязвимостей используется `govulncheck`.
+
+## Frontend
+
+Frontend находится в папке `web`.
+
+Технологии:
+
+- React;
+- TypeScript;
+- Vite;
+- Tailwind CSS.
+
+Frontend реализует ручную проверку основных сценариев:
+
+- health check;
+- register/login/logout;
+- просмотр текущего пользователя и роли;
+- admin actions;
+- счета;
+- карты;
+- переводы;
+- кредиты по выбранному счету;
+- аналитика;
+- ставки;
+- SMTP test email.
+
+Локальный запуск frontend:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Сборка frontend:
+
+```bash
+cd web
+npm run build
+```
+
+При Docker Compose сборка frontend выполняется внутри nginx-образа.
+
+Локально frontend доступен по адресу:
+
+```
+http://localhost:5173
+```
+
+На сервере frontend доступен через nginx:
+
+```
+http://18.185.7.63/app/
+```
 
 ## Основные endpoints
 
@@ -383,7 +552,7 @@ GET  /accounts/{accountId}
 POST /accounts/{accountId}/deposit
 POST /accounts/{accountId}/withdraw
 POST /accounts/{accountId}/close
-GET  /accounts/{accountId}/predict
+GET  /accounts/{accountId}/predict?days=N
 ```
 
 ### Transfers
@@ -413,10 +582,16 @@ GET  /credits/{creditId}
 GET  /credits/{creditId}/schedule
 ```
 
-### Analytics and rates
+### Analytics
 
 ```text
 GET /analytics
+GET /accounts/{accountId}/predict?days=N
+```
+
+### Rates
+
+```text
 GET /rates/key
 ```
 
@@ -539,10 +714,13 @@ CREDIT_POLICY_ENABLED=false
 15. проверить кредит через `POST /credits/check`;
 16. оформить кредит с MFA;
 17. проверить график платежей;
-18. проверить analytics и predict;
-19. проверить admin routes;
-20. проверить logout и revoked token;
-21. проверить повторный login и инвалидирование старого токена.
+18. проверить analytics;
+19. проверить predict по конкретному счету и days;
+20. проверить rates;
+21. проверить notifications;
+22. проверить admin routes;
+23. проверить logout и revoked token;
+24. проверить повторный login и инвалидирование старого токена.
 
 ## Проверка audit logs
 
@@ -569,3 +747,4 @@ LIMIT 20;
 - Закрытая карта не открывается повторно. Если нужна новая карта, пользователь выпускает новую.
 - Закрытый счет не открывается повторно. Счет остается в истории, но финансовые операции по нему запрещены.
 - Защита от volumetric DDoS должна выполняться на уровне reverse proxy или cloud provider.
+- Тестовый сервер доступен по HTTP. Для production нужен домен и HTTPS.

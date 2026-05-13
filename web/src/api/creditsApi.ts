@@ -33,6 +33,11 @@ export const creditsApi = {
     return apiRequest<CreditResponse[]>('/api/credits', { token })
   },
 
+  async listByAccount(token: string, accountID: number): Promise<CreditResponse[]> {
+    const credits = await apiRequest<CreditResponse[]>('/api/credits', { token })
+    return credits.filter((credit) => credit.account_id === accountID)
+  },
+
   get(token: string, creditID: number): Promise<CreditResponse> {
     return apiRequest<CreditResponse>(`/api/credits/${creditID}`, { token })
   },
