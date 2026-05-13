@@ -55,7 +55,7 @@ export const menuItems: MenuItem[] = [
     title: 'Credits',
     description: 'Проверка, оформление, график',
     icon: '%',
-    implemented: false,
+    implemented: true,
   },
   {
     key: 'analytics',

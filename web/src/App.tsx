@@ -11,6 +11,7 @@ import { AdminPage } from './pages/AdminPage'
 import { AccountsPage } from './pages/AccountsPage'
 import { AuthPage } from './pages/AuthPage'
 import { CardsPage } from './pages/CardsPage'
+import { CreditsPage } from './pages/CreditsPage'
 import { HealthPage } from './pages/HealthPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -224,6 +225,14 @@ function App() {
 
         {activeMenu === 'transfers' && (
           <TransfersPage
+            token={token}
+            sharedAccountId={sharedAccountId}
+            onSharedAccountIdChange={setSharedAccountId}
+          />
+        )}
+
+        {activeMenu === 'credits' && (
+          <CreditsPage
             token={token}
             sharedAccountId={sharedAccountId}
             onSharedAccountIdChange={setSharedAccountId}
