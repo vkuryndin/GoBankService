@@ -24,6 +24,8 @@ var (
 type authUserStore interface {
 	Create(ctx context.Context, email, username, passwordHash string) (*models.User, error)
 	FindByLogin(ctx context.Context, login string) (*models.User, error)
+	FindByID(ctx context.Context, userID int64) (*models.User, error)
+	IsAdmin(ctx context.Context, userID int64) (bool, error)
 }
 
 type revokedTokenStore interface {
@@ -165,6 +167,34 @@ func (s *AuthService) Logout(ctx context.Context, tokenString string) error {
 	}
 
 	return nil
+}
+
+func (s *AuthService) CheckAuth(ctx context.Context, userID int64) (*dto.AuthCheckResponse, error) {
+	user, err := s.userRepository.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrUserNotFound) {
+			return nil, ErrInvalidToken
+		}
+
+		return nil, err
+	}
+
+	isAdmin, err := s.userRepository.IsAdmin(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrUserNotFound) {
+			return nil, ErrInvalidToken
+		}
+
+		return nil, err
+	}
+
+	return &dto.AuthCheckResponse{
+		Authenticated: true,
+		UserID:        user.ID,
+		Email:         user.Email,
+		Username:      user.Username,
+		IsAdmin:       isAdmin,
+	}, nil
 }
 
 func normalizeRegistrationInput(request dto.RegisterRequest) (string, string, string, error) {

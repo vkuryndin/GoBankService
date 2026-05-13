@@ -25,6 +25,10 @@ var (
 	logoutErrorRules = errorRules{
 		{target: services.ErrInvalidToken, status: http.StatusUnauthorized, message: "invalid token"},
 	}
+
+	authCheckErrorRules = errorRules{
+		{target: services.ErrInvalidToken, status: http.StatusUnauthorized, message: "invalid token"},
+	}
 )
 
 type AuthHandler struct {
@@ -117,8 +121,9 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
-	handleAuthed(w, r, nil, "auth check failed",
+	handleAuthed(w, r, authCheckErrorRules, "auth check failed",
 		func(ctx context.Context, userID int64) (int, any, error) {
-			return http.StatusOK, map[string]any{"authenticated": true, "user_id": userID}, nil
+			response, err := h.authService.CheckAuth(ctx, userID)
+			return http.StatusOK, response, err
 		})
 }

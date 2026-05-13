@@ -186,21 +186,16 @@ h4 {
   font-size: 15px;
 }
 
-.tokenStatus {
+.logoutButton {
   flex: 0 0 auto;
-  padding: 8px 13px;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #f9fafb;
-  color: #6b7280;
-  font-size: 13px;
-  font-weight: 700;
+  border: 1px solid #fecaca;
+  background: #ffffff;
+  color: #b91c1c;
 }
 
-.tokenStatus.success {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
+.logoutButton:hover {
+  background: #fef2f2;
+  box-shadow: 0 8px 18px rgba(185, 28, 28, 0.1);
 }
 
 .panel {
@@ -210,6 +205,14 @@ h4 {
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+}
+
+.slimPanel {
+  margin-bottom: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .panelHeader {
@@ -337,6 +340,11 @@ button.danger:hover {
   padding: 12px 14px;
   border-radius: 12px;
   font-weight: 600;
+}
+
+.slimPanel .alert,
+.slimPanel .notice {
+  margin-top: 0;
 }
 
 .alert {

@@ -1,5 +1,5 @@
 ### Variables
-@baseUrl = http://18.185.7.63
+@baseUrl = http://18.185.7.63/api
 
 
 @baseUrl2 = http://localhost:8080

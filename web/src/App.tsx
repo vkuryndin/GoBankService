@@ -39,11 +39,16 @@ type LoginResponse = {
 type AuthCheckResponse = {
   authenticated: boolean
   user_id: number
+  email: string
+  username: string
+  is_admin: boolean
 }
 
 type CurrentUser = {
   authenticated: boolean
   user_id: number
+  email: string
+  username: string
   is_admin: boolean
 }
 
@@ -276,6 +281,7 @@ function App() {
   const [registerState, setRegisterState] = useState<RequestState>(emptyState)
   const [loginState, setLoginState] = useState<RequestState>(emptyState)
   const [authCheckState, setAuthCheckState] = useState<RequestState>(emptyState)
+  const [logoutState, setLogoutState] = useState<RequestState>(emptyState)
   const [sessionsState, setSessionsState] = useState<RequestState>(emptyState)
 
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
@@ -325,6 +331,7 @@ function App() {
     localStorage.removeItem(tokenStorageKey)
     setCurrentUser(null)
   }, [token])
+
 
   const authHeaders = (withJSON = false): Record<string, string> => {
     const headers: Record<string, string> = {
@@ -398,6 +405,28 @@ function App() {
           }
         : account,
     )
+  }
+
+  const resetUserData = () => {
+    setToken('')
+    setCurrentUser(null)
+    setSessions([])
+    setAccounts([])
+    setSelectedAccount(null)
+    setSelectedAccountId('')
+    setPredictResult(null)
+    setCloseResult(null)
+    setLoginState(emptyState)
+    setAuthCheckState(emptyState)
+    setSessionsState(emptyState)
+    setAccountsState(emptyState)
+    setCreateAccountState(emptyState)
+    setAccountDetailsState(emptyState)
+    setDepositState(emptyState)
+    setWithdrawMfaState(emptyState)
+    setWithdrawState(emptyState)
+    setPredictState(emptyState)
+    setCloseAccountState(emptyState)
   }
 
   const checkHealth = async () => {
@@ -490,6 +519,7 @@ function App() {
       success: '',
     })
     setAuthCheckState(emptyState)
+    setLogoutState(emptyState)
     setSessionsState(emptyState)
     setSessions([])
 
@@ -512,10 +542,10 @@ function App() {
       setLoginState({
         loading: false,
         error: '',
-        success: 'Login выполнен. JWT сохранен.',
+        success: 'Вход выполнен.',
       })
     } catch (error) {
-      setToken('')
+      resetUserData()
       setLoginState({
         loading: false,
         error: error instanceof Error ? error.message : 'Login failed',
@@ -528,7 +558,7 @@ function App() {
     if (!tokenToCheck) {
       setAuthCheckState({
         loading: false,
-        error: 'JWT отсутствует.',
+        error: 'Токен отсутствует.',
         success: '',
       })
       setCurrentUser(null)
@@ -551,19 +581,20 @@ function App() {
       })
 
       const data = await parseResponse<AuthCheckResponse>(response)
-      const isAdmin = await checkAdminAccess(tokenToCheck)
 
       setCurrentUser({
         authenticated: data.authenticated,
         user_id: data.user_id,
-        is_admin: isAdmin,
+        email: data.email,
+        username: data.username,
+        is_admin: data.is_admin,
       })
 
       setAuthCheckState({
         loading: false,
         error: '',
-        success: `Текущий пользователь: user_id ${data.user_id}. Статус: ${
-          isAdmin ? 'администратор' : 'обычный пользователь'
+        success: `Вы вошли как ${data.email}. Роль: ${
+          data.is_admin ? 'администратор' : 'пользователь'
         }.`,
       })
     } catch (error) {
@@ -579,38 +610,39 @@ function App() {
     }
   }
 
-  const checkAdminAccess = async (tokenToCheck: string): Promise<boolean> => {
-    const response = await fetch('/api/admin/logged-in-users', {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${tokenToCheck}`,
-      },
+  const handleLogout = async () => {
+    if (!token) {
+      resetUserData()
+      return
+    }
+
+    setLogoutState({
+      loading: true,
+      error: '',
+      success: '',
     })
 
-    if (response.ok) {
-      return true
+    try {
+      const response = await fetch('/api/logout', {
+        method: 'POST',
+        headers: authHeaders(),
+      })
+
+      await parseResponse<{ message: string }>(response)
+
+      resetUserData()
+      setLogoutState({
+        loading: false,
+        error: '',
+        success: 'Вы вышли из системы.',
+      })
+    } catch (error) {
+      setLogoutState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Logout failed',
+        success: '',
+      })
     }
-
-    if (response.status === 403) {
-      return false
-    }
-
-    const body = await readResponseBody(response)
-    throw new Error(getErrorMessage(body) || `HTTP ${response.status}`)
-  }
-
-  const clearToken = () => {
-    setToken('')
-    setCurrentUser(null)
-    setSessions([])
-    setAccounts([])
-    setSelectedAccount(null)
-    setSelectedAccountId('')
-    setLoginState(emptyState)
-    setAuthCheckState(emptyState)
-    setSessionsState(emptyState)
-    setAccountsState(emptyState)
   }
 
   const loadLoggedInUsers = async () => {
@@ -1042,6 +1074,14 @@ function App() {
     }
   }
 
+  const topbarUserText = currentUser
+    ? `Вы вошли как ${currentUser.email}. Роль: ${
+        currentUser.is_admin ? 'администратор' : 'пользователь'
+      }.`
+    : isAuthenticated
+      ? 'Проверяю текущего пользователя...'
+      : 'Вы не вошли в систему.'
+
   return (
     <main className="app">
       <aside className="sidebar">
@@ -1073,19 +1113,23 @@ function App() {
           <div>
             <p className="eyebrow">Bank Service</p>
             <h1>{getPageTitle(activeMenu)}</h1>
-            <p className="currentUser">
-              {currentUser
-                ? `Сейчас вы вошли как user_id ${currentUser.user_id}. Роль: ${
-                    currentUser.is_admin ? 'администратор' : 'пользователь'
-                  }.`
-                : 'Сейчас пользователь не определен'}
-            </p>
+            <p className="currentUser">{topbarUserText}</p>
           </div>
 
-          <div className={isAuthenticated ? 'tokenStatus success' : 'tokenStatus'}>
-            {isAuthenticated ? 'Токен сохранён' : 'Токен отсутствует'}
-          </div>
+          {isAuthenticated && (
+            <button
+              className="logoutButton"
+              type="button"
+              onClick={handleLogout}
+              disabled={logoutState.loading}
+            >
+              {logoutState.loading ? 'Выходим...' : 'Выйти'}
+            </button>
+          )}
         </header>
+
+        {logoutState.error && <div className="panel slimPanel"><RequestMessage state={logoutState} /></div>}
+        {logoutState.success && <div className="panel slimPanel"><RequestMessage state={logoutState} /></div>}
 
         {activeMenu === 'health' && (
           <section className="panel">
@@ -1229,12 +1273,6 @@ function App() {
                 <button type="submit" disabled={loginState.loading}>
                   {loginState.loading ? 'Вхожу...' : 'Войти'}
                 </button>
-
-                {isAuthenticated && (
-                  <button className="secondary" type="button" onClick={clearToken}>
-                    Очистить токен
-                  </button>
-                )}
               </div>
             </form>
 
@@ -1243,7 +1281,7 @@ function App() {
 
             {isAuthenticated && (
               <div className="tokenBox">
-                <span>Текущий JWT</span>
+                <span>Текущий токен</span>
                 <code>{maskedToken}</code>
               </div>
             )}
@@ -1252,13 +1290,19 @@ function App() {
               <div className="currentUserBox">
                 <strong>Текущая сессия</strong>
                 <p>
-                  Пользователь авторизован. <code>user_id: {currentUser.user_id}</code>
+                  Вы вошли как <code>{currentUser.email}</code>.
+                </p>
+                <p>
+                  Username: <code>{currentUser.username}</code>
                 </p>
                 <p>
                   Роль:{' '}
                   <code>
                     {currentUser.is_admin ? 'администратор' : 'пользователь'}
                   </code>
+                </p>
+                <p>
+                  User ID: <code>{currentUser.user_id}</code>
                 </p>
               </div>
             )}
