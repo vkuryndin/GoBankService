@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { accountsApi } from '../api/accountsApi'
+import { mfaApi } from '../api/mfaApi'
+import { transfersApi } from '../api/transfersApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
 import type { TransferResponse } from '../types/transfer'
 import {
-  createIdempotencyKey,
   getAccountBadgeClass,
   getAccountStatusText,
 } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type TransfersPageProps = {
   token: string
@@ -57,7 +60,7 @@ export function TransfersPage({
     setAccountsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await apiRequest<AccountResponse[]>('/api/accounts', { token })
+      const data = await accountsApi.list(token)
       setAccounts(Array.isArray(data) ? data : [])
       setAccountsState({ loading: false, error: '', success: 'Список счетов загружен.' })
     } catch (error) {
@@ -104,15 +107,11 @@ export function TransfersPage({
     setTransferMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await apiRequest<{ message: string }>('/api/mfa/request', {
-        method: 'POST',
-        token,
-        body: {
-          purpose: 'transfer',
-          from_account_id: ids.fromAccountID,
-          to_account_id: ids.toAccountID,
-          amount: transferAmount,
-        },
+      await mfaApi.request(token, {
+        purpose: 'transfer',
+        from_account_id: ids.fromAccountID,
+        to_account_id: ids.toAccountID,
+        amount: transferAmount,
       })
 
       setTransferMfaState({ loading: false, error: '', success: 'MFA-код для перевода отправлен.' })
@@ -141,17 +140,12 @@ export function TransfersPage({
     setTransferResult(null)
 
     try {
-      const data = await apiRequest<TransferResponse>('/api/transfer', {
-        method: 'POST',
-        token,
-        headers: { 'Idempotency-Key': createIdempotencyKey() },
-        body: {
-          from_account_id: ids.fromAccountID,
-          to_account_id: ids.toAccountID,
-          amount: transferAmount,
-          description: transferDescription,
-          mfa_code: transferMfaCode,
-        },
+      const data = await transfersApi.transfer(token, {
+        from_account_id: ids.fromAccountID,
+        to_account_id: ids.toAccountID,
+        amount: transferAmount,
+        description: transferDescription,
+        mfa_code: transferMfaCode,
       })
 
       setTransferResult(data)
@@ -167,7 +161,7 @@ export function TransfersPage({
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Переводы между счетами</h2>
@@ -177,13 +171,13 @@ export function TransfersPage({
         </div>
 
         <div className="actions">
-          <button className="secondary" type="button" onClick={loadAccounts} disabled={accountsState.loading || !token}>
+          <Button className="secondary" type="button" onClick={loadAccounts} disabled={accountsState.loading || !token}>
             {accountsState.loading ? 'Загружаю...' : 'Загрузить мои счета'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <RequestMessage state={accountsState} />
+      <RequestStatus state={accountsState} />
 
       <div className="transfersLayout">
         <section className="subPanel">
@@ -199,7 +193,7 @@ export function TransfersPage({
           {accounts.length > 0 && (
             <div className="accountList">
               {accounts.map((account) => (
-                <button
+                <Button
                   key={account.id}
                   className={transferFromAccountId === String(account.id) ? 'accountItem active' : 'accountItem'}
                   type="button"
@@ -211,7 +205,7 @@ export function TransfersPage({
                     <span>{account.balance} {account.currency}</span>
                     <span className={getAccountBadgeClass(account)}>{getAccountStatusText(account)}</span>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -242,10 +236,10 @@ export function TransfersPage({
             </label>
 
             <div className="transferMfaBox">
-              <button className="secondary" type="button" onClick={requestTransferMFA} disabled={transferMfaState.loading || !token}>
+              <Button className="secondary" type="button" onClick={requestTransferMFA} disabled={transferMfaState.loading || !token}>
                 {transferMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-              </button>
-              <RequestMessage state={transferMfaState} />
+              </Button>
+              <RequestStatus state={transferMfaState} />
             </div>
 
             <label>
@@ -253,11 +247,11 @@ export function TransfersPage({
               <input value={transferMfaCode} onChange={(event) => setTransferMfaCode(event.target.value)} placeholder="6 цифр" />
             </label>
 
-            <button type="submit" disabled={transferState.loading || !token}>
+            <Button type="submit" disabled={transferState.loading || !token}>
               {transferState.loading ? 'Перевожу...' : 'Выполнить перевод'}
-            </button>
+            </Button>
 
-            <RequestMessage state={transferState} />
+            <RequestStatus state={transferState} />
           </form>
 
           {transferResult && (
@@ -275,6 +269,6 @@ export function TransfersPage({
           )}
         </section>
       </div>
-    </section>
+    </Card>
   )
 }

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { ratesApi } from '../api/ratesApi'
+import { RequestStatus } from '../components/RequestStatus'
 import { emptyState, type RequestState } from '../types/common'
 import type { KeyRateResponse } from '../types/rate'
 import { formatDate } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type RatesPageProps = {
   token: string
@@ -58,7 +60,7 @@ export function RatesPage({ token }: RatesPageProps) {
     })
 
     try {
-      const data = await apiRequest<KeyRateResponse>('/api/rates/key', { token })
+      const data = await ratesApi.keyRate(token)
       const cachedRate: CachedKeyRateResponse = {
         ...data,
         fetched_at: new Date().toISOString(),
@@ -87,7 +89,7 @@ export function RatesPage({ token }: RatesPageProps) {
   }
 
   return (
-    <section className="panel ratesPage">
+    <Card variant="plain" className="panel ratesPage">
       <div className="panelHeader">
         <div>
           <h2>Ставки</h2>
@@ -97,18 +99,18 @@ export function RatesPage({ token }: RatesPageProps) {
         </div>
 
         <div className="actions">
-          <button type="button" onClick={loadRate} disabled={rateState.loading || !token}>
+          <Button type="button" onClick={loadRate} disabled={rateState.loading || !token}>
             {rateState.loading ? 'Загружаю...' : rate ? 'Обновить ставку' : 'Получить ставку'}
-          </button>
+          </Button>
           {rate && (
-            <button className="secondary" type="button" onClick={clearRate}>
+            <Button className="secondary" type="button" onClick={clearRate}>
               Очистить
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
-      <RequestMessage state={rateState} />
+      <RequestStatus state={rateState} />
 
       {!rate && !rateState.error && (
         <div className="empty">
@@ -156,6 +158,6 @@ export function RatesPage({ token }: RatesPageProps) {
           </div>
         </>
       )}
-    </section>
+    </Card>
   )
 }

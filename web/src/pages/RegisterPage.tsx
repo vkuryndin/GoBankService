@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { authApi } from '../api/authApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { RegisterResponse } from '../types/auth'
 import { emptyState, type RequestState } from '../types/common'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type RegisterPageProps = {
   onRegistered: (email: string) => void
@@ -28,13 +30,10 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
     setRegisteredUser(null)
 
     try {
-      const data = await apiRequest<RegisterResponse>('/api/register', {
-        method: 'POST',
-        body: {
-          email: registerEmail,
-          username: registerUsername,
-          password: registerPassword,
-        },
+      const data = await authApi.register({
+        email: registerEmail,
+        username: registerUsername,
+        password: registerPassword,
       })
 
       setRegisteredUser(data)
@@ -55,7 +54,7 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Регистрация</h2>
@@ -98,23 +97,23 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
         </label>
 
         <div className="actions">
-          <button type="submit" disabled={registerState.loading}>
+          <Button type="submit" disabled={registerState.loading}>
             {registerState.loading ? 'Регистрирую...' : 'Зарегистрировать'}
-          </button>
+          </Button>
         </div>
       </form>
 
-      <RequestMessage state={registerState} />
+      <RequestStatus state={registerState} />
 
       {registeredUser && (
         <div className="result success">
           <strong>Пользователь создан</strong>
           <pre>{JSON.stringify(registeredUser, null, 2)}</pre>
-          <button className="secondary topGap" type="button" onClick={onOpenAuth}>
+          <Button className="secondary topGap" type="button" onClick={onOpenAuth}>
             Перейти к Login
-          </button>
+          </Button>
         </div>
       )}
-    </section>
+    </Card>
   )
 }

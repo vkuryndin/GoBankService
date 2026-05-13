@@ -1,5 +1,6 @@
 import type { CurrentUser } from '../types/auth'
 import type { RequestState } from '../types/common'
+import { Button } from './ui/Button'
 
 type TopbarProps = {
   title: string
@@ -39,14 +40,14 @@ export function Topbar({
       </div>
 
       {isAuthenticated && (
-        <button
+        <Button
           className="logoutButton"
           type="button"
           onClick={onLogout}
           disabled={logoutLoading}
         >
           {logoutLoading ? 'Выходим...' : 'Выйти'}
-        </button>
+        </Button>
       )}
     </header>
   )

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { accountsApi } from '../api/accountsApi'
+import { creditsApi } from '../api/creditsApi'
+import { mfaApi } from '../api/mfaApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
 import type {
@@ -10,11 +12,12 @@ import type {
   PaymentScheduleResponse,
 } from '../types/credit'
 import {
-  createIdempotencyKey,
   formatDate,
   getAccountBadgeClass,
   getAccountStatusText,
 } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type CreditsPageProps = {
   token: string
@@ -149,7 +152,7 @@ export function CreditsPage({
     setAccountsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await apiRequest<AccountResponse[]>('/api/accounts', { token })
+      const data = await accountsApi.list(token)
       setAccounts(Array.isArray(data) ? data : [])
       setAccountsState({ loading: false, error: '', success: 'Список счетов загружен.' })
     } catch (error) {
@@ -177,11 +180,7 @@ export function CreditsPage({
     setCreditCheck(null)
 
     try {
-      const data = await apiRequest<CreditCheckResponse>('/api/credits/check', {
-        method: 'POST',
-        token,
-        body: request,
-      })
+      const data = await creditsApi.check(token, request)
 
       setCreditCheck(data)
       setCheckCreditState({
@@ -213,15 +212,11 @@ export function CreditsPage({
     setCreditMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await apiRequest<{ message: string }>('/api/mfa/request', {
-        method: 'POST',
-        token,
-        body: {
-          purpose: 'credit_create',
-          account_id: request.account_id,
-          principal_amount: request.principal_amount,
-          term_months: request.term_months,
-        },
+      await mfaApi.request(token, {
+        purpose: 'credit_create',
+        account_id: request.account_id,
+        principal_amount: request.principal_amount,
+        term_months: request.term_months,
       })
 
       setCreditMfaState({
@@ -252,14 +247,9 @@ export function CreditsPage({
     setCreatedCredit(null)
 
     try {
-      const data = await apiRequest<CreditResponse>('/api/credits', {
-        method: 'POST',
-        token,
-        headers: { 'Idempotency-Key': createIdempotencyKey() },
-        body: {
-          ...request,
-          mfa_code: creditMfaCode,
-        },
+      const data = await creditsApi.create(token, {
+        ...request,
+        mfa_code: creditMfaCode,
       })
 
       setCreatedCredit(data)
@@ -283,7 +273,7 @@ export function CreditsPage({
     setCreditsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await apiRequest<CreditResponse[]>('/api/credits', { token })
+      const data = await creditsApi.list(token)
       const list = Array.isArray(data) ? data : []
       setCredits(list)
       setCreditsState({ loading: false, error: '', success: 'Список кредитов загружен.' })
@@ -318,7 +308,7 @@ export function CreditsPage({
     setCreditDetailsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await apiRequest<CreditResponse>(`/api/credits/${creditID}`, { token })
+      const data = await creditsApi.get(token, creditID)
       upsertCredit(data)
       setCreditDetailsState({ loading: false, error: '', success: 'Данные кредита обновлены.' })
     } catch (error) {
@@ -345,10 +335,7 @@ export function CreditsPage({
     setSchedule([])
 
     try {
-      const data = await apiRequest<PaymentScheduleResponse[]>(
-        `/api/credits/${creditID}/schedule`,
-        { token },
-      )
+      const data = await creditsApi.schedule(token, creditID)
 
       setSchedule(Array.isArray(data) ? data : [])
       setScheduleState({ loading: false, error: '', success: 'График платежей загружен.' })
@@ -362,7 +349,7 @@ export function CreditsPage({
   }
 
   return (
-    <section className="panel creditsPage">
+    <Card variant="plain" className="panel creditsPage">
       <div className="panelHeader creditsHeader">
         <div>
           <h2>Кредиты</h2>
@@ -372,22 +359,22 @@ export function CreditsPage({
         </div>
 
         <div className="actions">
-          <button
+          <Button
             className="secondary"
             type="button"
             onClick={loadAccounts}
             disabled={accountsState.loading || !token}
           >
             {accountsState.loading ? 'Загружаю...' : 'Загрузить счета'}
-          </button>
-          <button type="button" onClick={loadCredits} disabled={creditsState.loading || !token}>
+          </Button>
+          <Button type="button" onClick={loadCredits} disabled={creditsState.loading || !token}>
             {creditsState.loading ? 'Загружаю...' : 'Загрузить кредиты'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <RequestMessage state={accountsState} />
-      <RequestMessage state={creditsState} />
+      <RequestStatus state={accountsState} />
+      <RequestStatus state={creditsState} />
 
       <div className="creditsWorkspace">
         <section className="subPanel creditsPickerPanel">
@@ -408,7 +395,7 @@ export function CreditsPage({
           {accounts.length > 0 && (
             <div className="creditPickerList">
               {accounts.map((account) => (
-                <button
+                <Button
                   key={account.id}
                   className={
                     creditAccountId === String(account.id)
@@ -428,7 +415,7 @@ export function CreditsPage({
                     <span>ID {account.id}</span>
                     <span>{account.balance} {account.currency}</span>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -452,7 +439,7 @@ export function CreditsPage({
           {credits.length > 0 && (
             <div className="creditPickerList">
               {credits.map((credit) => (
-                <button
+                <Button
                   key={credit.id}
                   className={
                     selectedCreditId === String(credit.id)
@@ -470,7 +457,7 @@ export function CreditsPage({
                     <span>account_id {credit.account_id}</span>
                     <span>{credit.principal_amount}</span>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -512,12 +499,12 @@ export function CreditsPage({
               />
             </label>
 
-            <button type="submit" disabled={checkCreditState.loading || !token}>
+            <Button type="submit" disabled={checkCreditState.loading || !token}>
               {checkCreditState.loading ? 'Проверяю...' : 'Проверить кредит'}
-            </button>
+            </Button>
           </form>
 
-          <RequestMessage state={checkCreditState} />
+          <RequestStatus state={checkCreditState} />
 
           {creditCheck && (
             <div className={creditCheck.eligible ? 'creditDecision successDecision' : 'creditDecision errorDecision'}>
@@ -546,14 +533,14 @@ export function CreditsPage({
           )}
 
           <div className="creditMfaRow">
-            <button
+            <Button
               className="secondary"
               type="button"
               onClick={requestCreditMFA}
               disabled={creditMfaState.loading || !token}
             >
               {creditMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-            </button>
+            </Button>
 
             <label>
               <span>MFA code</span>
@@ -564,17 +551,17 @@ export function CreditsPage({
               />
             </label>
 
-            <button
+            <Button
               type="button"
               onClick={createCredit}
               disabled={createCreditState.loading || !token}
             >
               {createCreditState.loading ? 'Оформляю...' : 'Оформить кредит'}
-            </button>
+            </Button>
           </div>
 
-          <RequestMessage state={creditMfaState} />
-          <RequestMessage state={createCreditState} />
+          <RequestStatus state={creditMfaState} />
+          <RequestStatus state={createCreditState} />
 
           {createdCredit && (
             <div className="result success compactResult">
@@ -612,21 +599,21 @@ export function CreditsPage({
             </div>
 
             <div className="actions topGap">
-              <button
+              <Button
                 className="secondary"
                 type="button"
                 onClick={loadCreditDetails}
                 disabled={creditDetailsState.loading}
               >
                 {creditDetailsState.loading ? 'Обновляю...' : 'Обновить кредит'}
-              </button>
-              <button type="button" onClick={loadSchedule} disabled={scheduleState.loading}>
+              </Button>
+              <Button type="button" onClick={loadSchedule} disabled={scheduleState.loading}>
                 {scheduleState.loading ? 'Загружаю...' : 'График платежей'}
-              </button>
+              </Button>
             </div>
 
-            <RequestMessage state={creditDetailsState} />
-            <RequestMessage state={scheduleState} />
+            <RequestStatus state={creditDetailsState} />
+            <RequestStatus state={scheduleState} />
 
             {schedule.length > 0 && (
               <div className="tableWrap scheduleTable topGap">
@@ -659,6 +646,6 @@ export function CreditsPage({
           </>
         )}
       </section>
-    </section>
+    </Card>
   )
 }

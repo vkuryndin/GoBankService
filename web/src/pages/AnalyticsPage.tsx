@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { accountsApi } from '../api/accountsApi'
+import { analyticsApi } from '../api/analyticsApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse, PredictBalanceResponse } from '../types/account'
 import type { AnalyticsResponse } from '../types/analytics'
 import { emptyState, type RequestState } from '../types/common'
@@ -9,6 +10,8 @@ import {
   getAccountBadgeClass,
   getAccountStatusText,
 } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type AnalyticsPageProps = {
   token: string
@@ -51,7 +54,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
     setAnalytics(null)
 
     try {
-      const data = await apiRequest<AnalyticsResponse>('/api/analytics', { token })
+      const data = await analyticsApi.summary(token)
 
       setAnalytics(data)
       setAnalyticsState({
@@ -80,7 +83,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
     })
 
     try {
-      const data = await apiRequest<AccountResponse[]>('/api/accounts', { token })
+      const data = await accountsApi.list(token)
       const list = Array.isArray(data) ? data : []
 
       setAccounts(list)
@@ -143,10 +146,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
     setPrediction(null)
 
     try {
-      const data = await apiRequest<PredictBalanceResponse>(
-        `/api/accounts/${accountID}/predict?days=${days}`,
-        { token },
-      )
+      const data = await analyticsApi.predictBalance(token, accountID, days)
 
       setPrediction(data)
       setPredictionState({
@@ -164,7 +164,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
   }
 
   return (
-    <section className="panel analyticsPage">
+    <Card variant="plain" className="panel analyticsPage">
       <div className="panelHeader">
         <div>
           <h2>Аналитика</h2>
@@ -174,22 +174,22 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
         </div>
 
         <div className="actions">
-          <button type="button" onClick={loadAnalytics} disabled={analyticsState.loading || !token}>
+          <Button type="button" onClick={loadAnalytics} disabled={analyticsState.loading || !token}>
             {analyticsState.loading ? 'Загружаю...' : 'Загрузить сводку'}
-          </button>
-          <button
+          </Button>
+          <Button
             className="secondary"
             type="button"
             onClick={loadAccounts}
             disabled={accountsState.loading || !token}
           >
             {accountsState.loading ? 'Загружаю...' : 'Загрузить счета'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <RequestMessage state={analyticsState} />
-      <RequestMessage state={accountsState} />
+      <RequestStatus state={analyticsState} />
+      <RequestStatus state={accountsState} />
 
       <div className="analyticsDashboard">
         <section className="subPanel analyticsSummaryPanel">
@@ -251,7 +251,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
           {accounts.length > 0 && (
             <div className="analyticsAccountList">
               {accounts.map((account) => (
-                <button
+                <Button
                   key={account.id}
                   className={
                     selectedAccountId === String(account.id)
@@ -271,7 +271,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
                     <span>ID {account.id}</span>
                     <span>{account.balance} {account.currency}</span>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -306,12 +306,12 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
               />
             </label>
 
-            <button type="submit" disabled={predictionState.loading || !token}>
+            <Button type="submit" disabled={predictionState.loading || !token}>
               {predictionState.loading ? 'Считаю...' : 'Получить прогноз'}
-            </button>
+            </Button>
           </form>
 
-          <RequestMessage state={predictionState} />
+          <RequestStatus state={predictionState} />
 
           {!prediction && !predictionState.error && (
             <div className="empty compactEmpty">
@@ -356,6 +356,6 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
           )}
         </section>
       </div>
-    </section>
+    </Card>
   )
 }

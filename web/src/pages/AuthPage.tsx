@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
-import type { CurrentUser, LoginResponse } from '../types/auth'
+import { authApi } from '../api/authApi'
+import { RequestStatus } from '../components/RequestStatus'
+import type { CurrentUser } from '../types/auth'
 import { emptyState, type RequestState } from '../types/common'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type AuthPageProps = {
   token: string
@@ -54,13 +56,7 @@ export function AuthPage({
     })
 
     try {
-      const data = await apiRequest<LoginResponse>('/api/login', {
-        method: 'POST',
-        body: {
-          login,
-          password,
-        },
-      })
+      const data = await authApi.login({ login, password })
 
       onLoginValueChange(login)
       onLoginSuccess(data.token)
@@ -80,7 +76,7 @@ export function AuthPage({
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Login и текущий пользователь</h2>
@@ -89,14 +85,14 @@ export function AuthPage({
           </p>
         </div>
 
-        <button
+        <Button
           className="secondary"
           type="button"
           onClick={onCheckCurrentUser}
           disabled={authCheckState.loading || !isAuthenticated}
         >
           {authCheckState.loading ? 'Проверяю...' : 'Кто я сейчас?'}
-        </button>
+        </Button>
       </div>
 
       <form className="form" onSubmit={handleLogin}>
@@ -125,14 +121,14 @@ export function AuthPage({
         </label>
 
         <div className="actions">
-          <button type="submit" disabled={loginState.loading}>
+          <Button type="submit" disabled={loginState.loading}>
             {loginState.loading ? 'Вхожу...' : 'Войти'}
-          </button>
+          </Button>
         </div>
       </form>
 
-      <RequestMessage state={loginState} />
-      <RequestMessage state={authCheckState} />
+      <RequestStatus state={loginState} />
+      <RequestStatus state={authCheckState} />
 
       {isAuthenticated && (
         <div className="tokenBox">
@@ -159,6 +155,6 @@ export function AuthPage({
           </p>
         </div>
       )}
-    </section>
+    </Card>
   )
 }

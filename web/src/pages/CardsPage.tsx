@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { cardsApi } from '../api/cardsApi'
+import { mfaApi } from '../api/mfaApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
 import { emptyState, type RequestState } from '../types/common'
 import {
-  createIdempotencyKey,
   formatDate,
   getCardBadgeClass,
   getCardDisplayNumber,
   getCardStatusText,
   isCardClosed,
 } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type CardsPageProps = {
   token: string
@@ -111,7 +113,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await apiRequest<CardResponse[]>('/api/cards', { token })
+      const data = await cardsApi.list(token)
       const list = Array.isArray(data) ? data : []
       setCards(list)
       setCardsState({ loading: false, error: '', success: 'Список карт загружен.' })
@@ -148,11 +150,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCreatedCard(null)
 
     try {
-      const card = await apiRequest<CardResponse>('/api/cards', {
-        method: 'POST',
-        token,
-        body: { account_id: accountID },
-      })
+      const card = await cardsApi.create(token, accountID)
 
       upsertCard(card)
       setCreatedCard(card)
@@ -184,7 +182,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardDetailsState({ loading: true, error: '', success: '' })
 
     try {
-      const card = await apiRequest<CardResponse>(`/api/cards/${cardID}`, { token })
+      const card = await cardsApi.get(token, cardID)
       upsertCard(card)
       setCardDetailsState({ loading: false, error: '', success: 'Данные карты обновлены.' })
     } catch (error) {
@@ -210,10 +208,10 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardPaymentMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await apiRequest<{ message: string }>('/api/mfa/request', {
-        method: 'POST',
-        token,
-        body: { purpose: 'card_payment', card_id: cardID, amount: cardPaymentAmount },
+      await mfaApi.request(token, {
+        purpose: 'card_payment',
+        card_id: cardID,
+        amount: cardPaymentAmount,
       })
 
       setCardPaymentMfaState({
@@ -247,16 +245,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardPaymentResult(null)
 
     try {
-      const data = await apiRequest<CardPaymentResponse>(`/api/cards/${cardID}/pay`, {
-        method: 'POST',
-        token,
-        headers: { 'Idempotency-Key': createIdempotencyKey() },
-        body: {
-          amount: cardPaymentAmount,
-          cvv: cardPaymentCVV,
-          mfa_code: cardPaymentMfaCode,
-          description: cardPaymentDescription,
-        },
+      const data = await cardsApi.pay(token, cardID, {
+        amount: cardPaymentAmount,
+        cvv: cardPaymentCVV,
+        mfa_code: cardPaymentMfaCode,
+        description: cardPaymentDescription,
       })
 
       setCardPaymentResult(data)
@@ -291,15 +284,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardTransferMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await apiRequest<{ message: string }>('/api/mfa/request', {
-        method: 'POST',
-        token,
-        body: {
-          purpose: 'card_transfer',
-          card_id: cardID,
-          to_card_id: toCardID,
-          amount: cardTransferAmount,
-        },
+      await mfaApi.request(token, {
+        purpose: 'card_transfer',
+        card_id: cardID,
+        to_card_id: toCardID,
+        amount: cardTransferAmount,
       })
 
       setCardTransferMfaState({
@@ -339,21 +328,13 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardTransferResult(null)
 
     try {
-      const data = await apiRequest<CardTransferResponse>(
-        `/api/cards/${cardID}/transfer`,
-        {
-          method: 'POST',
-          token,
-          headers: { 'Idempotency-Key': createIdempotencyKey() },
-          body: {
-            to_card_id: toCardID,
-            amount: cardTransferAmount,
-            cvv: cardTransferCVV,
-            mfa_code: cardTransferMfaCode,
-            description: cardTransferDescription,
-          },
-        },
-      )
+      const data = await cardsApi.transfer(token, cardID, {
+        to_card_id: toCardID,
+        amount: cardTransferAmount,
+        cvv: cardTransferCVV,
+        mfa_code: cardTransferMfaCode,
+        description: cardTransferDescription,
+      })
 
       setCardTransferResult(data)
       setCardTransferMfaCode('')
@@ -387,11 +368,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardCloseResult(null)
 
     try {
-      const data = await apiRequest<CloseCardResponse>(`/api/cards/${cardID}/close`, {
-        method: 'POST',
-        token,
-        headers: { 'Idempotency-Key': createIdempotencyKey() },
-      })
+      const data = await cardsApi.close(token, cardID)
 
       setCardCloseResult(data)
       applyClosedCard(data)
@@ -406,7 +383,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Карты пользователя</h2>
@@ -414,13 +391,13 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
         </div>
 
         <div className="actions">
-          <button type="button" onClick={loadCards} disabled={cardsState.loading || !token}>
+          <Button type="button" onClick={loadCards} disabled={cardsState.loading || !token}>
             {cardsState.loading ? 'Загружаю...' : 'Загрузить карты'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <RequestMessage state={cardsState} />
+      <RequestStatus state={cardsState} />
 
       <div className="cardsLayout">
         <section className="subPanel">
@@ -432,12 +409,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
               <input value={createCardAccountId} onChange={(event) => setCreateCardAccountId(event.target.value)} placeholder="ID счета" />
             </label>
 
-            <button type="submit" disabled={createCardState.loading || !token}>
+            <Button type="submit" disabled={createCardState.loading || !token}>
               {createCardState.loading ? 'Выпускаю...' : 'Выпустить карту'}
-            </button>
+            </Button>
           </form>
 
-          <RequestMessage state={createCardState} />
+          <RequestStatus state={createCardState} />
 
           {createdCard && (
             <div className="result success">
@@ -458,7 +435,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
           {cards.length > 0 && (
             <div className="cardList">
               {cards.map((card) => (
-                <button
+                <Button
                   key={card.id}
                   className={selectedCardId === String(card.id) ? 'bankCardItem active' : 'bankCardItem'}
                   type="button"
@@ -470,7 +447,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                     <span>account_id {card.account_id}</span>
                     <span className={getCardBadgeClass(card)}>{getCardStatusText(card)}</span>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -497,12 +474,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
               </div>
 
               <div className="actions topGap">
-                <button className="secondary" type="button" onClick={loadCardDetails} disabled={cardDetailsState.loading}>
+                <Button className="secondary" type="button" onClick={loadCardDetails} disabled={cardDetailsState.loading}>
                   {cardDetailsState.loading ? 'Обновляю...' : 'Показать детали'}
-                </button>
+                </Button>
               </div>
 
-              <RequestMessage state={cardDetailsState} />
+              <RequestStatus state={cardDetailsState} />
 
               <div className="cardActionsGrid">
                 <form className="actionBox" onSubmit={handleCardPayment}>
@@ -512,18 +489,18 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                   <label><span>Amount</span><input value={cardPaymentAmount} onChange={(event) => setCardPaymentAmount(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
                   <label><span>Description</span><input value={cardPaymentDescription} onChange={(event) => setCardPaymentDescription(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
 
-                  <button className="secondary" type="button" onClick={requestCardPaymentMFA} disabled={cardPaymentMfaState.loading || isCardClosed(selectedCard)}>
+                  <Button className="secondary" type="button" onClick={requestCardPaymentMFA} disabled={cardPaymentMfaState.loading || isCardClosed(selectedCard)}>
                     {cardPaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-                  </button>
-                  <RequestMessage state={cardPaymentMfaState} />
+                  </Button>
+                  <RequestStatus state={cardPaymentMfaState} />
 
                   <label><span>CVV</span><input value={cardPaymentCVV} onChange={(event) => setCardPaymentCVV(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
                   <label><span>MFA code</span><input value={cardPaymentMfaCode} onChange={(event) => setCardPaymentMfaCode(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
 
-                  <button type="submit" disabled={cardPaymentState.loading || isCardClosed(selectedCard)}>
+                  <Button type="submit" disabled={cardPaymentState.loading || isCardClosed(selectedCard)}>
                     {cardPaymentState.loading ? 'Оплачиваю...' : 'Оплатить'}
-                  </button>
-                  <RequestMessage state={cardPaymentState} />
+                  </Button>
+                  <RequestStatus state={cardPaymentState} />
                 </form>
 
                 <form className="actionBox" onSubmit={handleCardTransfer}>
@@ -534,27 +511,27 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                   <label><span>Amount</span><input value={cardTransferAmount} onChange={(event) => setCardTransferAmount(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
                   <label><span>Description</span><input value={cardTransferDescription} onChange={(event) => setCardTransferDescription(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
 
-                  <button className="secondary" type="button" onClick={requestCardTransferMFA} disabled={cardTransferMfaState.loading || isCardClosed(selectedCard)}>
+                  <Button className="secondary" type="button" onClick={requestCardTransferMFA} disabled={cardTransferMfaState.loading || isCardClosed(selectedCard)}>
                     {cardTransferMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-                  </button>
-                  <RequestMessage state={cardTransferMfaState} />
+                  </Button>
+                  <RequestStatus state={cardTransferMfaState} />
 
                   <label><span>CVV</span><input value={cardTransferCVV} onChange={(event) => setCardTransferCVV(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
                   <label><span>MFA code</span><input value={cardTransferMfaCode} onChange={(event) => setCardTransferMfaCode(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
 
-                  <button type="submit" disabled={cardTransferState.loading || isCardClosed(selectedCard)}>
+                  <Button type="submit" disabled={cardTransferState.loading || isCardClosed(selectedCard)}>
                     {cardTransferState.loading ? 'Перевожу...' : 'Перевести'}
-                  </button>
-                  <RequestMessage state={cardTransferState} />
+                  </Button>
+                  <RequestStatus state={cardTransferState} />
                 </form>
 
                 <div className="actionBox dangerZone">
                   <h4>Закрытие карты</h4>
                   <p>Закрытая карта больше не участвует в операциях.</p>
-                  <button className="danger" type="button" onClick={closeCard} disabled={cardCloseState.loading || isCardClosed(selectedCard)}>
+                  <Button className="danger" type="button" onClick={closeCard} disabled={cardCloseState.loading || isCardClosed(selectedCard)}>
                     {cardCloseState.loading ? 'Закрываю...' : 'Закрыть карту'}
-                  </button>
-                  <RequestMessage state={cardCloseState} />
+                  </Button>
+                  <RequestStatus state={cardCloseState} />
                 </div>
               </div>
 
@@ -565,6 +542,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
           )}
         </section>
       </div>
-    </section>
+    </Card>
   )
 }

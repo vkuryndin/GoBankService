@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { accountsApi } from '../api/accountsApi'
+import { mfaApi } from '../api/mfaApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
 import {
-  createIdempotencyKey,
   formatDate,
   getAccountBadgeClass,
   getAccountStatusText,
   isAccountClosed,
 } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type AccountsPageProps = {
   token: string
@@ -108,7 +110,7 @@ export function AccountsPage({
     setAccountsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await apiRequest<AccountResponse[]>('/api/accounts', { token })
+      const data = await accountsApi.list(token)
       const list = Array.isArray(data) ? data : []
       setAccounts(list)
       setAccountsState({ loading: false, error: '', success: 'Список счетов загружен.' })
@@ -138,10 +140,7 @@ export function AccountsPage({
     setCreateAccountState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await apiRequest<AccountResponse>('/api/accounts', {
-        method: 'POST',
-        token,
-      })
+      const account = await accountsApi.create(token)
 
       upsertAccount(account)
       setCreateAccountState({
@@ -172,9 +171,7 @@ export function AccountsPage({
     setAccountDetailsState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await apiRequest<AccountResponse>(`/api/accounts/${accountID}`, {
-        token,
-      })
+      const account = await accountsApi.get(token, accountID)
       upsertAccount(account)
       setAccountDetailsState({ loading: false, error: '', success: 'Данные счета обновлены.' })
     } catch (error) {
@@ -202,15 +199,7 @@ export function AccountsPage({
     setDepositState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await apiRequest<AccountResponse>(
-        `/api/accounts/${accountID}/deposit`,
-        {
-          method: 'POST',
-          token,
-          headers: { 'Idempotency-Key': createIdempotencyKey() },
-          body: { amount: depositAmount },
-        },
-      )
+      const account = await accountsApi.deposit(token, accountID, depositAmount)
 
       upsertAccount(account)
       setDepositState({
@@ -241,14 +230,10 @@ export function AccountsPage({
     setWithdrawMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await apiRequest<{ message: string }>('/api/mfa/request', {
-        method: 'POST',
-        token,
-        body: {
-          purpose: 'withdraw',
-          account_id: accountID,
-          amount: withdrawAmount,
-        },
+      await mfaApi.request(token, {
+        purpose: 'withdraw',
+        account_id: accountID,
+        amount: withdrawAmount,
       })
 
       setWithdrawMfaState({
@@ -281,17 +266,11 @@ export function AccountsPage({
     setWithdrawState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await apiRequest<AccountResponse>(
-        `/api/accounts/${accountID}/withdraw`,
-        {
-          method: 'POST',
-          token,
-          headers: { 'Idempotency-Key': createIdempotencyKey() },
-          body: {
-            amount: withdrawAmount,
-            mfa_code: withdrawMfaCode,
-          },
-        },
+      const account = await accountsApi.withdraw(
+        token,
+        accountID,
+        withdrawAmount,
+        withdrawMfaCode,
       )
 
       upsertAccount(account)
@@ -328,11 +307,7 @@ export function AccountsPage({
 
     try {
       const days = Number(predictDays)
-      const query = Number.isInteger(days) && days > 0 ? `?days=${days}` : ''
-      const data = await apiRequest<PredictBalanceResponse>(
-        `/api/accounts/${accountID}/predict${query}`,
-        { token },
-      )
+      const data = await accountsApi.predict(token, accountID, days)
 
       setPredictResult(data)
       setPredictState({ loading: false, error: '', success: 'Прогноз баланса получен.' })
@@ -367,14 +342,7 @@ export function AccountsPage({
     setCloseResult(null)
 
     try {
-      const data = await apiRequest<CloseAccountResponse>(
-        `/api/accounts/${accountID}/close`,
-        {
-          method: 'POST',
-          token,
-          headers: { 'Idempotency-Key': createIdempotencyKey() },
-        },
-      )
+      const data = await accountsApi.close(token, accountID)
 
       setCloseResult(data)
       applyClosedAccount(data)
@@ -389,7 +357,7 @@ export function AccountsPage({
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Счета пользователя</h2>
@@ -399,22 +367,22 @@ export function AccountsPage({
         </div>
 
         <div className="actions">
-          <button type="button" onClick={loadAccounts} disabled={accountsState.loading || !token}>
+          <Button type="button" onClick={loadAccounts} disabled={accountsState.loading || !token}>
             {accountsState.loading ? 'Загружаю...' : 'Загрузить счета'}
-          </button>
-          <button
+          </Button>
+          <Button
             className="secondary"
             type="button"
             onClick={createAccount}
             disabled={createAccountState.loading || !token}
           >
             {createAccountState.loading ? 'Создаю...' : 'Создать счет'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <RequestMessage state={accountsState} />
-      <RequestMessage state={createAccountState} />
+      <RequestStatus state={accountsState} />
+      <RequestStatus state={createAccountState} />
 
       <div className="accountsLayout">
         <section className="subPanel">
@@ -430,7 +398,7 @@ export function AccountsPage({
           {accounts.length > 0 && (
             <div className="accountList">
               {accounts.map((account) => (
-                <button
+                <Button
                   key={account.id}
                   className={selectedAccountId === String(account.id) ? 'accountItem active' : 'accountItem'}
                   type="button"
@@ -441,7 +409,7 @@ export function AccountsPage({
                     <span>{account.balance} {account.currency}</span>
                     <span className={getAccountBadgeClass(account)}>{getAccountStatusText(account)}</span>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -471,12 +439,12 @@ export function AccountsPage({
               </div>
 
               <div className="actions topGap">
-                <button className="secondary" type="button" onClick={loadAccountDetails} disabled={accountDetailsState.loading}>
+                <Button className="secondary" type="button" onClick={loadAccountDetails} disabled={accountDetailsState.loading}>
                   {accountDetailsState.loading ? 'Обновляю...' : 'Обновить данные'}
-                </button>
+                </Button>
               </div>
 
-              <RequestMessage state={accountDetailsState} />
+              <RequestStatus state={accountDetailsState} />
 
               <div className="accountActionsGrid">
                 <form className="actionBox" onSubmit={handleDeposit}>
@@ -486,10 +454,10 @@ export function AccountsPage({
                     <span>Amount</span>
                     <input value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} disabled={isAccountClosed(selectedAccount)} />
                   </label>
-                  <button type="submit" disabled={depositState.loading || isAccountClosed(selectedAccount)}>
+                  <Button type="submit" disabled={depositState.loading || isAccountClosed(selectedAccount)}>
                     {depositState.loading ? 'Пополняю...' : 'Пополнить'}
-                  </button>
-                  <RequestMessage state={depositState} />
+                  </Button>
+                  <RequestStatus state={depositState} />
                 </form>
 
                 <form className="actionBox" onSubmit={handleWithdraw}>
@@ -499,18 +467,18 @@ export function AccountsPage({
                     <span>Amount</span>
                     <input value={withdrawAmount} onChange={(event) => setWithdrawAmount(event.target.value)} disabled={isAccountClosed(selectedAccount)} />
                   </label>
-                  <button className="secondary" type="button" onClick={requestWithdrawMFA} disabled={withdrawMfaState.loading || isAccountClosed(selectedAccount)}>
+                  <Button className="secondary" type="button" onClick={requestWithdrawMFA} disabled={withdrawMfaState.loading || isAccountClosed(selectedAccount)}>
                     {withdrawMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-                  </button>
-                  <RequestMessage state={withdrawMfaState} />
+                  </Button>
+                  <RequestStatus state={withdrawMfaState} />
                   <label>
                     <span>MFA code</span>
                     <input value={withdrawMfaCode} onChange={(event) => setWithdrawMfaCode(event.target.value)} disabled={isAccountClosed(selectedAccount)} />
                   </label>
-                  <button type="submit" disabled={withdrawState.loading || isAccountClosed(selectedAccount)}>
+                  <Button type="submit" disabled={withdrawState.loading || isAccountClosed(selectedAccount)}>
                     {withdrawState.loading ? 'Списываю...' : 'Списать'}
-                  </button>
-                  <RequestMessage state={withdrawState} />
+                  </Button>
+                  <RequestStatus state={withdrawState} />
                 </form>
 
                 <form className="actionBox" onSubmit={loadPrediction}>
@@ -520,19 +488,19 @@ export function AccountsPage({
                     <span>Days</span>
                     <input value={predictDays} onChange={(event) => setPredictDays(event.target.value)} />
                   </label>
-                  <button type="submit" disabled={predictState.loading}>
+                  <Button type="submit" disabled={predictState.loading}>
                     {predictState.loading ? 'Считаю...' : 'Получить прогноз'}
-                  </button>
-                  <RequestMessage state={predictState} />
+                  </Button>
+                  <RequestStatus state={predictState} />
                 </form>
 
                 <div className="actionBox dangerZone">
                   <h4>Закрытие счета</h4>
                   <p>Закрытие возможно только при нулевом балансе и без активного кредита.</p>
-                  <button className="danger" type="button" onClick={closeAccount} disabled={closeAccountState.loading || isAccountClosed(selectedAccount)}>
+                  <Button className="danger" type="button" onClick={closeAccount} disabled={closeAccountState.loading || isAccountClosed(selectedAccount)}>
                     {closeAccountState.loading ? 'Закрываю...' : 'Закрыть счет'}
-                  </button>
-                  <RequestMessage state={closeAccountState} />
+                  </Button>
+                  <RequestStatus state={closeAccountState} />
                 </div>
               </div>
 
@@ -553,6 +521,6 @@ export function AccountsPage({
           )}
         </section>
       </div>
-    </section>
+    </Card>
   )
 }

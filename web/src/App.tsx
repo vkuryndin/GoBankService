@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 
-import { apiRequest } from './api/http'
+import { authApi } from './api/authApi'
 import { getPageTitle, menuItems } from './config/menu'
-import { RequestMessage } from './components/RequestMessage'
+import { RequestStatus } from './components/RequestStatus'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { AdminPage } from './pages/AdminPage'
@@ -19,7 +19,7 @@ import { RegisterPage } from './pages/RegisterPage'
 import { TransfersPage } from './pages/TransfersPage'
 import { RatesPage } from './pages/RatesPage'
 import { NotificationsPage } from './pages/NotificationsPage'
-import type { AuthCheckResponse, CurrentUser } from './types/auth'
+import type { CurrentUser } from './types/auth'
 import { emptyState, type MenuKey, type RequestState } from './types/common'
 
 const tokenStorageKey = 'bank_service_token'
@@ -76,9 +76,7 @@ function App() {
     })
 
     try {
-      const data = await apiRequest<AuthCheckResponse>('/api/auth/check', {
-        token: tokenToCheck,
-      })
+      const data = await authApi.check(tokenToCheck)
 
       setCurrentUser({
         authenticated: data.authenticated,
@@ -122,10 +120,7 @@ function App() {
     })
 
     try {
-      await apiRequest<{ message: string }>('/api/logout', {
-        method: 'POST',
-        token,
-      })
+      await authApi.logout(token)
 
       resetUserData()
       setLogoutState({
@@ -177,7 +172,7 @@ function App() {
 
         {(logoutState.error || logoutState.success) && (
           <div className="panel slimPanel">
-            <RequestMessage state={logoutState} />
+            <RequestStatus state={logoutState} />
           </div>
         )}
 

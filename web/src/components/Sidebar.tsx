@@ -1,6 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import { menuItems } from '../config/menu'
 import type { MenuKey } from '../types/common'
+import { Button } from './ui/Button'
 
 type SidebarProps = {
   activeMenu: MenuKey
@@ -54,7 +55,7 @@ export function Sidebar({
           <strong>Go Bank</strong>
           <span>REST API frontend</span>
         </div>
-        <button
+        <Button
           className="sidebarToggle"
           type="button"
           onClick={() => onCollapsedChange(!collapsed)}
@@ -62,12 +63,12 @@ export function Sidebar({
           aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}
         >
           {collapsed ? '›' : '‹'}
-        </button>
+        </Button>
       </div>
 
       <nav className="menu" aria-label="Основное меню">
         {menuItems.map((item) => (
-          <button
+          <Button
             key={item.key}
             className={activeMenu === item.key ? 'menuItem active' : 'menuItem'}
             type="button"
@@ -80,7 +81,7 @@ export function Sidebar({
             </span>
             <span className="menuText">{item.title}</span>
             {!item.implemented && <small>скоро</small>}
-          </button>
+          </Button>
         ))}
       </nav>
 

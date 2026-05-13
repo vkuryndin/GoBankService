@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { notificationsApi } from '../api/notificationsApi'
+import { RequestStatus } from '../components/RequestStatus'
 import { emptyState, type RequestState } from '../types/common'
 import type { MessageResponse } from '../types/notification'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type NotificationsPageProps = {
   token: string
@@ -30,9 +32,7 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
     setMessage(null)
 
     try {
-      const data = await apiRequest<MessageResponse>('/api/notifications/test', {
-        token,
-      })
+      const data = await notificationsApi.sendTestEmail(token)
 
       setMessage(data)
       setNotificationState({
@@ -50,7 +50,7 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
   }
 
   return (
-    <section className="panel notificationsPage">
+    <Card variant="plain" className="panel notificationsPage">
       <div className="panelHeader">
         <div>
           <h2>Уведомления</h2>
@@ -60,17 +60,17 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
         </div>
 
         <div className="actions">
-          <button
+          <Button
             type="button"
             onClick={sendTestEmail}
             disabled={notificationState.loading || !token}
           >
             {notificationState.loading ? 'Отправляю...' : 'Отправить test email'}
-          </button>
+          </Button>
         </div>
       </div>
 
-      <RequestMessage state={notificationState} />
+      <RequestStatus state={notificationState} />
 
       <div className="notificationInfoGrid">
         <div className="notificationInfoCard">
@@ -101,6 +101,6 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
           Нажми “Отправить test email”. Если SMTP отключен в env, backend вернет понятную ошибку.
         </div>
       )}
-    </section>
+    </Card>
   )
 }

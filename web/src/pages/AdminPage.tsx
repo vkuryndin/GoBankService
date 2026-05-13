@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
-import { apiRequest } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { adminApi } from '../api/adminApi'
+import { RequestStatus } from '../components/RequestStatus'
 import type { AdminAccountStatusResponse, AdminSession, AdminUser } from '../types/admin'
 import type { CurrentUser } from '../types/auth'
 import { emptyState, type RequestState } from '../types/common'
 import { formatDate } from '../utils/format'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
+import { StatusBadge } from '../components/ui/StatusBadge'
 
 type AdminPageProps = {
   token: string
@@ -64,7 +67,7 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
     })
 
     try {
-      const data = await apiRequest<AdminUser[]>('/api/admin/users', { token })
+      const data = await adminApi.listUsers(token)
 
       setAdminUsers(Array.isArray(data) ? data : [])
       setAdminUsersState({
@@ -93,9 +96,7 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
     })
 
     try {
-      const data = await apiRequest<AdminSession[]>('/api/admin/logged-in-users', {
-        token,
-      })
+      const data = await adminApi.listSessions(token)
 
       setAdminSessions(Array.isArray(data) ? data : [])
       setAdminSessionsState({
@@ -138,13 +139,9 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
     setAdminAccountResult(null)
 
     try {
-      const data = await apiRequest<AdminAccountStatusResponse>(
-        `/api/admin/accounts/${accountID}/${action}`,
-        {
-          method: 'POST',
-          token,
-        },
-      )
+      const data = action === 'block'
+        ? await adminApi.blockAccount(token, accountID)
+        : await adminApi.unblockAccount(token, accountID)
 
       setAdminAccountResult(data)
       setAdminAccountState({
@@ -163,7 +160,7 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Администрирование</h2>
@@ -173,21 +170,21 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
         </div>
 
         <div className="actions">
-          <button
+          <Button
             type="button"
             onClick={loadAdminUsers}
             disabled={adminUsersState.loading || !token}
           >
             {adminUsersState.loading ? 'Загружаю...' : 'Загрузить пользователей'}
-          </button>
-          <button
+          </Button>
+          <Button
             className="secondary"
             type="button"
             onClick={loadAdminSessions}
             disabled={adminSessionsState.loading || !token}
           >
             {adminSessionsState.loading ? 'Загружаю...' : 'Активные сессии'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -204,7 +201,7 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
             <span>{adminUsers.length}</span>
           </div>
 
-          <RequestMessage state={adminUsersState} />
+          <RequestStatus state={adminUsersState} />
 
           {adminUsers.length === 0 && (
             <div className="empty">Нажми “Загрузить пользователей”.</div>
@@ -234,9 +231,9 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
                       <td>{user.email}</td>
                       <td>{user.username}</td>
                       <td>
-                        <span className={user.is_admin ? 'badge successBadge' : 'badge mutedBadge'}>
+                        <StatusBadge tone={user.is_admin ? 'success' : 'muted'}>
                           {user.is_admin ? 'admin' : 'user'}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td>{user.accounts_count}</td>
                       <td>{user.blocked_accounts_count}</td>
@@ -255,7 +252,7 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
             <span>{adminSessions.length}</span>
           </div>
 
-          <RequestMessage state={adminSessionsState} />
+          <RequestStatus state={adminSessionsState} />
 
           {adminSessions.length === 0 && (
             <div className="empty">Нажми “Активные сессии”.</div>
@@ -316,26 +313,26 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
             </label>
 
             <div className="actions">
-              <button
+              <Button
                 className="danger"
                 type="button"
                 onClick={() => void changeAdminAccountStatus('block')}
                 disabled={adminAccountState.loading || !token}
               >
                 {adminAccountState.loading ? 'Выполняю...' : 'Заблокировать'}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="secondary"
                 type="button"
                 onClick={() => void changeAdminAccountStatus('unblock')}
                 disabled={adminAccountState.loading || !token}
               >
                 {adminAccountState.loading ? 'Выполняю...' : 'Разблокировать'}
-              </button>
+              </Button>
             </div>
           </div>
 
-          <RequestMessage state={adminAccountState} />
+          <RequestStatus state={adminAccountState} />
 
           {adminAccountResult && (
             <div className="result success">
@@ -345,6 +342,6 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
           )}
         </section>
       </div>
-    </section>
+    </Card>
   )
 }

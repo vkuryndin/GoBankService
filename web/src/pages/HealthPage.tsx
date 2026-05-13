@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { readResponseBody, getErrorMessage } from '../api/http'
-import { RequestMessage } from '../components/RequestMessage'
+import { RequestStatus } from '../components/RequestStatus'
 import { emptyState, type RequestState } from '../types/common'
+import { Button } from '../components/ui/Button'
+import { Card } from '../components/ui/Card'
 
 type HealthResult = {
   statusCode: number
@@ -50,7 +52,7 @@ export function HealthPage() {
   }
 
   return (
-    <section className="panel">
+    <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
           <h2>Проверка backend</h2>
@@ -59,12 +61,12 @@ export function HealthPage() {
           </p>
         </div>
 
-        <button type="button" onClick={checkHealth} disabled={healthState.loading}>
+        <Button type="button" onClick={checkHealth} disabled={healthState.loading}>
           {healthState.loading ? 'Проверяю...' : 'Проверить'}
-        </button>
+        </Button>
       </div>
 
-      <RequestMessage state={healthState} />
+      <RequestStatus state={healthState} />
 
       {healthResult && (
         <div className={healthState.error ? 'result error' : 'result success'}>
@@ -74,6 +76,6 @@ export function HealthPage() {
           <pre>{JSON.stringify(healthResult.body, null, 2)}</pre>
         </div>
       )}
-    </section>
+    </Card>
   )
 }
