@@ -5,7 +5,7 @@
 .app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: var(--sidebar-width, 280px) 1fr;
   background:
     radial-gradient(circle at top right, rgba(37, 99, 235, 0.08), transparent 34%),
     #f5f7fb;
@@ -13,6 +13,8 @@
 }
 
 .sidebar {
+  position: relative;
+  min-width: 0;
   min-height: 100vh;
   padding: 24px 20px;
   border-right: 1px solid #e5e7eb;
@@ -21,7 +23,8 @@
 }
 
 .brand {
-  display: flex;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 12px;
   margin-bottom: 28px;
@@ -41,17 +44,45 @@
   box-shadow: 0 10px 22px rgba(37, 99, 235, 0.25);
 }
 
+.brandText {
+  min-width: 0;
+}
+
 .brand strong {
   display: block;
+  overflow: hidden;
   font-size: 18px;
   letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand span {
   display: block;
+  overflow: hidden;
   margin-top: 2px;
   color: #6b7280;
   font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarToggle {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sidebarToggle:hover {
+  background: #f9fafb;
+  color: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
 .menu {
@@ -61,11 +92,12 @@
 
 .menuItem {
   position: relative;
-  display: flex;
+  display: grid;
   width: 100%;
   min-height: 44px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 0 12px 0 14px;
   border-radius: 12px;
   background: transparent;
@@ -113,6 +145,25 @@
   height: 22px;
 }
 
+.menuIcon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #f3f6fb;
+  color: #2563eb;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.menuText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menuItem small {
   padding: 2px 7px;
   border-radius: 999px;
@@ -122,10 +173,108 @@
   font-weight: 700;
 }
 
+.menuItem.active .menuIcon,
+.menuItem:hover .menuIcon {
+  background: #dbeafe;
+}
+
 .menuItem.active small,
 .menuItem:hover small {
   background: #dbeafe;
   color: #2563eb;
+}
+
+.sidebarResizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+.sidebarResizer::after {
+  content: '';
+  position: absolute;
+  top: 24px;
+  right: 3px;
+  width: 2px;
+  height: calc(100% - 48px);
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.18s ease;
+}
+
+.sidebarResizer:hover::after {
+  background: #bfdbfe;
+}
+
+.sidebarCollapsed .sidebar {
+  padding: 24px 16px;
+}
+
+.sidebarCollapsed .brand {
+  grid-template-columns: 44px;
+  justify-content: center;
+  gap: 10px;
+  padding: 0;
+}
+
+.sidebarCollapsed .brandText {
+  display: none;
+}
+
+.sidebarCollapsed .sidebarToggle {
+  width: 34px;
+  margin: 10px auto 0;
+  grid-column: 1;
+}
+
+.sidebarCollapsed .menuItem {
+  min-height: 54px;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding: 0;
+}
+
+.sidebarCollapsed .menuItem::before {
+  left: -6px;
+}
+
+.sidebarCollapsed .menuText,
+.sidebarCollapsed .menuItem small {
+  display: none;
+}
+
+.sidebarCollapsed .menuItem::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  z-index: 20;
+  min-width: max-content;
+  padding: 7px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-4px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+
+.sidebarCollapsed .menuItem:hover::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+.sidebarCollapsed .sidebarResizer {
+  display: none;
 }
 
 .content {
@@ -668,6 +817,24 @@ td {
     min-height: auto;
     border-right: 0;
     border-bottom: 1px solid #e5e7eb;
+  }
+
+  .sidebarResizer {
+    display: none;
+  }
+
+  .sidebarCollapsed .brand {
+    grid-template-columns: 44px 34px;
+    justify-content: start;
+  }
+
+  .sidebarCollapsed .brandText {
+    display: none;
+  }
+
+  .sidebarCollapsed .sidebarToggle {
+    margin: 0;
+    grid-column: auto;
   }
 
   .menu {

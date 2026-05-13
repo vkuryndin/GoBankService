@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent, MouseEvent as ReactMouseEvent } from 'react'
 import './App.css'
 
 type MenuKey =
@@ -149,6 +149,9 @@ type PredictBalanceResponse = {
 }
 
 const tokenStorageKey = 'bank_service_token'
+const minSidebarWidth = 220
+const maxSidebarWidth = 420
+const collapsedSidebarWidth = 88
 
 const emptyState: RequestState = {
   loading: false,
@@ -160,72 +163,84 @@ const menuItems: Array<{
   key: MenuKey
   title: string
   description: string
+  icon: string
   implemented: boolean
 }> = [
   {
     key: 'health',
     title: 'Health',
     description: 'Проверка доступности backend',
+    icon: '●',
     implemented: true,
   },
   {
     key: 'register',
     title: 'Register',
     description: 'Регистрация пользователя',
+    icon: '+',
     implemented: true,
   },
   {
     key: 'auth',
     title: 'Auth',
     description: 'Login, logout и текущий пользователь',
+    icon: '↪',
     implemented: true,
   },
   {
     key: 'admin',
     title: 'Admin',
     description: 'Пользователи, сессии, блокировка счетов',
+    icon: '★',
     implemented: true,
   },
   {
     key: 'accounts',
     title: 'Accounts',
     description: 'Счета, deposit, withdraw, close',
+    icon: '₽',
     implemented: true,
   },
   {
     key: 'cards',
     title: 'Cards',
     description: 'Карты, выпуск, просмотр, оплата, перевод, закрытие',
+    icon: '▣',
     implemented: true,
   },
   {
     key: 'transfers',
     title: 'Transfers',
     description: 'Переводы между счетами',
+    icon: '⇄',
     implemented: false,
   },
   {
     key: 'credits',
     title: 'Credits',
     description: 'Проверка, оформление, график',
+    icon: '%',
     implemented: false,
   },
   {
     key: 'analytics',
     title: 'Analytics',
     description: 'Аналитика и прогноз баланса',
+    icon: '↗',
     implemented: false,
   },
   {
     key: 'rates',
     title: 'Rates',
     description: 'Ключевая ставка ЦБ РФ',
+    icon: '⌁',
     implemented: false,
   },
   {
     key: 'notifications',
     title: 'Notifications',
     description: 'SMTP test email',
+    icon: '✉',
     implemented: false,
   },
 ]
@@ -345,6 +360,8 @@ function getCardDisplayNumber(card: CardResponse): string {
 
 function App() {
   const [activeMenu, setActiveMenu] = useState<MenuKey>('health')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(280)
 
   const [token, setToken] = useState(() => localStorage.getItem(tokenStorageKey) || '')
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null)
@@ -488,6 +505,30 @@ function App() {
     })
 
     return false
+  }
+
+  const startSidebarResize = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (sidebarCollapsed) {
+      return
+    }
+
+    event.preventDefault()
+
+    const startX = event.clientX
+    const startWidth = sidebarWidth
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const nextWidth = startWidth + moveEvent.clientX - startX
+      setSidebarWidth(Math.min(maxSidebarWidth, Math.max(minSidebarWidth, nextWidth)))
+    }
+
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
   }
 
   const selectedAccountIDNumber = (): number | null => {
@@ -1814,30 +1855,59 @@ function App() {
           ? 'Токен сохранён, пользователь ещё не проверен.'
           : 'Вы не вошли в систему.'
 
+  const appStyle = {
+    '--sidebar-width': sidebarCollapsed
+      ? `${collapsedSidebarWidth}px`
+      : `${sidebarWidth}px`,
+  } as CSSProperties
+
   return (
-    <main className="app">
+    <main
+      className={sidebarCollapsed ? 'app sidebarCollapsed' : 'app'}
+      style={appStyle}
+    >
       <aside className="sidebar">
         <div className="brand">
           <div className="brandMark">GB</div>
-          <div>
+          <div className="brandText">
             <strong>Go Bank</strong>
             <span>REST API frontend</span>
           </div>
+          <button
+            className="sidebarToggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            title={sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
+            aria-label={sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
+          >
+            {sidebarCollapsed ? '›' : '‹'}
+          </button>
         </div>
 
-        <nav className="menu">
+        <nav className="menu" aria-label="Основное меню">
           {menuItems.map((item) => (
             <button
               key={item.key}
               className={activeMenu === item.key ? 'menuItem active' : 'menuItem'}
               type="button"
               onClick={() => setActiveMenu(item.key)}
+              data-tooltip={item.title}
+              title={sidebarCollapsed ? item.title : undefined}
             >
-              <span>{item.title}</span>
+              <span className="menuIcon" aria-hidden="true">{item.icon}</span>
+              <span className="menuText">{item.title}</span>
               {!item.implemented && <small>скоро</small>}
             </button>
           ))}
         </nav>
+
+        <div
+          className="sidebarResizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Изменить ширину меню"
+          onMouseDown={startSidebarResize}
+        />
       </aside>
 
       <section className="content">
