@@ -116,6 +116,14 @@ type CloseCardResponse = {
   closed_at: string
 }
 
+type TransferResponse = {
+  transaction_id: number
+  from_account_id: number
+  to_account_id: number
+  amount: string
+  status: string
+}
+
 type AccountResponse = {
   id: number
   account_number: string
@@ -211,9 +219,9 @@ const menuItems: Array<{
   {
     key: 'transfers',
     title: 'Transfers',
-    description: 'Переводы между счетами',
+    description: 'Переводы между счетами с MFA',
     icon: '⇄',
-    implemented: false,
+    implemented: true,
   },
   {
     key: 'credits',
@@ -392,6 +400,9 @@ function App() {
   const [cardTransferState, setCardTransferState] = useState<RequestState>(emptyState)
   const [cardCloseState, setCardCloseState] = useState<RequestState>(emptyState)
 
+  const [transferMfaState, setTransferMfaState] = useState<RequestState>(emptyState)
+  const [transferState, setTransferState] = useState<RequestState>(emptyState)
+
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [createAccountState, setCreateAccountState] = useState<RequestState>(emptyState)
   const [accountDetailsState, setAccountDetailsState] = useState<RequestState>(emptyState)
@@ -426,6 +437,13 @@ function App() {
   const [cardPaymentResult, setCardPaymentResult] = useState<CardPaymentResponse | null>(null)
   const [cardTransferResult, setCardTransferResult] = useState<CardTransferResponse | null>(null)
   const [cardCloseResult, setCardCloseResult] = useState<CloseCardResponse | null>(null)
+
+  const [transferFromAccountId, setTransferFromAccountId] = useState('')
+  const [transferToAccountId, setTransferToAccountId] = useState('')
+  const [transferAmount, setTransferAmount] = useState('100.00')
+  const [transferDescription, setTransferDescription] = useState('Account transfer')
+  const [transferMfaCode, setTransferMfaCode] = useState('')
+  const [transferResult, setTransferResult] = useState<TransferResponse | null>(null)
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState('')
@@ -660,6 +678,8 @@ function App() {
     setCardPaymentResult(null)
     setCardTransferResult(null)
     setCardCloseResult(null)
+    setTransferResult(null)
+    setTransferMfaCode('')
     setAccounts([])
     setSelectedAccount(null)
     setSelectedAccountId('')
@@ -678,6 +698,8 @@ function App() {
     setCardTransferMfaState(emptyState)
     setCardTransferState(emptyState)
     setCardCloseState(emptyState)
+    setTransferMfaState(emptyState)
+    setTransferState(emptyState)
     setAccountsState(emptyState)
     setCreateAccountState(emptyState)
     setAccountDetailsState(emptyState)
@@ -1017,6 +1039,139 @@ function App() {
         loading: false,
         error:
           error instanceof Error ? error.message : `Failed to ${action} account`,
+        success: '',
+      })
+    }
+  }
+
+  const requestTransferMFA = async () => {
+    if (!requireToken(setTransferMfaState)) {
+      return
+    }
+
+    const fromAccountID = Number(transferFromAccountId)
+    const toAccountID = Number(transferToAccountId)
+
+    if (!Number.isInteger(fromAccountID) || fromAccountID <= 0) {
+      setTransferMfaState({
+        loading: false,
+        error: 'Укажи корректный from_account_id.',
+        success: '',
+      })
+      return
+    }
+
+    if (!Number.isInteger(toAccountID) || toAccountID <= 0) {
+      setTransferMfaState({
+        loading: false,
+        error: 'Укажи корректный to_account_id.',
+        success: '',
+      })
+      return
+    }
+
+    setTransferMfaState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+
+    try {
+      const response = await fetch('/api/mfa/request', {
+        method: 'POST',
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          purpose: 'transfer',
+          from_account_id: fromAccountID,
+          to_account_id: toAccountID,
+          amount: transferAmount,
+        }),
+      })
+
+      await parseResponse<{ message: string }>(response)
+
+      setTransferMfaState({
+        loading: false,
+        error: '',
+        success: 'MFA-код для перевода отправлен.',
+      })
+    } catch (error) {
+      setTransferMfaState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to request MFA code',
+        success: '',
+      })
+    }
+  }
+
+  const handleTransfer = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!requireToken(setTransferState)) {
+      return
+    }
+
+    const fromAccountID = Number(transferFromAccountId)
+    const toAccountID = Number(transferToAccountId)
+
+    if (!Number.isInteger(fromAccountID) || fromAccountID <= 0) {
+      setTransferState({
+        loading: false,
+        error: 'Укажи корректный from_account_id.',
+        success: '',
+      })
+      return
+    }
+
+    if (!Number.isInteger(toAccountID) || toAccountID <= 0) {
+      setTransferState({
+        loading: false,
+        error: 'Укажи корректный to_account_id.',
+        success: '',
+      })
+      return
+    }
+
+    setTransferState({
+      loading: true,
+      error: '',
+      success: '',
+    })
+    setTransferResult(null)
+
+    try {
+      const response = await fetch('/api/transfer', {
+        method: 'POST',
+        headers: {
+          ...authHeaders(true),
+          'Idempotency-Key': createIdempotencyKey(),
+        },
+        body: JSON.stringify({
+          from_account_id: fromAccountID,
+          to_account_id: toAccountID,
+          amount: transferAmount,
+          description: transferDescription,
+          mfa_code: transferMfaCode,
+        }),
+      })
+
+      const data = await parseResponse<TransferResponse>(response)
+
+      setTransferResult(data)
+      setTransferMfaCode('')
+      setTransferState({
+        loading: false,
+        error: '',
+        success: 'Перевод выполнен.',
+      })
+
+      if (String(fromAccountID) === selectedAccountId) {
+        void loadAccountDetails()
+      }
+    } catch (error) {
+      setTransferState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Transfer failed',
         success: '',
       })
     }
@@ -2363,6 +2518,7 @@ function App() {
                           setCloseResult(null)
                           setAdminAccountId(String(account.id))
                           setCreateCardAccountId(String(account.id))
+                          setTransferFromAccountId(String(account.id))
                         }}
                       >
                         <span className="accountNumber">{account.account_number}</span>
@@ -2563,6 +2719,178 @@ function App() {
                       </div>
                     )}
                   </>
+                )}
+              </section>
+            </div>
+          </section>
+        )}
+
+        {activeMenu === 'transfers' && (
+          <section className="panel">
+            <div className="panelHeader">
+              <div>
+                <h2>Переводы между счетами</h2>
+                <p>
+                  Перевод выполняется в два шага: сначала MFA-код, потом операция <code>POST /transfer</code>.
+                </p>
+              </div>
+
+              <div className="actions">
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={loadAccounts}
+                  disabled={accountsState.loading || !isAuthenticated}
+                >
+                  {accountsState.loading ? 'Загружаю...' : 'Загрузить мои счета'}
+                </button>
+              </div>
+            </div>
+
+            <RequestMessage state={accountsState} />
+
+            <div className="transfersLayout">
+              <section className="subPanel">
+                <div className="subPanelHeader">
+                  <h3>Мои счета</h3>
+                  <span>{accounts.length}</span>
+                </div>
+
+                {accounts.length === 0 && (
+                  <div className="empty">
+                    Нажми “Загрузить мои счета”, чтобы быстро выбрать счет отправителя.
+                  </div>
+                )}
+
+                {accounts.length > 0 && (
+                  <div className="accountList">
+                    {accounts.map((account) => (
+                      <button
+                        key={account.id}
+                        className={
+                          transferFromAccountId === String(account.id)
+                            ? 'accountItem active'
+                            : 'accountItem'
+                        }
+                        type="button"
+                        onClick={() => {
+                          setTransferFromAccountId(String(account.id))
+                          setSelectedAccountId(String(account.id))
+                          setSelectedAccount(account)
+                        }}
+                      >
+                        <span className="accountNumber">{account.account_number}</span>
+                        <span className="accountMeta">
+                          <span>ID {account.id}</span>
+                          <span>{account.balance} {account.currency}</span>
+                          <span className={getAccountBadgeClass(account)}>
+                            {getAccountStatusText(account)}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="subPanel transferPanel">
+                <div className="subPanelHeader">
+                  <h3>Новый перевод</h3>
+                </div>
+
+                <form className="form transferForm" onSubmit={handleTransfer}>
+                  <label>
+                    <span>From account ID</span>
+                    <input
+                      value={transferFromAccountId}
+                      onChange={(event) => setTransferFromAccountId(event.target.value)}
+                      placeholder="ID счета отправителя"
+                    />
+                  </label>
+
+                  <label>
+                    <span>To account ID</span>
+                    <input
+                      value={transferToAccountId}
+                      onChange={(event) => setTransferToAccountId(event.target.value)}
+                      placeholder="ID счета получателя"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Amount</span>
+                    <input
+                      value={transferAmount}
+                      onChange={(event) => setTransferAmount(event.target.value)}
+                      placeholder="100.00"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Description</span>
+                    <input
+                      value={transferDescription}
+                      onChange={(event) => setTransferDescription(event.target.value)}
+                      placeholder="Account transfer"
+                    />
+                  </label>
+
+                  <div className="transferMfaBox">
+                    <button
+                      className="secondary"
+                      type="button"
+                      onClick={requestTransferMFA}
+                      disabled={transferMfaState.loading || !isAuthenticated}
+                    >
+                      {transferMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                    </button>
+
+                    <RequestMessage state={transferMfaState} />
+                  </div>
+
+                  <label>
+                    <span>MFA code</span>
+                    <input
+                      value={transferMfaCode}
+                      onChange={(event) => setTransferMfaCode(event.target.value)}
+                      placeholder="6 цифр"
+                    />
+                  </label>
+
+                  <button type="submit" disabled={transferState.loading || !isAuthenticated}>
+                    {transferState.loading ? 'Перевожу...' : 'Выполнить перевод'}
+                  </button>
+
+                  <RequestMessage state={transferState} />
+                </form>
+
+                {transferResult && (
+                  <div className="result success">
+                    <strong>Результат перевода</strong>
+                    <div className="predictionGrid">
+                      <div>
+                        <span>Transaction</span>
+                        <strong>{transferResult.transaction_id}</strong>
+                      </div>
+                      <div>
+                        <span>From</span>
+                        <strong>{transferResult.from_account_id}</strong>
+                      </div>
+                      <div>
+                        <span>To</span>
+                        <strong>{transferResult.to_account_id}</strong>
+                      </div>
+                      <div>
+                        <span>Amount</span>
+                        <strong>{transferResult.amount}</strong>
+                      </div>
+                      <div>
+                        <span>Status</span>
+                        <strong>{transferResult.status}</strong>
+                      </div>
+                    </div>
+                    <pre>{JSON.stringify(transferResult, null, 2)}</pre>
+                  </div>
                 )}
               </section>
             </div>
