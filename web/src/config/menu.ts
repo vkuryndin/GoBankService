@@ -1,4 +1,4 @@
-import type { MenuItem } from '../types/common'
+import type { MenuItem, MenuKey } from '../types/common'
 
 export const menuItems: MenuItem[] = [
   {
@@ -7,6 +7,7 @@ export const menuItems: MenuItem[] = [
     description: 'Проверка доступности backend',
     icon: '●',
     implemented: true,
+    path: '/health',
   },
   {
     key: 'register',
@@ -14,6 +15,7 @@ export const menuItems: MenuItem[] = [
     description: 'Регистрация пользователя',
     icon: '+',
     implemented: true,
+    path: '/register',
   },
   {
     key: 'auth',
@@ -21,6 +23,7 @@ export const menuItems: MenuItem[] = [
     description: 'Login, logout и текущий пользователь',
     icon: '↪',
     implemented: true,
+    path: '/auth',
   },
   {
     key: 'admin',
@@ -28,6 +31,7 @@ export const menuItems: MenuItem[] = [
     description: 'Пользователи, сессии, блокировка счетов',
     icon: '★',
     implemented: true,
+    path: '/admin',
   },
   {
     key: 'accounts',
@@ -35,6 +39,7 @@ export const menuItems: MenuItem[] = [
     description: 'Счета, deposit, withdraw, close',
     icon: '₽',
     implemented: true,
+    path: '/accounts',
   },
   {
     key: 'cards',
@@ -42,6 +47,7 @@ export const menuItems: MenuItem[] = [
     description: 'Карты, выпуск, просмотр, оплата, перевод, закрытие',
     icon: '▣',
     implemented: true,
+    path: '/cards',
   },
   {
     key: 'transfers',
@@ -49,6 +55,7 @@ export const menuItems: MenuItem[] = [
     description: 'Переводы между счетами с MFA',
     icon: '⇄',
     implemented: true,
+    path: '/transfers',
   },
   {
     key: 'credits',
@@ -56,6 +63,7 @@ export const menuItems: MenuItem[] = [
     description: 'Проверка, оформление, график',
     icon: '%',
     implemented: true,
+    path: '/credits',
   },
   {
     key: 'analytics',
@@ -63,6 +71,7 @@ export const menuItems: MenuItem[] = [
     description: 'Доходы, расходы и кредитная нагрузка',
     icon: '↗',
     implemented: true,
+    path: '/analytics',
   },
   {
     key: 'rates',
@@ -70,6 +79,7 @@ export const menuItems: MenuItem[] = [
     description: 'Ключевая и банковская ставка',
     icon: '⌁',
     implemented: true,
+    path: '/rates',
   },
   {
     key: 'notifications',
@@ -77,6 +87,7 @@ export const menuItems: MenuItem[] = [
     description: 'SMTP test email',
     icon: '✉',
     implemented: true,
+    path: '/notifications',
   },
 ]
 
@@ -107,4 +118,11 @@ export function getPageTitle(activeMenu: string): string {
     default:
       return 'Go Bank Service'
   }
+}
+
+export function getMenuKeyByPath(pathname: string): MenuKey {
+  const normalizedPath = pathname === '/' ? '/health' : pathname
+  const menuItem = menuItems.find((item) => normalizedPath.startsWith(item.path))
+
+  return menuItem?.key || 'health'
 }

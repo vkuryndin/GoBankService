@@ -1,0 +1,14 @@
+/* Shared request status */
+.loadingNotice {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.slimPanel .loadingNotice {
+  margin-top: 0;
+}

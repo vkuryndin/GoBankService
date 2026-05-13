@@ -1,5 +1,5 @@
 import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
-import { createIdempotencyKey } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
 export const accountsApi = {
@@ -22,7 +22,7 @@ export const accountsApi = {
     return apiRequest<AccountResponse>(`/api/accounts/${accountID}/deposit`, {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('account') },
       body: { amount },
     })
   },
@@ -36,7 +36,7 @@ export const accountsApi = {
     return apiRequest<AccountResponse>(`/api/accounts/${accountID}/withdraw`, {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('account') },
       body: {
         amount,
         mfa_code: mfaCode,
@@ -48,7 +48,7 @@ export const accountsApi = {
     return apiRequest<CloseAccountResponse>(`/api/accounts/${accountID}/close`, {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('account') },
     })
   },
 

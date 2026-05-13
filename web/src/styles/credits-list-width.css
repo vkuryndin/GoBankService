@@ -1,0 +1,72 @@
+/* Credits list width fix: keep the credits list compact, like Cards. */
+.creditCardsTopGrid {
+  grid-template-columns: minmax(280px, 420px) minmax(280px, 420px);
+  justify-content: start;
+  align-items: start;
+}
+
+.creditListPanelV3 {
+  width: 100%;
+  max-width: 420px;
+}
+
+.creditAccountPanelV3 {
+  width: 100%;
+  max-width: 420px;
+}
+
+.creditCardsListV3 {
+  width: 100%;
+}
+
+.creditLoanCard {
+  width: 100%;
+}
+
+@media (min-width: 1281px) {
+  .creditCardsTopGrid {
+    grid-template-columns: minmax(280px, 420px) minmax(280px, 420px);
+  }
+}
+
+@media (max-width: 1280px) {
+  .creditListPanelV3,
+  .creditAccountPanelV3 {
+    max-width: none;
+  }
+}
+
+
+/* Router links and error boundary */
+.menuItem {
+  text-decoration: none;
+}
+
+.errorBoundaryPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: #f5f7fb;
+}
+
+.errorBoundaryCard {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid #fecaca;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.errorBoundaryCard p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.errorBoundaryCard pre {
+  max-height: 220px;
+  white-space: pre-wrap;
+}

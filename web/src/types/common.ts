@@ -29,4 +29,5 @@ export type MenuItem = {
   description: string
   icon: string
   implemented: boolean
+  path: string
 }

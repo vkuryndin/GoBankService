@@ -1,3 +1,4 @@
+import { createIdempotencyKey } from './idempotency'
 import type { AccountResponse } from '../types/account'
 import type { CardResponse } from '../types/card'
 
@@ -12,14 +13,6 @@ export function formatDate(value?: string): string {
   }
 
   return date.toLocaleString('ru-RU')
-}
-
-export function createIdempotencyKey(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 export function isAccountClosed(account?: AccountResponse | null): boolean {
@@ -73,3 +66,5 @@ export function getCardStatusText(card: CardResponse): string {
 export function getCardDisplayNumber(card: CardResponse): string {
   return card.number || card.masked_number
 }
+
+export { createIdempotencyKey }

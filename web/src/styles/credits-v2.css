@@ -1,0 +1,74 @@
+/* Credits layout v2: accounts and credits stay side by side. */
+.creditsLayout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.creditTopGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.creditAccountsPanel,
+.creditTopGrid .creditListPanel,
+.creditCreatePanel,
+.creditDetailsPanel {
+  min-width: 0;
+  grid-column: auto;
+}
+
+.creditCreatePanel,
+.creditDetailsPanel {
+  width: 100%;
+}
+
+.compactList {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.creditForm {
+  display: grid;
+  max-width: none;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.creditForm button {
+  grid-column: 1 / -1;
+}
+
+.creditMfaBlock {
+  display: grid;
+  max-width: none;
+  grid-template-columns: minmax(180px, auto) minmax(180px, 260px) minmax(180px, auto);
+  gap: 14px;
+  align-items: end;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.creditMfaBlock .alert,
+.creditMfaBlock .notice {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+@media (max-width: 1100px) {
+  .creditTopGrid,
+  .creditForm,
+  .creditMfaBlock {
+    grid-template-columns: 1fr;
+  }
+
+  .creditForm button {
+    grid-column: auto;
+  }
+}

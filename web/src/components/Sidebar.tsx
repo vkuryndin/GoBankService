@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { NavLink } from 'react-router-dom'
 import { menuItems } from '../config/menu'
 import type { MenuKey } from '../types/common'
 import { Button } from './ui/Button'
@@ -7,7 +8,6 @@ type SidebarProps = {
   activeMenu: MenuKey
   collapsed: boolean
   width: number
-  onMenuChange: (menu: MenuKey) => void
   onCollapsedChange: (collapsed: boolean) => void
   onWidthChange: (width: number) => void
 }
@@ -19,7 +19,6 @@ export function Sidebar({
   activeMenu,
   collapsed,
   width,
-  onMenuChange,
   onCollapsedChange,
   onWidthChange,
 }: SidebarProps) {
@@ -68,11 +67,12 @@ export function Sidebar({
 
       <nav className="menu" aria-label="Основное меню">
         {menuItems.map((item) => (
-          <Button
+          <NavLink
             key={item.key}
-            className={activeMenu === item.key ? 'menuItem active' : 'menuItem'}
-            type="button"
-            onClick={() => onMenuChange(item.key)}
+            className={({ isActive }) =>
+              isActive || activeMenu === item.key ? 'menuItem active' : 'menuItem'
+            }
+            to={item.path}
             data-tooltip={item.title}
             title={collapsed ? item.title : undefined}
           >
@@ -81,7 +81,7 @@ export function Sidebar({
             </span>
             <span className="menuText">{item.title}</span>
             {!item.implemented && <small>скоро</small>}
-          </Button>
+          </NavLink>
         ))}
       </nav>
 

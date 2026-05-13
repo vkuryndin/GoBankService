@@ -1,5 +1,5 @@
 import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
-import { createIdempotencyKey } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
 export const cardsApi = {
@@ -32,7 +32,7 @@ export const cardsApi = {
     return apiRequest<CardPaymentResponse>(`/api/cards/${cardID}/pay`, {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('card') },
       body,
     })
   },
@@ -51,7 +51,7 @@ export const cardsApi = {
     return apiRequest<CardTransferResponse>(`/api/cards/${cardID}/transfer`, {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('card') },
       body,
     })
   },
@@ -60,7 +60,7 @@ export const cardsApi = {
     return apiRequest<CloseCardResponse>(`/api/cards/${cardID}/close`, {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('card') },
     })
   },
 }

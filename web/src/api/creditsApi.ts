@@ -1,5 +1,5 @@
 import type { CreditCheckResponse, CreditResponse, PaymentScheduleResponse } from '../types/credit'
-import { createIdempotencyKey } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
 export type CreditBaseRequest = {
@@ -24,7 +24,7 @@ export const creditsApi = {
     return apiRequest<CreditResponse>('/api/credits', {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('credit') },
       body: request,
     })
   },

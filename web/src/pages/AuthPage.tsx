@@ -1,34 +1,25 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { authApi } from '../api/authApi'
 import { RequestStatus } from '../components/RequestStatus'
-import type { CurrentUser } from '../types/auth'
 import { emptyState, type RequestState } from '../types/common'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { useAuth } from '../hooks/useAuth'
+import { useSharedAccount } from '../hooks/useSharedAccount'
 
-type AuthPageProps = {
-  token: string
-  currentUser: CurrentUser | null
-  authCheckState: RequestState
-  initialLogin: string
-  onLoginValueChange: (login: string) => void
-  onLoginSuccess: (token: string) => void
-  onLoginFailure: () => void
-  onCheckCurrentUser: () => void
-}
-
-export function AuthPage({
-  token,
-  currentUser,
-  authCheckState,
-  initialLogin,
-  onLoginValueChange,
-  onLoginSuccess,
-  onLoginFailure,
-  onCheckCurrentUser,
-}: AuthPageProps) {
-  const [login, setLogin] = useState(initialLogin || 'test@example.com')
+export function AuthPage() {
+  const {
+    token,
+    currentUser,
+    authCheckState,
+    loginValue,
+    setLoginValue,
+    login: loginUser,
+    clearSession,
+    checkCurrentUser,
+  } = useAuth()
+  const { clearSharedAccountId } = useSharedAccount()
+  const [login, setLogin] = useState(loginValue || 'test@example.com')
   const [password, setPassword] = useState('password123')
   const [loginState, setLoginState] = useState<RequestState>(emptyState)
 
@@ -56,17 +47,17 @@ export function AuthPage({
     })
 
     try {
-      const data = await authApi.login({ login, password })
+      await loginUser({ login, password })
 
-      onLoginValueChange(login)
-      onLoginSuccess(data.token)
+      setLoginValue(login)
       setLoginState({
         loading: false,
         error: '',
         success: 'Вход выполнен.',
       })
     } catch (error) {
-      onLoginFailure()
+      clearSession()
+      clearSharedAccountId()
       setLoginState({
         loading: false,
         error: error instanceof Error ? error.message : 'Login failed',
@@ -88,7 +79,7 @@ export function AuthPage({
         <Button
           className="secondary"
           type="button"
-          onClick={onCheckCurrentUser}
+          onClick={() => void checkCurrentUser()}
           disabled={authCheckState.loading || !isAuthenticated}
         >
           {authCheckState.loading ? 'Проверяю...' : 'Кто я сейчас?'}
@@ -102,7 +93,7 @@ export function AuthPage({
             value={login}
             onChange={(event) => {
               setLogin(event.target.value)
-              onLoginValueChange(event.target.value)
+              setLoginValue(event.target.value)
             }}
             placeholder="email или username"
             autoComplete="username"

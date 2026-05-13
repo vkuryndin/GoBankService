@@ -1,5 +1,5 @@
 import type { TransferResponse } from '../types/transfer'
-import { createIdempotencyKey } from '../utils/format'
+import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
 export const transfersApi = {
@@ -16,7 +16,7 @@ export const transfersApi = {
     return apiRequest<TransferResponse>('/api/transfer', {
       method: 'POST',
       token,
-      headers: { 'Idempotency-Key': createIdempotencyKey() },
+      headers: { 'Idempotency-Key': createIdempotencyKey('transfer') },
       body,
     })
   },

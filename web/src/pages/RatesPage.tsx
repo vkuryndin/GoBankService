@@ -1,163 +1,18 @@
-import { useEffect, useState } from 'react'
-import { ratesApi } from '../api/ratesApi'
-import { RequestStatus } from '../components/RequestStatus'
-import { emptyState, type RequestState } from '../types/common'
-import type { KeyRateResponse } from '../types/rate'
-import { formatDate } from '../utils/format'
-import { Button } from '../components/ui/Button'
-import { Card } from '../components/ui/Card'
+import { RatesView } from '../features/rates/RatesView'
+import { useAuth } from '../hooks/useAuth'
+import { useKeyRate } from '../hooks/useKeyRate'
 
-type RatesPageProps = {
-  token: string
-}
-
-type CachedKeyRateResponse = KeyRateResponse & {
-  fetched_at?: string
-}
-
-const rateStorageKey = 'bank_service_key_rate_cache'
-
-function readCachedRate(): CachedKeyRateResponse | null {
-  const rawValue = localStorage.getItem(rateStorageKey)
-  if (!rawValue) {
-    return null
-  }
-
-  try {
-    return JSON.parse(rawValue) as CachedKeyRateResponse
-  } catch {
-    localStorage.removeItem(rateStorageKey)
-    return null
-  }
-}
-
-function saveCachedRate(rate: CachedKeyRateResponse) {
-  localStorage.setItem(rateStorageKey, JSON.stringify(rate))
-}
-
-export function RatesPage({ token }: RatesPageProps) {
-  const [rateState, setRateState] = useState<RequestState>(emptyState)
-  const [rate, setRate] = useState<CachedKeyRateResponse | null>(() => readCachedRate())
-
-  useEffect(() => {
-    setRate(readCachedRate())
-  }, [])
-
-  const loadRate = async () => {
-    if (!token) {
-      setRateState({
-        loading: false,
-        error: 'Сначала нужно войти в систему.',
-        success: '',
-      })
-      return
-    }
-
-    setRateState({
-      loading: true,
-      error: '',
-      success: '',
-    })
-
-    try {
-      const data = await ratesApi.keyRate(token)
-      const cachedRate: CachedKeyRateResponse = {
-        ...data,
-        fetched_at: new Date().toISOString(),
-      }
-
-      setRate(cachedRate)
-      saveCachedRate(cachedRate)
-      setRateState({
-        loading: false,
-        error: '',
-        success: 'Ключевая ставка загружена.',
-      })
-    } catch (error) {
-      setRateState({
-        loading: false,
-        error: error instanceof Error ? error.message : 'Failed to load key rate',
-        success: '',
-      })
-    }
-  }
-
-  const clearRate = () => {
-    localStorage.removeItem(rateStorageKey)
-    setRate(null)
-    setRateState(emptyState)
-  }
+export function RatesPage() {
+  const { token } = useAuth()
+  const { rate, rateState, loadRate, clearRate } = useKeyRate(token)
 
   return (
-    <Card variant="plain" className="panel ratesPage">
-      <div className="panelHeader">
-        <div>
-          <h2>Ставки</h2>
-          <p>
-            Получение ключевой ставки ЦБ РФ и расчет банковской ставки для кредитов.
-          </p>
-        </div>
-
-        <div className="actions">
-          <Button type="button" onClick={loadRate} disabled={rateState.loading || !token}>
-            {rateState.loading ? 'Загружаю...' : rate ? 'Обновить ставку' : 'Получить ставку'}
-          </Button>
-          {rate && (
-            <Button className="secondary" type="button" onClick={clearRate}>
-              Очистить
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <RequestStatus state={rateState} />
-
-      {!rate && !rateState.error && (
-        <div className="empty">
-          Нажми “Получить ставку”, чтобы запросить данные через backend-интеграцию с ЦБ РФ.
-        </div>
-      )}
-
-      {rate && (
-        <>
-          <div className="rateHero">
-            <div>
-              <span>Ключевая ставка</span>
-              <strong>{rate.key_rate}%</strong>
-            </div>
-
-            <div>
-              <span>Банковская ставка</span>
-              <strong>{rate.bank_rate}%</strong>
-            </div>
-
-            <div>
-              <span>Маржа банка</span>
-              <strong>{rate.bank_margin}%</strong>
-            </div>
-          </div>
-
-          <div className="rateMetaGrid">
-            <div>
-              <span>Дата ставки</span>
-              <strong>{formatDate(rate.date)}</strong>
-            </div>
-            <div>
-              <span>Источник</span>
-              <strong>{rate.source}</strong>
-            </div>
-            <div>
-              <span>Загружено во frontend</span>
-              <strong>{formatDate(rate.fetched_at)}</strong>
-            </div>
-          </div>
-
-          <div className="result success">
-            <strong>Raw response</strong>
-            <pre>{JSON.stringify(rate, null, 2)}</pre>
-          </div>
-        </>
-      )}
-    </Card>
+    <RatesView
+      token={token}
+      rate={rate}
+      rateState={rateState}
+      onLoadRate={loadRate}
+      onClearRate={clearRate}
+    />
   )
 }

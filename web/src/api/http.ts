@@ -1,7 +1,12 @@
 export {
+  ApiError,
+  apiClient,
   apiRequest,
   authHeaders,
+  getErrorCode,
+  getErrorDetails,
   getErrorMessage,
+  normalizeApiError,
   parseResponse,
   readResponseBody,
 } from './client'
