@@ -12,10 +12,13 @@ import { AccountsPage } from './pages/AccountsPage'
 import { AuthPage } from './pages/AuthPage'
 import { CardsPage } from './pages/CardsPage'
 import { CreditsPage } from './pages/CreditsPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { HealthPage } from './pages/HealthPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { TransfersPage } from './pages/TransfersPage'
+import { RatesPage } from './pages/RatesPage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import type { AuthCheckResponse, CurrentUser } from './types/auth'
 import { emptyState, type MenuKey, type RequestState } from './types/common'
 
@@ -238,6 +241,12 @@ function App() {
             onSharedAccountIdChange={setSharedAccountId}
           />
         )}
+
+        {activeMenu === 'analytics' && <AnalyticsPage token={token} />}
+
+        {activeMenu === 'rates' && <RatesPage token={token} />}
+
+        {activeMenu === 'notifications' && <NotificationsPage token={token} />}
 
         {activeItem && !activeItem.implemented && (
           <PlaceholderPage activeMenu={activeMenu} />

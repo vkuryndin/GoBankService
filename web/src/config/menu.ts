@@ -60,23 +60,23 @@ export const menuItems: MenuItem[] = [
   {
     key: 'analytics',
     title: 'Analytics',
-    description: 'Аналитика и прогноз баланса',
+    description: 'Доходы, расходы и кредитная нагрузка',
     icon: '↗',
-    implemented: false,
+    implemented: true,
   },
   {
     key: 'rates',
     title: 'Rates',
-    description: 'Ключевая ставка ЦБ РФ',
+    description: 'Ключевая и банковская ставка',
     icon: '⌁',
-    implemented: false,
+    implemented: true,
   },
   {
     key: 'notifications',
     title: 'Notifications',
     description: 'SMTP test email',
     icon: '✉',
-    implemented: false,
+    implemented: true,
   },
 ]
 
