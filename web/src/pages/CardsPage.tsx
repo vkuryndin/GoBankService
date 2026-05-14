@@ -4,6 +4,7 @@ import { RequestStatus } from '../components/RequestStatus'
 import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
 import { emptyState, type RequestState } from '../types/common'
 import {
+  formatCardNumber,
   formatDate,
   getCardBadgeClass,
   getCardDisplayNumber,
@@ -23,6 +24,12 @@ type CardsPageProps = {
   token: string
   sharedAccountId: string
 }
+
+const formatCardForDisplay = (card: CardResponse): CardResponse => ({
+  ...card,
+  number: card.number ? formatCardNumber(card.number) : card.number,
+  masked_number: formatCardNumber(card.masked_number),
+})
 
 export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const { showToast } = useToast()
@@ -92,6 +99,8 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardTransferResult(null)
     setCardCloseResult(null)
     setCardRevealMfaCode('')
+    setCardRevealState(emptyState)
+    setCardRevealMfaState(emptyState)
   }
 
   const upsertCard = (card: CardResponse) => {
@@ -102,6 +111,17 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
         : [card, ...current]
     })
     selectCard(card)
+  }
+
+  const updateCardListWithoutRevealedNumber = (card: CardResponse) => {
+    const cardForList: CardResponse = { ...card, number: undefined }
+
+    setCards((current) => {
+      const exists = current.some((item) => item.id === card.id)
+      return exists
+        ? current.map((item) => (item.id === card.id ? { ...item, ...cardForList } : item))
+        : [cardForList, ...current]
+    })
   }
 
   const applyClosedCard = (response: CloseCardResponse) => {
@@ -212,7 +232,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     }
   }
 
-
   const requestCardRevealMFA = async () => {
     if (!requireToken(setCardRevealMfaState)) {
       return
@@ -265,7 +284,9 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
         body: { mfa_code: cardRevealMfaCode },
       })
 
-      upsertCard(card)
+      updateCardListWithoutRevealedNumber(card)
+      setSelectedCardId(String(card.id))
+      setSelectedCard(card)
       setCardRevealMfaCode('')
       setCardRevealState({ loading: false, error: '', success: 'Полный номер карты показан.' })
     } catch (error) {
@@ -493,12 +514,14 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     }
   }
 
+  const hasOperationResult = cardPaymentResult || cardTransferResult || cardCloseResult
+
   return (
     <Card variant="plain" className="panel">
-      <div className="panelHeader">
+      <div className="panelHeader cardsPageHeader">
         <div>
           <h2>Карты пользователя</h2>
-          <p>Все действия с картами: выпуск, список, просмотр, оплата, перевод и закрытие.</p>
+          <p>Выпуск, список, безопасный просмотр номера, оплата, перевод и закрытие карт.</p>
         </div>
 
         <div className="actions">
@@ -510,144 +533,323 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
 
       <RequestStatus state={cardsState} />
 
-      <div className="cardsLayout">
-        <section className="subPanel">
-          <div className="subPanelHeader"><h3>Выпуск карты</h3></div>
-
-          <form className="form" onSubmit={createCard}>
-            <label>
-              <span>Account ID</span>
-              <input value={createCardAccountId} onChange={(event) => setCreateCardAccountId(event.target.value)} placeholder="ID счета" />
-            </label>
-
-            <Button type="submit" disabled={createCardState.loading || !token}>
-              {createCardState.loading ? 'Выпускаю...' : 'Выпустить карту'}
-            </Button>
-          </form>
-
-          <RequestStatus state={createCardState} />
-
-          {createdCard && (
-            <div className="result success">
-              <strong>Карта выпущена</strong>
-              <p className="mutedText">CVV показывается только один раз. Сохрани его для тестовых операций.</p>
-              <pre>{JSON.stringify(createdCard, null, 2)}</pre>
+      <div className="cardsWorkspace">
+        <aside className="cardsColumn cardsNavigationColumn">
+          <section className="subPanel">
+            <div className="subPanelHeader">
+              <h3>Выпуск карты</h3>
             </div>
+
+            <form className="form cardsCreateForm" onSubmit={createCard}>
+              <label>
+                <span>Account ID</span>
+                <input
+                  value={createCardAccountId}
+                  onChange={(event) => setCreateCardAccountId(event.target.value)}
+                  placeholder="ID счета"
+                />
+              </label>
+
+              <Button type="submit" disabled={createCardState.loading || !token}>
+                {createCardState.loading ? 'Выпускаю...' : 'Выпустить карту'}
+              </Button>
+            </form>
+
+            <RequestStatus state={createCardState} />
+
+            {createdCard && (
+              <div className="result success compactResult">
+                <strong>Карта выпущена</strong>
+                <p className="mutedText">CVV показывается только один раз. Сохрани его для тестовых операций.</p>
+                <pre>{JSON.stringify(formatCardForDisplay(createdCard), null, 2)}</pre>
+              </div>
+            )}
+          </section>
+
+          <CardListPanel cards={cards} selectedCardId={selectedCardId} onSelect={selectCard} />
+        </aside>
+
+        <main className="cardsColumn cardsOperationsColumn">
+          <section className="subPanel cardsOperationsPanel">
+            <div className="subPanelHeader">
+              <h3>Операции по карте</h3>
+              {selectedCard && <span>card_id {selectedCard.id}</span>}
+            </div>
+
+            {!selectedCard && <div className="empty">Выбери карту слева, чтобы выполнить оплату, перевод или закрытие.</div>}
+
+            {selectedCard && (
+              <>
+                {isCardClosed(selectedCard) && (
+                  <div className="empty cardsClosedNotice">Карта закрыта. Операции по ней недоступны.</div>
+                )}
+
+                <div className="cardOperationsGrid">
+                  <form className="actionBox" onSubmit={handleCardPayment}>
+                    <h4>Оплата картой</h4>
+                    <p>Сначала запроси MFA-код, потом выполни оплату.</p>
+
+                    <label>
+                      <span>Amount</span>
+                      <input
+                        value={cardPaymentAmount}
+                        onChange={(event) => setCardPaymentAmount(event.target.value)}
+                        disabled={isCardClosed(selectedCard)}
+                      />
+                    </label>
+                    <label>
+                      <span>Description</span>
+                      <input
+                        value={cardPaymentDescription}
+                        onChange={(event) => setCardPaymentDescription(event.target.value)}
+                        disabled={isCardClosed(selectedCard)}
+                      />
+                    </label>
+
+                    <Button
+                      className="secondary"
+                      type="button"
+                      onClick={requestCardPaymentMFA}
+                      disabled={cardPaymentMfaState.loading || isCardClosed(selectedCard)}
+                    >
+                      {cardPaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                    </Button>
+                    <RequestStatus state={cardPaymentMfaState} />
+
+                    <div className="cardsInlineFields">
+                      <label>
+                        <span>CVV</span>
+                        <input
+                          value={cardPaymentCVV}
+                          onChange={(event) => setCardPaymentCVV(event.target.value)}
+                          disabled={isCardClosed(selectedCard)}
+                        />
+                      </label>
+                      <label>
+                        <span>MFA code</span>
+                        <input
+                          value={cardPaymentMfaCode}
+                          onChange={(event) => setCardPaymentMfaCode(event.target.value)}
+                          disabled={isCardClosed(selectedCard)}
+                        />
+                      </label>
+                    </div>
+
+                    <Button type="submit" disabled={cardPaymentState.loading || isCardClosed(selectedCard)}>
+                      {cardPaymentState.loading ? 'Оплачиваю...' : 'Оплатить'}
+                    </Button>
+                    <RequestStatus state={cardPaymentState} />
+                  </form>
+
+                  <form className="actionBox" onSubmit={handleCardTransfer}>
+                    <h4>Перевод с карты</h4>
+                    <p>Перевод идет с выбранной карты на карту-получатель.</p>
+
+                    <label>
+                      <span>To card ID</span>
+                      <input
+                        value={cardTransferToCardId}
+                        onChange={(event) => setCardTransferToCardId(event.target.value)}
+                        disabled={isCardClosed(selectedCard)}
+                      />
+                    </label>
+                    <div className="cardsInlineFields">
+                      <label>
+                        <span>Amount</span>
+                        <input
+                          value={cardTransferAmount}
+                          onChange={(event) => setCardTransferAmount(event.target.value)}
+                          disabled={isCardClosed(selectedCard)}
+                        />
+                      </label>
+                      <label>
+                        <span>Description</span>
+                        <input
+                          value={cardTransferDescription}
+                          onChange={(event) => setCardTransferDescription(event.target.value)}
+                          disabled={isCardClosed(selectedCard)}
+                        />
+                      </label>
+                    </div>
+
+                    <Button
+                      className="secondary"
+                      type="button"
+                      onClick={requestCardTransferMFA}
+                      disabled={cardTransferMfaState.loading || isCardClosed(selectedCard)}
+                    >
+                      {cardTransferMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                    </Button>
+                    <RequestStatus state={cardTransferMfaState} />
+
+                    <div className="cardsInlineFields">
+                      <label>
+                        <span>CVV</span>
+                        <input
+                          value={cardTransferCVV}
+                          onChange={(event) => setCardTransferCVV(event.target.value)}
+                          disabled={isCardClosed(selectedCard)}
+                        />
+                      </label>
+                      <label>
+                        <span>MFA code</span>
+                        <input
+                          value={cardTransferMfaCode}
+                          onChange={(event) => setCardTransferMfaCode(event.target.value)}
+                          disabled={isCardClosed(selectedCard)}
+                        />
+                      </label>
+                    </div>
+
+                    <Button type="submit" disabled={cardTransferState.loading || isCardClosed(selectedCard)}>
+                      {cardTransferState.loading ? 'Перевожу...' : 'Перевести'}
+                    </Button>
+                    <RequestStatus state={cardTransferState} />
+                  </form>
+
+                  <div className="actionBox dangerZone cardsDangerZone">
+                    <h4>Закрытие карты</h4>
+                    <p>Закрытая карта больше не участвует в операциях.</p>
+                    <Button
+                      className="danger"
+                      type="button"
+                      onClick={closeCard}
+                      disabled={cardCloseState.loading || isCardClosed(selectedCard)}
+                    >
+                      {cardCloseState.loading ? 'Закрываю...' : 'Закрыть карту'}
+                    </Button>
+                    <RequestStatus state={cardCloseState} />
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+
+          {hasOperationResult && (
+            <section className="subPanel cardsResultsPanel">
+              <div className="subPanelHeader">
+                <h3>Результаты операций</h3>
+              </div>
+              {cardPaymentResult && (
+                <div className="result success">
+                  <strong>Результат оплаты</strong>
+                  <pre>{JSON.stringify(cardPaymentResult, null, 2)}</pre>
+                </div>
+              )}
+              {cardTransferResult && (
+                <div className="result success">
+                  <strong>Результат перевода</strong>
+                  <pre>{JSON.stringify(cardTransferResult, null, 2)}</pre>
+                </div>
+              )}
+              {cardCloseResult && (
+                <div className="result success">
+                  <strong>Результат закрытия карты</strong>
+                  <pre>{JSON.stringify(cardCloseResult, null, 2)}</pre>
+                </div>
+              )}
+            </section>
           )}
-        </section>
+        </main>
 
-        <CardListPanel
-          cards={cards}
-          selectedCardId={selectedCardId}
-          onSelect={selectCard}
-        />
+        <aside className="cardsColumn cardsDetailsColumn">
+          <section className="subPanel cardDetailsPanel">
+            <div className="subPanelHeader">
+              <h3>Выбранная карта</h3>
+              {selectedCard && <span className={getCardBadgeClass(selectedCard)}>{getCardStatusText(selectedCard)}</span>}
+            </div>
 
-        <section className="subPanel cardDetailsPanel">
-          <div className="subPanelHeader">
-            <h3>Выбранная карта</h3>
-            {selectedCard && <span className={getCardBadgeClass(selectedCard)}>{getCardStatusText(selectedCard)}</span>}
-          </div>
+            {!selectedCard && <div className="empty">Выбери карту из списка.</div>}
 
-          {!selectedCard && <div className="empty">Выбери карту из списка.</div>}
+            {selectedCard && (
+              <>
+                <div className="selectedCardPreview">
+                  <span className="selectedCardLabel">Номер карты</span>
+                  <strong className="selectedCardNumber">{getCardDisplayNumber(selectedCard)}</strong>
+                  <span className="selectedCardHint">
+                    {selectedCard.number ? 'Полный номер показан после MFA.' : 'Обычный просмотр показывает только masked number.'}
+                  </span>
+                </div>
+
+                <div className="detailsGrid cardsDetailsGrid">
+                  <div>
+                    <span>ID</span>
+                    <strong>{selectedCard.id}</strong>
+                  </div>
+                  <div>
+                    <span>Account ID</span>
+                    <strong>{selectedCard.account_id}</strong>
+                  </div>
+                  <div>
+                    <span>Expiry</span>
+                    <strong>{selectedCard.expiry || '-'}</strong>
+                  </div>
+                  <div>
+                    <span>Status</span>
+                    <strong>{selectedCard.status}</strong>
+                  </div>
+                  <div>
+                    <span>Created</span>
+                    <strong>{formatDate(selectedCard.created_at)}</strong>
+                  </div>
+                  <div>
+                    <span>Closed at</span>
+                    <strong>{formatDate(selectedCard.closed_at)}</strong>
+                  </div>
+                </div>
+
+                <div className="actions topGap">
+                  <Button className="secondary" type="button" onClick={loadCardDetails} disabled={cardDetailsState.loading}>
+                    {cardDetailsState.loading ? 'Обновляю...' : 'Обновить безопасные детали'}
+                  </Button>
+                </div>
+
+                <RequestStatus state={cardDetailsState} />
+              </>
+            )}
+          </section>
 
           {selectedCard && (
-            <>
-              <div className="detailsGrid">
-                <div><span>ID</span><strong>{selectedCard.id}</strong></div>
-                <div><span>Account ID</span><strong>{selectedCard.account_id}</strong></div>
-                <div><span>Number</span><strong>{getCardDisplayNumber(selectedCard)}</strong></div>
-                <div><span>Expiry</span><strong>{selectedCard.expiry || '-'}</strong></div>
-                <div><span>Status</span><strong>{selectedCard.status}</strong></div>
-                <div><span>Created</span><strong>{formatDate(selectedCard.created_at)}</strong></div>
-                <div><span>Closed at</span><strong>{formatDate(selectedCard.closed_at)}</strong></div>
+            <section className="subPanel cardRevealPanel">
+              <div className="subPanelHeader">
+                <h3>Полный номер карты</h3>
+                <span className="badge mutedBadge">MFA</span>
               </div>
 
-              <div className="actions topGap">
-                <Button className="secondary" type="button" onClick={loadCardDetails} disabled={cardDetailsState.loading}>
-                  {cardDetailsState.loading ? 'Обновляю...' : 'Обновить безопасные детали'}
-                </Button>
-              </div>
+              <p className="mutedText">
+                PAN показывается только через отдельный endpoint <code>POST /cards/{'{cardId}'}/reveal</code>.
+              </p>
 
-              <RequestStatus state={cardDetailsState} />
-
-              <div className="actionBox cardRevealBox">
-                <h4>Показ полного номера карты</h4>
-                <p>Обычный GET больше не возвращает полный номер. Для показа PAN нужен отдельный MFA-код.</p>
-
-                <Button className="secondary" type="button" onClick={requestCardRevealMFA} disabled={cardRevealMfaState.loading || isCardClosed(selectedCard)}>
+              <div className="cardRevealActions">
+                <Button
+                  className="secondary"
+                  type="button"
+                  onClick={requestCardRevealMFA}
+                  disabled={cardRevealMfaState.loading || isCardClosed(selectedCard)}
+                >
                   {cardRevealMfaState.loading ? 'Отправляю...' : 'Запросить MFA для номера'}
                 </Button>
                 <RequestStatus state={cardRevealMfaState} />
 
-                <label><span>MFA code</span><input value={cardRevealMfaCode} onChange={(event) => setCardRevealMfaCode(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
+                <label>
+                  <span>MFA code</span>
+                  <input
+                    value={cardRevealMfaCode}
+                    onChange={(event) => setCardRevealMfaCode(event.target.value)}
+                    disabled={isCardClosed(selectedCard)}
+                  />
+                </label>
 
                 <Button type="button" onClick={revealCardNumber} disabled={cardRevealState.loading || isCardClosed(selectedCard)}>
                   {cardRevealState.loading ? 'Показываю...' : 'Показать полный номер'}
                 </Button>
                 <RequestStatus state={cardRevealState} />
               </div>
-
-              <div className="cardActionsGrid">
-                <form className="actionBox" onSubmit={handleCardPayment}>
-                  <h4>Оплата картой</h4>
-                  <p>Сначала запроси MFA-код, потом выполни оплату.</p>
-
-                  <label><span>Amount</span><input value={cardPaymentAmount} onChange={(event) => setCardPaymentAmount(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-                  <label><span>Description</span><input value={cardPaymentDescription} onChange={(event) => setCardPaymentDescription(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-
-                  <Button className="secondary" type="button" onClick={requestCardPaymentMFA} disabled={cardPaymentMfaState.loading || isCardClosed(selectedCard)}>
-                    {cardPaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-                  </Button>
-                  <RequestStatus state={cardPaymentMfaState} />
-
-                  <label><span>CVV</span><input value={cardPaymentCVV} onChange={(event) => setCardPaymentCVV(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-                  <label><span>MFA code</span><input value={cardPaymentMfaCode} onChange={(event) => setCardPaymentMfaCode(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-
-                  <Button type="submit" disabled={cardPaymentState.loading || isCardClosed(selectedCard)}>
-                    {cardPaymentState.loading ? 'Оплачиваю...' : 'Оплатить'}
-                  </Button>
-                  <RequestStatus state={cardPaymentState} />
-                </form>
-
-                <form className="actionBox" onSubmit={handleCardTransfer}>
-                  <h4>Перевод с карты</h4>
-                  <p>Перевод идет с выбранной карты на карту-получатель.</p>
-
-                  <label><span>To card ID</span><input value={cardTransferToCardId} onChange={(event) => setCardTransferToCardId(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-                  <label><span>Amount</span><input value={cardTransferAmount} onChange={(event) => setCardTransferAmount(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-                  <label><span>Description</span><input value={cardTransferDescription} onChange={(event) => setCardTransferDescription(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-
-                  <Button className="secondary" type="button" onClick={requestCardTransferMFA} disabled={cardTransferMfaState.loading || isCardClosed(selectedCard)}>
-                    {cardTransferMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-                  </Button>
-                  <RequestStatus state={cardTransferMfaState} />
-
-                  <label><span>CVV</span><input value={cardTransferCVV} onChange={(event) => setCardTransferCVV(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-                  <label><span>MFA code</span><input value={cardTransferMfaCode} onChange={(event) => setCardTransferMfaCode(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
-
-                  <Button type="submit" disabled={cardTransferState.loading || isCardClosed(selectedCard)}>
-                    {cardTransferState.loading ? 'Перевожу...' : 'Перевести'}
-                  </Button>
-                  <RequestStatus state={cardTransferState} />
-                </form>
-
-                <div className="actionBox dangerZone">
-                  <h4>Закрытие карты</h4>
-                  <p>Закрытая карта больше не участвует в операциях.</p>
-                  <Button className="danger" type="button" onClick={closeCard} disabled={cardCloseState.loading || isCardClosed(selectedCard)}>
-                    {cardCloseState.loading ? 'Закрываю...' : 'Закрыть карту'}
-                  </Button>
-                  <RequestStatus state={cardCloseState} />
-                </div>
-              </div>
-
-              {cardPaymentResult && <div className="result success"><strong>Результат оплаты</strong><pre>{JSON.stringify(cardPaymentResult, null, 2)}</pre></div>}
-              {cardTransferResult && <div className="result success"><strong>Результат перевода</strong><pre>{JSON.stringify(cardTransferResult, null, 2)}</pre></div>}
-              {cardCloseResult && <div className="result success"><strong>Результат закрытия карты</strong><pre>{JSON.stringify(cardCloseResult, null, 2)}</pre></div>}
-            </>
+            </section>
           )}
-        </section>
+        </aside>
       </div>
+
       <ConfirmDialog
         open={closeConfirmOpen}
         title="Закрыть карту"

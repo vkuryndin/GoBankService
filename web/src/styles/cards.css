@@ -1,12 +1,28 @@
-.cardsLayout {
+.cardsPageHeader {
+  margin-bottom: 18px;
+}
+
+.cardsWorkspace {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(280px, 420px);
+  grid-template-columns: minmax(280px, 340px) minmax(420px, 1fr) minmax(300px, 420px);
   gap: 20px;
   align-items: start;
 }
 
-.cardDetailsPanel {
-  grid-column: 1 / -1;
+.cardsColumn {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cardsNavigationColumn,
+.cardsDetailsColumn {
+  position: sticky;
+  top: 16px;
+}
+
+.cardsCreateForm {
+  max-width: none;
 }
 
 .cardList {
@@ -46,11 +62,15 @@
     #eff6ff;
 }
 
-.cardNumber {
+.cardNumber,
+.selectedCardNumber {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 15px;
   letter-spacing: 0.04em;
   word-break: break-all;
+}
+
+.cardNumber {
+  font-size: 15px;
 }
 
 .cardMeta {
@@ -62,24 +82,110 @@
   font-size: 13px;
 }
 
-.cardActionsGrid {
+.cardsOperationsPanel,
+.cardsResultsPanel,
+.cardDetailsPanel,
+.cardRevealPanel {
+  min-width: 0;
+}
+
+.cardOperationsGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.cardsInlineFields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 18px;
+  gap: 12px;
+}
+
+.cardsDangerZone {
+  margin-top: 2px;
+}
+
+.cardsClosedNotice {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.selectedCardPreview {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.12), transparent 54%),
+    #eff6ff;
+}
+
+.selectedCardLabel,
+.selectedCardHint {
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.selectedCardLabel {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.selectedCardNumber {
+  color: #111827;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.cardsDetailsGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cardRevealPanel {
+  border-color: #fed7aa;
+  background: #fffaf5;
+}
+
+.cardRevealActions {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.compactResult pre,
+.cardsResultsPanel pre {
+  max-height: 260px;
+}
+
+@media (max-width: 1400px) {
+  .cardsWorkspace {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  }
+
+  .cardsDetailsColumn {
+    grid-column: 1 / -1;
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1100px) {
-  .cardsLayout,
-  .cardActionsGrid {
+  .cardsWorkspace,
+  .cardsDetailsColumn,
+  .cardsInlineFields {
     grid-template-columns: 1fr;
   }
 
-  .cardDetailsPanel {
-    grid-column: auto;
+  .cardsNavigationColumn,
+  .cardsDetailsColumn {
+    position: static;
   }
 }
 
-.cardRevealBox {
-  margin: 18px 0;
+@media (max-width: 560px) {
+  .cardsDetailsGrid {
+    grid-template-columns: 1fr;
+  }
 }

@@ -63,8 +63,34 @@ export function getCardStatusText(card: CardResponse): string {
   return 'active'
 }
 
+export function formatCardNumber(value?: string): string {
+  if (!value) {
+    return '-'
+  }
+
+  const normalized = value.trim()
+  if (!normalized) {
+    return '-'
+  }
+
+  const digitsOnly = normalized.replace(/\D/g, '')
+  const valueWithoutSpacesAndHyphens = normalized.replace(/[\s-]/g, '')
+  const hasMaskSymbols = /[*•xX]/.test(normalized)
+
+  if (
+    !hasMaskSymbols &&
+    digitsOnly.length >= 12 &&
+    digitsOnly.length <= 19 &&
+    valueWithoutSpacesAndHyphens === digitsOnly
+  ) {
+    return digitsOnly.replace(/(\d{4})(?=\d)/g, '$1 ').trim()
+  }
+
+  return normalized
+}
+
 export function getCardDisplayNumber(card: CardResponse): string {
-  return card.number || card.masked_number
+  return card.number ? formatCardNumber(card.number) : formatCardNumber(card.masked_number)
 }
 
 export { createIdempotencyKey }
