@@ -42,20 +42,10 @@ function broadcastAuthEvent(event: AuthStorageEvent) {
 }
 
 export function getAuthToken(): string {
-  if (!canUseStorage()) {
-    return ''
-  }
-
-  return localStorage.getItem(tokenStorageKey) || ''
+  return ''
 }
 
-export function setAuthToken(token: string, broadcast = true) {
-  if (!canUseStorage()) {
-    return
-  }
-
-  localStorage.setItem(tokenStorageKey, token)
-
+export function setAuthToken(token = 'cookie-session', broadcast = true) {
   if (broadcast) {
     broadcastAuthEvent(createAuthEvent('token_changed', token))
   }

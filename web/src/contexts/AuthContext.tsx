@@ -8,7 +8,6 @@ import type { SessionExpiredEventDetail } from '../utils/sessionEvents'
 import {
   authEventStorageKey,
   clearAuthToken,
-  getAuthToken,
   isOwnAuthEvent,
   parseAuthStorageEvent,
   setAuthToken,
@@ -47,6 +46,8 @@ type AuthProviderProps = {
   children: ReactNode
 }
 
+const cookieSessionMarker = 'cookie-session'
+
 function getErrorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
 }
@@ -66,17 +67,14 @@ function normalizeClearSessionOptions(options?: ClearSessionOptions | string): C
 export function AuthProvider({ children }: AuthProviderProps) {
   const queryClient = useQueryClient()
   const { showToast } = useToast()
-  const [token, setTokenState] = useState(() => getAuthToken())
+  const [token, setTokenState] = useState('')
   const [loginValue, setLoginValue] = useState('')
   const [sessionError, setSessionError] = useState('')
   const [logoutState, setLogoutState] = useState<RequestState>(emptyState)
 
-  const hasToken = token.trim() !== ''
-
   const currentUserQuery = useQuery({
     queryKey: queryKeys.auth.currentUser,
-    queryFn: () => authApi.check(token),
-    enabled: hasToken,
+    queryFn: () => authApi.check(),
     retry: false,
     staleTime: 30_000,
   })
@@ -86,7 +84,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   })
 
   const logoutMutation = useMutation({
-    mutationFn: (tokenToLogout: string) => authApi.logout(tokenToLogout),
+    mutationFn: () => authApi.logout(),
   })
 
   const clearSession = useCallback((options?: ClearSessionOptions | string) => {
@@ -125,9 +123,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       if (authEvent.type === 'token_changed') {
-        setTokenState(authEvent.token || getAuthToken())
+        setTokenState(cookieSessionMarker)
         setSessionError('')
-        queryClient.clear()
+        queryClient.invalidateQueries({ queryKey: queryKeys.auth.currentUser })
         return
       }
 
@@ -151,11 +149,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [queryClient, showToast])
 
   useEffect(() => {
-    if (currentUserQuery.isError && hasToken) {
-      const message = getErrorText(currentUserQuery.error, 'Failed to check current user')
-      clearSession({ message, reason: 'session_expired', broadcast: true })
+    if (currentUserQuery.data?.authenticated) {
+      setTokenState(cookieSessionMarker)
+      setSessionError('')
+      return
     }
-  }, [clearSession, currentUserQuery.error, currentUserQuery.isError, hasToken])
+
+    if (currentUserQuery.isError) {
+      setTokenState('')
+    }
+  }, [currentUserQuery.data, currentUserQuery.isError])
 
   const login = useCallback(
     async (request: LoginRequest) => {
@@ -163,22 +166,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLogoutState(emptyState)
 
       const data = await loginMutation.mutateAsync(request)
-      setAuthToken(data.token)
-      setTokenState(data.token)
-      queryClient.clear()
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all })
+      setAuthToken(cookieSessionMarker)
+      setTokenState(cookieSessionMarker)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.currentUser })
+      await currentUserQuery.refetch()
 
       return data
     },
-    [loginMutation, queryClient],
+    [currentUserQuery, loginMutation, queryClient],
   )
 
   const logout = useCallback(async () => {
-    if (!token) {
-      clearSession({ reason: 'logout', broadcast: true })
-      return
-    }
-
     setLogoutState({
       loading: true,
       error: '',
@@ -186,7 +184,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     })
 
     try {
-      await logoutMutation.mutateAsync(token)
+      await logoutMutation.mutateAsync()
       clearSession({ reason: 'logout', broadcast: true })
       setLogoutState({
         loading: false,
@@ -200,17 +198,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         success: '',
       })
     }
-  }, [clearSession, logoutMutation, token])
+  }, [clearSession, logoutMutation])
 
   const checkCurrentUser = useCallback(async () => {
-    if (!hasToken) {
-      setSessionError('Токен отсутствует.')
-      return
-    }
-
     setSessionError('')
     await currentUserQuery.refetch()
-  }, [currentUserQuery, hasToken])
+  }, [currentUserQuery])
 
   const currentUser: CurrentUser | null = currentUserQuery.data?.authenticated
     ? {
@@ -222,8 +215,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     : null
 
-  const isAuthChecking = hasToken && currentUserQuery.isFetching
-  const isAuthenticated = hasToken && Boolean(currentUser?.authenticated)
+  const isAuthChecking = currentUserQuery.isLoading || currentUserQuery.isFetching
+  const isAuthenticated = Boolean(currentUser?.authenticated)
+  const hasToken = token.trim() !== '' || isAuthenticated
+  const effectiveToken = hasToken ? cookieSessionMarker : ''
 
   const authCheckState: RequestState = useMemo(() => {
     if (isAuthChecking) {
@@ -257,7 +252,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      token,
+      token: effectiveToken,
       hasToken,
       currentUser,
       isAuthenticated,
@@ -277,6 +272,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       checkCurrentUser,
       clearSession,
       currentUser,
+      effectiveToken,
       hasToken,
       isAuthenticated,
       isAuthChecking,
@@ -285,7 +281,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       loginValue,
       logout,
       logoutState,
-      token,
     ],
   )
 

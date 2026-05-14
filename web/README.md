@@ -126,3 +126,17 @@ dist/
 ```
 
 Use `npm ci` to restore dependencies from `package-lock.json`.
+
+## Авторизация
+
+Frontend использует cookie-based auth: после `POST /api/login` backend устанавливает `HttpOnly` cookie `bank_service_session`. JWT больше не хранится в `localStorage`; все запросы отправляются через `axios` с `withCredentials: true`.
+
+Для локального запуска frontend на `localhost:5173` и backend на другом origin включи CORS на backend:
+
+```env
+CORS_ENABLED=true
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+CORS_ALLOW_CREDENTIALS=true
+```
+
+При production-доступе через nginx `/app` + `/api` CORS обычно не нужен, потому что frontend и API находятся на одном origin.

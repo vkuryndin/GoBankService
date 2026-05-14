@@ -196,6 +196,10 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     path TEXT NOT NULL,
     key TEXT NOT NULL,
     request_hash TEXT NOT NULL DEFAULT '',
+    response_status INTEGER,
+    response_content_type TEXT,
+    response_body BYTEA,
+    completed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT idempotency_keys_unique_operation UNIQUE (user_id, method, path, key)
 );
@@ -203,11 +207,26 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 ALTER TABLE idempotency_keys
 ADD COLUMN IF NOT EXISTS request_hash TEXT NOT NULL DEFAULT '';
 
+ALTER TABLE idempotency_keys
+ADD COLUMN IF NOT EXISTS response_status INTEGER;
+
+ALTER TABLE idempotency_keys
+ADD COLUMN IF NOT EXISTS response_content_type TEXT;
+
+ALTER TABLE idempotency_keys
+ADD COLUMN IF NOT EXISTS response_body BYTEA;
+
+ALTER TABLE idempotency_keys
+ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_created_at
 ON idempotency_keys(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_request_hash
 ON idempotency_keys(request_hash);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_keys_completed_at
+ON idempotency_keys(completed_at);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
     id BIGSERIAL PRIMARY KEY,
@@ -240,6 +259,10 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'idempotency_keys') THEN
         ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS request_hash TEXT NOT NULL DEFAULT '';
+        ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS response_status INTEGER;
+        ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS response_content_type TEXT;
+        ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS response_body BYTEA;
+        ALTER TABLE idempotency_keys ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_email_not_empty') THEN

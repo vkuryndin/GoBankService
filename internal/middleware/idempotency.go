@@ -19,7 +19,8 @@ import (
 const idempotencyHeader = "Idempotency-Key"
 
 type idempotencyStore interface {
-	ClaimKey(ctx context.Context, userID int64, method string, path string, key string, requestHash string) error
+	ClaimKey(ctx context.Context, userID int64, method string, path string, key string, requestHash string) (*repositories.IdempotencyResponse, bool, error)
+	StoreResponse(ctx context.Context, userID int64, method string, path string, key string, statusCode int, contentType string, body []byte) error
 	ReleaseKey(ctx context.Context, userID int64, method string, path string, key string) error
 }
 
@@ -70,10 +71,11 @@ func IdempotencyMiddleware(
 				return
 			}
 
-			if err := store.ClaimKey(r.Context(), userID, r.Method, r.URL.Path, key, requestHash); err != nil {
-				if errors.Is(err, repositories.ErrIdempotencyKeyAlreadyUsed) {
+			storedResponse, replay, err := store.ClaimKey(r.Context(), userID, r.Method, r.URL.Path, key, requestHash)
+			if err != nil {
+				if errors.Is(err, repositories.ErrIdempotencyRequestInProgress) {
 					recordIdempotencyDuplicate(r, auditRecorder, userID, false)
-					writeMiddlewareError(w, http.StatusConflict, "duplicate idempotency key")
+					writeMiddlewareError(w, http.StatusConflict, "idempotency request is still processing")
 					return
 				}
 
@@ -83,23 +85,90 @@ func IdempotencyMiddleware(
 					return
 				}
 
+				if errors.Is(err, repositories.ErrIdempotencyKeyAlreadyUsed) {
+					recordIdempotencyDuplicate(r, auditRecorder, userID, false)
+					writeMiddlewareError(w, http.StatusConflict, "duplicate idempotency key")
+					return
+				}
+
 				logger.WithError(err).Error("idempotency claim failed")
 				writeMiddlewareError(w, http.StatusInternalServerError, "idempotency check failed")
 				return
 			}
 
-			recorder := newStatusRecorder(w)
+			if replay {
+				recordIdempotencyReplay(r, auditRecorder, userID)
+				writeStoredIdempotencyResponse(w, storedResponse)
+				return
+			}
+
+			recorder := newIdempotencyResponseRecorder(w)
 			next.ServeHTTP(recorder, r)
 
 			// Validation and business errors should not permanently reserve a key.
-			// Successful requests keep the key to prevent double execution.
+			// Successful requests keep a stored response, so a retry can replay the same result safely.
 			if recorder.statusCode >= http.StatusBadRequest {
 				if err := store.ReleaseKey(r.Context(), userID, r.Method, r.URL.Path, key); err != nil {
 					logger.WithError(err).Warn("idempotency key release failed")
 				}
+				return
+			}
+
+			if err := store.StoreResponse(
+				r.Context(),
+				userID,
+				r.Method,
+				r.URL.Path,
+				key,
+				recorder.statusCode,
+				recorder.contentType(),
+				recorder.body.Bytes(),
+			); err != nil {
+				logger.WithError(err).Warn("idempotency response store failed")
 			}
 		})
 	}
+}
+
+type idempotencyResponseRecorder struct {
+	http.ResponseWriter
+	statusCode int
+	body       bytes.Buffer
+}
+
+func newIdempotencyResponseRecorder(w http.ResponseWriter) *idempotencyResponseRecorder {
+	return &idempotencyResponseRecorder{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+	}
+}
+
+func (r *idempotencyResponseRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *idempotencyResponseRecorder) Write(data []byte) (int, error) {
+	_, _ = r.body.Write(data)
+	return r.ResponseWriter.Write(data)
+}
+
+func (r *idempotencyResponseRecorder) contentType() string {
+	return r.Header().Get("Content-Type")
+}
+
+func writeStoredIdempotencyResponse(w http.ResponseWriter, response *repositories.IdempotencyResponse) {
+	if response == nil {
+		writeMiddlewareError(w, http.StatusConflict, "duplicate idempotency key")
+		return
+	}
+
+	if response.ContentType != "" {
+		w.Header().Set("Content-Type", response.ContentType)
+	}
+	w.Header().Set("X-Idempotent-Replay", "true")
+	w.WriteHeader(response.StatusCode)
+	_, _ = w.Write(response.Body)
 }
 
 // request_hash prevents clients from reusing the same Idempotency-Key for a different financial request body.
@@ -145,6 +214,25 @@ func recordIdempotencyDuplicate(r *http.Request, auditRecorder audit.Recorder, u
 		IPAddress: ClientIP(r),
 		UserAgent: r.UserAgent(),
 		Details:   details,
+	})
+}
+
+func recordIdempotencyReplay(r *http.Request, auditRecorder audit.Recorder, userID int64) {
+	if auditRecorder == nil {
+		return
+	}
+
+	auditRecorder.Record(r.Context(), audit.Event{
+		UserID:    audit.Int64Ptr(userID),
+		Action:    "security.idempotency.replay",
+		Status:    audit.StatusSuccess,
+		IPAddress: ClientIP(r),
+		UserAgent: r.UserAgent(),
+		Details: map[string]any{
+			"request_id": RequestIDFromContext(r.Context()),
+			"method":     r.Method,
+			"path":       r.URL.Path,
+		},
 	})
 }
 

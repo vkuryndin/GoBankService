@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/dto"
+	"bank-service/internal/security"
 	"bank-service/internal/security/httpauth"
 	"bank-service/internal/services"
 )
@@ -94,6 +96,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		audit.StatusSuccess,
 		nil,
 	)
+	setAuthCookie(w, r, response.Token)
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -103,7 +106,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenString, err := httpauth.ExtractBearerToken(r)
+	tokenString, err := httpauth.ExtractTokenFromRequest(r)
 	if err != nil {
 		recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.failed", "user", audit.Int64Ptr(userID), audit.StatusFailed, nil)
 		writeError(w, http.StatusUnauthorized, "invalid token")
@@ -117,6 +120,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	recordRequestAudit(h.auditRecorder, r, audit.Int64Ptr(userID), "auth.logout.success", "user", audit.Int64Ptr(userID), audit.StatusSuccess, nil)
+	clearAuthCookie(w, r)
 	writeJSON(w, http.StatusOK, dto.MessageResponse{Message: "logout successful"})
 }
 
@@ -126,4 +130,34 @@ func (h *AuthHandler) CheckAuth(w http.ResponseWriter, r *http.Request) {
 			response, err := h.authService.CheckAuth(ctx, userID)
 			return http.StatusOK, response, err
 		})
+}
+
+func setAuthCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     httpauth.AuthCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  time.Now().Add(security.TokenTTL),
+		MaxAge:   int(security.TokenTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   isSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func clearAuthCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     httpauth.AuthCookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   isSecureRequest(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func isSecureRequest(r *http.Request) bool {
+	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }

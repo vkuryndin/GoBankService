@@ -20,7 +20,7 @@ func AuthMiddleware(
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			tokenString, err := httpauth.ExtractBearerToken(r)
+			tokenString, err := httpauth.ExtractTokenFromRequest(r)
 			if err != nil {
 				writeAuthError(w, http.StatusUnauthorized, err.Error())
 				return

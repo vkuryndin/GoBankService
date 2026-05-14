@@ -1,8 +1,8 @@
 import axios from 'axios'
-import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
+import type { AxiosError } from 'axios'
 import type { ApiErrorBody, NormalizedApiError } from '../types/error'
 import { isApiErrorBody } from '../types/error'
-import { clearAuthToken, getAuthToken } from '../utils/authTokenStorage'
+import { clearAuthToken } from '../utils/authTokenStorage'
 import { emitSessionExpired } from '../utils/sessionEvents'
 
 export type ApiRequestOptions = {
@@ -30,26 +30,10 @@ export class ApiError extends Error implements NormalizedApiError {
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
+  withCredentials: true,
   headers: {
     Accept: 'application/json',
   },
-})
-
-function hasAuthorizationHeader(config: InternalAxiosRequestConfig) {
-  const authorization = config.headers.get?.('Authorization')
-  return typeof authorization === 'string' && authorization.trim() !== ''
-}
-
-apiClient.interceptors.request.use((config) => {
-  if (!hasAuthorizationHeader(config)) {
-    const token = getAuthToken()
-
-    if (token) {
-      config.headers.set?.('Authorization', `Bearer ${token}`)
-    }
-  }
-
-  return config
 })
 
 apiClient.interceptors.response.use(
@@ -57,7 +41,10 @@ apiClient.interceptors.response.use(
   (error: unknown) => {
     const normalizedError = normalizeApiError(error)
 
-    if (normalizedError.status === 401) {
+    const requestURL = axios.isAxiosError(error) ? error.config?.url || '' : ''
+    const isAuthCheckRequest = requestURL.includes('/auth/check')
+
+    if (normalizedError.status === 401 && !isAuthCheckRequest) {
       const message = normalizedError.message || 'Сессия истекла. Войдите снова.'
       clearAuthToken('session_expired', message)
       emitSessionExpired(message)
@@ -158,14 +145,9 @@ export async function parseResponse<T>(response: Response): Promise<T> {
   return body as T
 }
 
-export function authHeaders(token = '', withJSON = false): Record<string, string> {
-  const resolvedToken = token || getAuthToken()
+export function authHeaders(_token = '', withJSON = false): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
-  }
-
-  if (resolvedToken) {
-    headers.Authorization = `Bearer ${resolvedToken}`
   }
 
   if (withJSON) {
@@ -182,10 +164,6 @@ export async function apiRequest<T>(
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...(options.headers || {}),
-  }
-
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`
   }
 
   const hasBody = options.body !== undefined
