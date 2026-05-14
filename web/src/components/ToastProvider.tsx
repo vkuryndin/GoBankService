@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { createRandomID } from '../utils/random'
 
 export type ToastType = 'success' | 'error' | 'info'
 
@@ -36,7 +37,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
   const showToast = useCallback(
     (message: string, type: ToastType = 'info') => {
-      const id = crypto.randomUUID()
+      const id = createRandomID()
       setToasts((current) => [...current, { id, type, message }])
 
       const timeoutID = window.setTimeout(() => removeToast(id), 4000)

@@ -1,3 +1,5 @@
+import { createRandomID } from './random'
+
 export const tokenStorageKey = 'bank_service_token'
 export const authEventStorageKey = 'bank_service_auth_event'
 
@@ -11,7 +13,7 @@ export type AuthStorageEvent = {
   source: string
 }
 
-const sourceID = crypto.randomUUID()
+const sourceID = createRandomID()
 
 function canUseStorage() {
   return typeof window !== 'undefined' && typeof localStorage !== 'undefined'

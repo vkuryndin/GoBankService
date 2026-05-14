@@ -1,7 +1,5 @@
-export function createIdempotencyKey(prefix = 'web'): string {
-  const randomPart = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+import { createPrefixedRandomID } from './random'
 
-  return `${prefix}-${randomPart}`
+export function createIdempotencyKey(prefix = 'web'): string {
+  return createPrefixedRandomID(prefix)
 }
