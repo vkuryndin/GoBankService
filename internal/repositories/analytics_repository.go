@@ -226,3 +226,435 @@ func (r *AnalyticsRepository) getCreditLoad(ctx context.Context, userID int64) (
 
 	return creditLoad, nil
 }
+
+type OperationStatistics struct {
+	EntityType     string
+	EntityID       int64
+	Currency       string
+	OperationCount int64
+	IncomeCount    int64
+	ExpenseCount   int64
+	TotalIncome    string
+	TotalExpense   string
+	NetAmount      string
+	Operations     []OperationEntry
+	ByType         []OperationTypeStatistics
+	ByStatus       []OperationStatusStatistics
+}
+
+type OperationEntry struct {
+	ID            int64
+	Direction     string
+	Type          string
+	Status        string
+	Amount        string
+	Currency      string
+	Description   string
+	FromAccountID sql.NullInt64
+	ToAccountID   sql.NullInt64
+	FromCardID    sql.NullInt64
+	ToCardID      sql.NullInt64
+	CreatedAt     string
+}
+
+type OperationTypeStatistics struct {
+	Type         string
+	Count        int64
+	TotalIncome  string
+	TotalExpense string
+	NetAmount    string
+}
+
+type OperationStatusStatistics struct {
+	Status      string
+	Count       int64
+	TotalAmount string
+}
+
+func (r *AnalyticsRepository) GetAccountOperationStatistics(
+	ctx context.Context,
+	userID int64,
+	accountID int64,
+	limit int,
+) (*OperationStatistics, error) {
+	if err := r.ensureAccountBelongsToUser(ctx, userID, accountID); err != nil {
+		return nil, err
+	}
+
+	return r.getOperationStatistics(ctx, accountOperationStatisticsQuery(), accountID, "account", accountID, limit)
+}
+
+func (r *AnalyticsRepository) GetCardOperationStatistics(
+	ctx context.Context,
+	userID int64,
+	cardID int64,
+	limit int,
+) (*OperationStatistics, error) {
+	if err := r.ensureCardBelongsToUser(ctx, userID, cardID); err != nil {
+		return nil, err
+	}
+
+	return r.getOperationStatistics(ctx, cardOperationStatisticsQuery(), cardID, "card", cardID, limit)
+}
+
+func (r *AnalyticsRepository) ensureAccountBelongsToUser(ctx context.Context, userID int64, accountID int64) error {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM accounts
+			WHERE id = $1 AND user_id = $2
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, accountID, userID).Scan(&exists); err != nil {
+		return fmt.Errorf("check account ownership for statistics: %w", err)
+	}
+
+	if !exists {
+		return ErrAccountNotFound
+	}
+
+	return nil
+}
+
+func (r *AnalyticsRepository) ensureCardBelongsToUser(ctx context.Context, userID int64, cardID int64) error {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM cards
+			WHERE id = $1 AND user_id = $2
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRowContext(ctx, query, cardID, userID).Scan(&exists); err != nil {
+		return fmt.Errorf("check card ownership for statistics: %w", err)
+	}
+
+	if !exists {
+		return ErrCardNotFound
+	}
+
+	return nil
+}
+
+type operationStatisticsQueries struct {
+	summary  string
+	byType   string
+	byStatus string
+	entries  string
+}
+
+func (r *AnalyticsRepository) getOperationStatistics(
+	ctx context.Context,
+	queries operationStatisticsQueries,
+	entityID int64,
+	entityType string,
+	responseEntityID int64,
+	limit int,
+) (*OperationStatistics, error) {
+	stats := &OperationStatistics{
+		EntityType: entityType,
+		EntityID:   responseEntityID,
+		Currency:   "RUB",
+	}
+
+	if err := r.db.QueryRowContext(ctx, queries.summary, entityID).Scan(
+		&stats.OperationCount,
+		&stats.IncomeCount,
+		&stats.ExpenseCount,
+		&stats.TotalIncome,
+		&stats.TotalExpense,
+		&stats.NetAmount,
+	); err != nil {
+		return nil, fmt.Errorf("get operation statistics summary: %w", err)
+	}
+
+	byType, err := r.getOperationTypeStatistics(ctx, queries.byType, entityID)
+	if err != nil {
+		return nil, err
+	}
+	stats.ByType = byType
+
+	byStatus, err := r.getOperationStatusStatistics(ctx, queries.byStatus, entityID)
+	if err != nil {
+		return nil, err
+	}
+	stats.ByStatus = byStatus
+
+	operations, err := r.getOperationEntries(ctx, queries.entries, entityID, limit)
+	if err != nil {
+		return nil, err
+	}
+	stats.Operations = operations
+
+	return stats, nil
+}
+
+func (r *AnalyticsRepository) getOperationTypeStatistics(
+	ctx context.Context,
+	query string,
+	entityID int64,
+) ([]OperationTypeStatistics, error) {
+	rows, err := r.db.QueryContext(ctx, query, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("get operation type statistics: %w", err)
+	}
+	defer closeRows(rows)
+
+	items := make([]OperationTypeStatistics, 0)
+	for rows.Next() {
+		var item OperationTypeStatistics
+		if err := rows.Scan(
+			&item.Type,
+			&item.Count,
+			&item.TotalIncome,
+			&item.TotalExpense,
+			&item.NetAmount,
+		); err != nil {
+			return nil, fmt.Errorf("scan operation type statistics: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate operation type statistics: %w", err)
+	}
+
+	return items, nil
+}
+
+func (r *AnalyticsRepository) getOperationStatusStatistics(
+	ctx context.Context,
+	query string,
+	entityID int64,
+) ([]OperationStatusStatistics, error) {
+	rows, err := r.db.QueryContext(ctx, query, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("get operation status statistics: %w", err)
+	}
+	defer closeRows(rows)
+
+	items := make([]OperationStatusStatistics, 0)
+	for rows.Next() {
+		var item OperationStatusStatistics
+		if err := rows.Scan(&item.Status, &item.Count, &item.TotalAmount); err != nil {
+			return nil, fmt.Errorf("scan operation status statistics: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate operation status statistics: %w", err)
+	}
+
+	return items, nil
+}
+
+func (r *AnalyticsRepository) getOperationEntries(
+	ctx context.Context,
+	query string,
+	entityID int64,
+	limit int,
+) ([]OperationEntry, error) {
+	rows, err := r.db.QueryContext(ctx, query, entityID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get operation entries: %w", err)
+	}
+	defer closeRows(rows)
+
+	items := make([]OperationEntry, 0)
+	for rows.Next() {
+		var item OperationEntry
+		var description sql.NullString
+		if err := rows.Scan(
+			&item.ID,
+			&item.Direction,
+			&item.Type,
+			&item.Status,
+			&item.Amount,
+			&item.Currency,
+			&description,
+			&item.FromAccountID,
+			&item.ToAccountID,
+			&item.FromCardID,
+			&item.ToCardID,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan operation entry: %w", err)
+		}
+
+		if description.Valid {
+			item.Description = description.String
+		}
+
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate operation entries: %w", err)
+	}
+
+	return items, nil
+}
+
+func accountOperationStatisticsQuery() operationStatisticsQueries {
+	base := `
+		WITH base AS (
+			SELECT
+				t.id,
+				CASE
+					WHEN t.to_account_id = $1 AND (t.from_account_id IS NULL OR t.from_account_id <> $1) THEN 'income'
+					WHEN t.from_account_id = $1 AND (t.to_account_id IS NULL OR t.to_account_id <> $1) THEN 'expense'
+					ELSE 'neutral'
+				END AS direction,
+				t.type,
+				t.status,
+				t.amount,
+				t.currency,
+				t.description,
+				t.from_account_id,
+				t.to_account_id,
+				t.from_card_id,
+				t.to_card_id,
+				t.created_at
+			FROM transactions t
+			WHERE t.from_account_id = $1 OR t.to_account_id = $1
+		)
+	`
+
+	return operationStatisticsQueries{
+		summary: base + `
+			SELECT
+				COUNT(*) AS operation_count,
+				COUNT(*) FILTER (WHERE direction = 'income') AS income_count,
+				COUNT(*) FILTER (WHERE direction = 'expense') AS expense_count,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)::text AS total_income,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)::text AS total_expense,
+				(
+					COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)
+					- COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)
+				)::text AS net_amount
+			FROM base
+		`,
+		byType: base + `
+			SELECT
+				type,
+				COUNT(*) AS operation_count,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)::text AS total_income,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)::text AS total_expense,
+				(
+					COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)
+					- COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)
+				)::text AS net_amount
+			FROM base
+			GROUP BY type
+			ORDER BY type
+		`,
+		byStatus: base + `
+			SELECT status, COUNT(*) AS operation_count, COALESCE(SUM(amount), 0)::text AS total_amount
+			FROM base
+			GROUP BY status
+			ORDER BY status
+		`,
+		entries: base + `
+			SELECT
+				id,
+				direction,
+				type,
+				status,
+				amount::text,
+				currency,
+				description,
+				from_account_id,
+				to_account_id,
+				from_card_id,
+				to_card_id,
+				created_at::text
+			FROM base
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2
+		`,
+	}
+}
+
+func cardOperationStatisticsQuery() operationStatisticsQueries {
+	base := `
+		WITH base AS (
+			SELECT
+				t.id,
+				CASE
+					WHEN t.to_card_id = $1 AND (t.from_card_id IS NULL OR t.from_card_id <> $1) THEN 'income'
+					WHEN t.from_card_id = $1 AND (t.to_card_id IS NULL OR t.to_card_id <> $1) THEN 'expense'
+					ELSE 'neutral'
+				END AS direction,
+				t.type,
+				t.status,
+				t.amount,
+				t.currency,
+				t.description,
+				t.from_account_id,
+				t.to_account_id,
+				t.from_card_id,
+				t.to_card_id,
+				t.created_at
+			FROM transactions t
+			WHERE t.from_card_id = $1 OR t.to_card_id = $1
+		)
+	`
+
+	return operationStatisticsQueries{
+		summary: base + `
+			SELECT
+				COUNT(*) AS operation_count,
+				COUNT(*) FILTER (WHERE direction = 'income') AS income_count,
+				COUNT(*) FILTER (WHERE direction = 'expense') AS expense_count,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)::text AS total_income,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)::text AS total_expense,
+				(
+					COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)
+					- COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)
+				)::text AS net_amount
+			FROM base
+		`,
+		byType: base + `
+			SELECT
+				type,
+				COUNT(*) AS operation_count,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)::text AS total_income,
+				COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)::text AS total_expense,
+				(
+					COALESCE(SUM(amount) FILTER (WHERE direction = 'income' AND status = 'completed'), 0)
+					- COALESCE(SUM(amount) FILTER (WHERE direction = 'expense' AND status = 'completed'), 0)
+				)::text AS net_amount
+			FROM base
+			GROUP BY type
+			ORDER BY type
+		`,
+		byStatus: base + `
+			SELECT status, COUNT(*) AS operation_count, COALESCE(SUM(amount), 0)::text AS total_amount
+			FROM base
+			GROUP BY status
+			ORDER BY status
+		`,
+		entries: base + `
+			SELECT
+				id,
+				direction,
+				type,
+				status,
+				amount::text,
+				currency,
+				description,
+				from_account_id,
+				to_account_id,
+				from_card_id,
+				to_card_id,
+				created_at::text
+			FROM base
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2
+		`,
+	}
+}

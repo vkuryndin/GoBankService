@@ -80,6 +80,11 @@ export function useCards(token: string) {
     },
   })
 
+  const operationStatisticsMutation = useMutation({
+    mutationFn: ({ cardID, limit }: { cardID: number; limit: number }) =>
+      cardsApi.operationStatistics(token, cardID, limit),
+  })
+
   return {
     cards: listQuery.data || [],
     listQuery,
@@ -89,5 +94,6 @@ export function useCards(token: string) {
     payMutation,
     transferMutation,
     closeMutation,
+    operationStatisticsMutation,
   }
 }

@@ -215,7 +215,7 @@ func (r *AccountRepository) Deposit(ctx context.Context, userID, accountID int64
 		return nil, 0, fmt.Errorf("deposit balance update: %w", err)
 	}
 
-	transactionID, err := createTransaction(ctx, tx, userID, nil, &accountID, amount, "deposit", description)
+	transactionID, err := createTransaction(ctx, tx, userID, nil, &accountID, nil, nil, amount, "deposit", description)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -243,7 +243,7 @@ func (r *AccountRepository) Withdraw(ctx context.Context, userID, accountID int6
 		return nil, 0, err
 	}
 
-	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, amount, "withdraw", description)
+	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, nil, nil, amount, "withdraw", description)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -282,7 +282,7 @@ func (r *AccountRepository) WithdrawWithMFA(
 		return nil, 0, err
 	}
 
-	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, amount, "withdraw", description)
+	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, nil, nil, amount, "withdraw", description)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -298,6 +298,7 @@ func (r *AccountRepository) CardPayment(
 	ctx context.Context,
 	userID int64,
 	accountID int64,
+	cardID int64,
 	amount string,
 	description string,
 ) (*models.Account, int64, error) {
@@ -316,7 +317,7 @@ func (r *AccountRepository) CardPayment(
 		return nil, 0, err
 	}
 
-	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, amount, "card_payment", description)
+	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, &cardID, nil, amount, "card_payment", description)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -332,6 +333,7 @@ func (r *AccountRepository) CardPaymentWithMFA(
 	ctx context.Context,
 	userID int64,
 	accountID int64,
+	cardID int64,
 	amount string,
 	description string,
 	mfaCodeID int64,
@@ -355,7 +357,7 @@ func (r *AccountRepository) CardPaymentWithMFA(
 		return nil, 0, err
 	}
 
-	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, amount, "card_payment", description)
+	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, &cardID, nil, amount, "card_payment", description)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -399,6 +401,8 @@ func (r *AccountRepository) Transfer(
 		userID,
 		&fromAccountID,
 		&toAccountID,
+		nil,
+		nil,
 		amount,
 		"transfer",
 		description,
@@ -451,6 +455,8 @@ func (r *AccountRepository) TransferWithMFA(
 		userID,
 		&fromAccountID,
 		&toAccountID,
+		nil,
+		nil,
 		amount,
 		"transfer",
 		description,
@@ -461,6 +467,62 @@ func (r *AccountRepository) TransferWithMFA(
 
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit transfer transaction: %w", err)
+	}
+
+	return transactionID, nil
+}
+
+func (r *AccountRepository) TransferByCardWithMFA(
+	ctx context.Context,
+	userID int64,
+	fromAccountID int64,
+	toAccountID int64,
+	fromCardID int64,
+	toCardID int64,
+	amount string,
+	description string,
+	mfaCodeID int64,
+) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("begin card transfer transaction: %w", err)
+	}
+	defer rollbackTx(tx)
+
+	if err := lockTransferAccounts(ctx, tx, userID, fromAccountID, toAccountID); err != nil {
+		return 0, err
+	}
+
+	if err := markMFACodeUsedTx(ctx, tx, mfaCodeID); err != nil {
+		return 0, err
+	}
+
+	if _, err := withdrawAccountBalance(ctx, tx, fromAccountID, amount); err != nil {
+		return 0, err
+	}
+
+	if _, err := updateAccountBalance(ctx, tx, toAccountID, amount, "+"); err != nil {
+		return 0, fmt.Errorf("card transfer balance update: %w", err)
+	}
+
+	transactionID, err := createTransaction(
+		ctx,
+		tx,
+		userID,
+		&fromAccountID,
+		&toAccountID,
+		&fromCardID,
+		&toCardID,
+		amount,
+		"transfer",
+		description,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit card transfer transaction: %w", err)
 	}
 
 	return transactionID, nil
@@ -794,6 +856,8 @@ func createTransaction(
 	userID int64,
 	fromAccountID *int64,
 	toAccountID *int64,
+	fromCardID *int64,
+	toCardID *int64,
 	amount string,
 	transactionType string,
 	description string,
@@ -803,12 +867,14 @@ func createTransaction(
 			user_id,
 			from_account_id,
 			to_account_id,
+			from_card_id,
+			to_card_id,
 			amount,
 			type,
 			status,
 			description
 		)
-		VALUES ($1, $2, $3, $4::numeric, $5, 'completed', $6)
+		VALUES ($1, $2, $3, $4, $5, $6::numeric, $7, 'completed', $8)
 		RETURNING id
 	`
 
@@ -820,6 +886,8 @@ func createTransaction(
 		userID,
 		fromAccountID,
 		toAccountID,
+		fromCardID,
+		toCardID,
 		amount,
 		transactionType,
 		description,

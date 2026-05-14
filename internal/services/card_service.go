@@ -37,10 +37,11 @@ type cardStore interface {
 }
 
 type cardPaymentAccountStore interface {
-	CardPayment(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
-	CardPaymentWithMFA(ctx context.Context, userID, accountID int64, amount, description string, mfaCodeID int64) (*models.Account, int64, error)
+	CardPayment(ctx context.Context, userID, accountID, cardID int64, amount, description string) (*models.Account, int64, error)
+	CardPaymentWithMFA(ctx context.Context, userID, accountID, cardID int64, amount, description string, mfaCodeID int64) (*models.Account, int64, error)
 	Transfer(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string) (int64, error)
 	TransferWithMFA(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string, mfaCodeID int64) (int64, error)
+	TransferByCardWithMFA(ctx context.Context, userID, fromAccountID, toAccountID, fromCardID, toCardID int64, amount, description string, mfaCodeID int64) (int64, error)
 }
 
 type cardProcessor interface {
@@ -275,7 +276,7 @@ func (s *CardService) PayByCard(
 		return nil, err
 	}
 
-	_, transactionID, err := s.accountRepository.CardPaymentWithMFA(ctx, userID, card.AccountID, amount, description, verification.CodeID)
+	_, transactionID, err := s.accountRepository.CardPaymentWithMFA(ctx, userID, card.AccountID, cardID, amount, description, verification.CodeID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
@@ -392,7 +393,7 @@ func (s *CardService) TransferByCard(
 		return nil, err
 	}
 
-	transactionID, err := s.accountRepository.TransferWithMFA(ctx, userID, fromCard.AccountID, toCard.AccountID, amount, description, verification.CodeID)
+	transactionID, err := s.accountRepository.TransferByCardWithMFA(ctx, userID, fromCard.AccountID, toCard.AccountID, fromCardID, request.ToCardID, amount, description, verification.CodeID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound

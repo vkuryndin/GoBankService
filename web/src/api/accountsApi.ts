@@ -1,4 +1,5 @@
 import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
+import type { OperationStatisticsResponse } from '../types/analytics'
 import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
@@ -55,6 +56,16 @@ export const accountsApi = {
   ): Promise<PredictBalanceResponse> {
     return apiRequest<PredictBalanceResponse>(
       `/api/accounts/${accountID}/predict?days=${days}`,
+    )
+  },
+
+  operationStatistics(
+    _token: string,
+    accountID: number,
+    limit: number,
+  ): Promise<OperationStatisticsResponse> {
+    return apiRequest<OperationStatisticsResponse>(
+      `/api/accounts/${accountID}/operations/statistics?limit=${limit}`,
     )
   },
 }

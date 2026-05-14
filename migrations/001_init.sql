@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     from_account_id BIGINT REFERENCES accounts(id) ON DELETE SET NULL,
     to_account_id BIGINT REFERENCES accounts(id) ON DELETE SET NULL,
+    from_card_id BIGINT REFERENCES cards(id) ON DELETE SET NULL,
+    to_card_id BIGINT REFERENCES cards(id) ON DELETE SET NULL,
     amount NUMERIC(14,2) NOT NULL,
     currency CHAR(3) NOT NULL DEFAULT 'RUB',
     type VARCHAR(30) NOT NULL,
@@ -203,6 +205,24 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT idempotency_keys_unique_operation UNIQUE (user_id, method, path, key)
 );
+
+ALTER TABLE transactions
+ADD COLUMN IF NOT EXISTS from_card_id BIGINT REFERENCES cards(id) ON DELETE SET NULL;
+
+ALTER TABLE transactions
+ADD COLUMN IF NOT EXISTS to_card_id BIGINT REFERENCES cards(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_from_account_id
+ON transactions(from_account_id);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_to_account_id
+ON transactions(to_account_id);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_from_card_id
+ON transactions(from_card_id);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_to_card_id
+ON transactions(to_card_id);
 
 ALTER TABLE idempotency_keys
 ADD COLUMN IF NOT EXISTS request_hash TEXT NOT NULL DEFAULT '';

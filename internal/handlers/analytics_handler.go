@@ -13,6 +13,12 @@ var predictionErrorRules = errorRules{
 	{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"},
 }
 
+var operationStatisticsErrorRules = errorRules{
+	{target: services.ErrInvalidStatisticsLimit, status: http.StatusBadRequest, message: "limit must be between 1 and 500"},
+	{target: services.ErrAccountNotFound, status: http.StatusNotFound, message: "account not found"},
+	{target: services.ErrCardNotFound, status: http.StatusNotFound, message: "card not found"},
+}
+
 type AnalyticsHandler struct{ analyticsService *services.AnalyticsService }
 
 func NewAnalyticsHandler(analyticsService *services.AnalyticsService) *AnalyticsHandler {
@@ -44,10 +50,56 @@ func (h *AnalyticsHandler) PredictBalance(w http.ResponseWriter, r *http.Request
 	})
 }
 
+func (h *AnalyticsHandler) GetAccountOperationStatistics(w http.ResponseWriter, r *http.Request) {
+	accountID, err := parseAccountID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid account id")
+		return
+	}
+
+	limit, err := parseOperationStatisticsLimit(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid limit")
+		return
+	}
+
+	handleAuthed(w, r, operationStatisticsErrorRules, "get account operation statistics failed", func(ctx context.Context, userID int64) (int, any, error) {
+		response, err := h.analyticsService.GetAccountOperationStatistics(ctx, userID, accountID, limit)
+		return http.StatusOK, response, err
+	})
+}
+
+func (h *AnalyticsHandler) GetCardOperationStatistics(w http.ResponseWriter, r *http.Request) {
+	cardID, err := parseCardID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid card id")
+		return
+	}
+
+	limit, err := parseOperationStatisticsLimit(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid limit")
+		return
+	}
+
+	handleAuthed(w, r, operationStatisticsErrorRules, "get card operation statistics failed", func(ctx context.Context, userID int64) (int, any, error) {
+		response, err := h.analyticsService.GetCardOperationStatistics(ctx, userID, cardID, limit)
+		return http.StatusOK, response, err
+	})
+}
+
 func parsePredictionDays(r *http.Request) (int, error) {
 	daysRaw := r.URL.Query().Get("days")
 	if daysRaw == "" {
 		return 30, nil
 	}
 	return strconv.Atoi(daysRaw)
+}
+
+func parseOperationStatisticsLimit(r *http.Request) (int, error) {
+	limitRaw := r.URL.Query().Get("limit")
+	if limitRaw == "" {
+		return 100, nil
+	}
+	return strconv.Atoi(limitRaw)
 }

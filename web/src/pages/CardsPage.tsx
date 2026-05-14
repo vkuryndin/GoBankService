@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { OperationStatisticsView } from '../components/OperationStatisticsView'
 import { RequestStatus } from '../components/RequestStatus'
+import type { OperationStatisticsResponse } from '../types/analytics'
 import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
 import { emptyState, type RequestState } from '../types/common'
 import {
@@ -46,6 +48,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [cardPaymentState, setCardPaymentState] = useState<RequestState>(emptyState)
   const [cardTransferMfaState, setCardTransferMfaState] = useState<RequestState>(emptyState)
   const [cardTransferState, setCardTransferState] = useState<RequestState>(emptyState)
+  const [cardStatisticsState, setCardStatisticsState] = useState<RequestState>(emptyState)
   const [cardCloseState, setCardCloseState] = useState<RequestState>(emptyState)
 
   const [cards, setCards] = useState<CardResponse[]>([])
@@ -66,9 +69,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [cardTransferCVV, setCardTransferCVV] = useState('')
   const [cardTransferMfaCode, setCardTransferMfaCode] = useState('')
   const [cardTransferDescription, setCardTransferDescription] = useState('Card transfer')
+  const [cardStatisticsLimit, setCardStatisticsLimit] = useState('100')
 
   const [cardPaymentResult, setCardPaymentResult] = useState<CardPaymentResponse | null>(null)
   const [cardTransferResult, setCardTransferResult] = useState<CardTransferResponse | null>(null)
+  const [cardOperationStatistics, setCardOperationStatistics] = useState<OperationStatisticsResponse | null>(null)
   const [cardCloseResult, setCardCloseResult] = useState<CloseCardResponse | null>(null)
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
 
@@ -97,6 +102,8 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setSelectedCard(card)
     setCardPaymentResult(null)
     setCardTransferResult(null)
+    setCardOperationStatistics(null)
+    setCardStatisticsState(emptyState)
     setCardCloseResult(null)
     setCardRevealMfaCode('')
     setCardRevealState(emptyState)
@@ -366,6 +373,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       })
 
       setCardPaymentResult(data)
+      setCardOperationStatistics(null)
       setCardPaymentMfaCode('')
       setCardPaymentState({ loading: false, error: '', success: 'Оплата картой выполнена.' })
     } catch (error) {
@@ -459,12 +467,49 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       })
 
       setCardTransferResult(data)
+      setCardOperationStatistics(null)
       setCardTransferMfaCode('')
       setCardTransferState({ loading: false, error: '', success: 'Перевод с карты выполнен.' })
     } catch (error) {
       setCardTransferState({
         loading: false,
         error: error instanceof Error ? error.message : 'Card transfer failed',
+        success: '',
+      })
+    }
+  }
+
+  const loadCardOperationStatistics = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!requireToken(setCardStatisticsState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardStatisticsState({ loading: false, error: 'Выбери карту.', success: '' })
+      return
+    }
+
+    const limit = Number(cardStatisticsLimit)
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 500) {
+      setCardStatisticsState({ loading: false, error: 'Limit должен быть от 1 до 500.', success: '' })
+      return
+    }
+
+    setCardStatisticsState({ loading: true, error: '', success: '' })
+    setCardOperationStatistics(null)
+
+    try {
+      const data = await cardsDomain.operationStatisticsMutation.mutateAsync({ cardID, limit })
+
+      setCardOperationStatistics(data)
+      setCardStatisticsState({ loading: false, error: '', success: 'Статистика операций по карте загружена.' })
+    } catch (error) {
+      setCardStatisticsState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to load card operation statistics',
         success: '',
       })
     }
@@ -499,6 +544,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       const data = await cardsDomain.closeMutation.mutateAsync(cardID)
 
       setCardCloseResult(data)
+      setCardOperationStatistics(null)
       applyClosedCard(data)
       setCloseConfirmOpen(false)
       setCardCloseState({ loading: false, error: '', success: 'Карта закрыта.' })
@@ -521,7 +567,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       <div className="panelHeader cardsPageHeader">
         <div>
           <h2>Карты пользователя</h2>
-          <p>Выпуск, список, безопасный просмотр номера, оплата, перевод и закрытие карт.</p>
+          <p>Выпуск, список, безопасный просмотр номера, оплата, перевод, закрытие и статистика операций по карте.</p>
         </div>
 
         <div className="actions">
@@ -748,6 +794,39 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                   <pre>{JSON.stringify(cardCloseResult, null, 2)}</pre>
                 </div>
               )}
+            </section>
+          )}
+
+          {selectedCard && (
+            <section className="subPanel cardsOperationStatisticsPanel">
+              <div className="subPanelHeader">
+                <div>
+                  <h3>Статистика операций по карте</h3>
+                  <p className="mutedText">Endpoint: <code>GET /cards/{'{cardId}'}/operations/statistics</code>.</p>
+                </div>
+              </div>
+
+              <form className="operationStatisticsForm" onSubmit={loadCardOperationStatistics}>
+                <label>
+                  <span>Limit</span>
+                  <input
+                    value={cardStatisticsLimit}
+                    onChange={(event) => setCardStatisticsLimit(event.target.value)}
+                    placeholder="1-500"
+                  />
+                </label>
+                <Button type="submit" disabled={cardStatisticsState.loading || isCardClosed(selectedCard)}>
+                  {cardStatisticsState.loading ? 'Загружаю...' : 'Получить статистику'}
+                </Button>
+              </form>
+
+              <RequestStatus state={cardStatisticsState} />
+
+              {!cardOperationStatistics && !cardStatisticsState.error && (
+                <div className="empty compactEmpty">Нажми “Получить статистику”, чтобы увидеть историю и суммы по выбранной карте.</div>
+              )}
+
+              {cardOperationStatistics && <OperationStatisticsView statistics={cardOperationStatistics} />}
             </section>
           )}
         </main>

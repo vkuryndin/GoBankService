@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { OperationStatisticsView } from '../components/OperationStatisticsView'
 import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
+import type { OperationStatisticsResponse } from '../types/analytics'
 import { emptyState, type RequestState } from '../types/common'
 import {
   formatDate,
@@ -39,6 +41,7 @@ export function AccountsPage({
   const [withdrawMfaState, setWithdrawMfaState] = useState<RequestState>(emptyState)
   const [withdrawState, setWithdrawState] = useState<RequestState>(emptyState)
   const [predictState, setPredictState] = useState<RequestState>(emptyState)
+  const [accountStatisticsState, setAccountStatisticsState] = useState<RequestState>(emptyState)
   const [closeAccountState, setCloseAccountState] = useState<RequestState>(emptyState)
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([])
@@ -48,7 +51,9 @@ export function AccountsPage({
   const [withdrawAmount, setWithdrawAmount] = useState('50.00')
   const [withdrawMfaCode, setWithdrawMfaCode] = useState('')
   const [predictDays, setPredictDays] = useState('30')
+  const [accountStatisticsLimit, setAccountStatisticsLimit] = useState('100')
   const [predictResult, setPredictResult] = useState<PredictBalanceResponse | null>(null)
+  const [accountOperationStatistics, setAccountOperationStatistics] = useState<OperationStatisticsResponse | null>(null)
   const [closeResult, setCloseResult] = useState<CloseAccountResponse | null>(null)
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
 
@@ -81,6 +86,8 @@ export function AccountsPage({
     setSelectedAccount(account)
     onSharedAccountIdChange(String(account.id))
     setPredictResult(null)
+    setAccountOperationStatistics(null)
+    setAccountStatisticsState(emptyState)
     setCloseResult(null)
   }
 
@@ -219,6 +226,7 @@ export function AccountsPage({
       const account = await accountsDomain.depositMutation.mutateAsync({ accountID, amount: depositAmount })
 
       upsertAccount(account)
+      setAccountOperationStatistics(null)
       setDepositState({
         loading: false,
         error: '',
@@ -296,6 +304,7 @@ export function AccountsPage({
       })
 
       upsertAccount(account)
+      setAccountOperationStatistics(null)
       setWithdrawMfaCode('')
       setWithdrawState({
         loading: false,
@@ -348,6 +357,42 @@ export function AccountsPage({
     }
   }
 
+  const loadAccountOperationStatistics = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!requireToken(setAccountStatisticsState)) {
+      return
+    }
+
+    const accountID = selectedAccountIDNumber()
+    if (!accountID) {
+      setAccountStatisticsState({ loading: false, error: 'Выбери счет.', success: '' })
+      return
+    }
+
+    const limit = Number(accountStatisticsLimit)
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 500) {
+      setAccountStatisticsState({ loading: false, error: 'Limit должен быть от 1 до 500.', success: '' })
+      return
+    }
+
+    setAccountStatisticsState({ loading: true, error: '', success: '' })
+    setAccountOperationStatistics(null)
+
+    try {
+      const data = await accountsDomain.operationStatisticsMutation.mutateAsync({ accountID, limit })
+
+      setAccountOperationStatistics(data)
+      setAccountStatisticsState({ loading: false, error: '', success: 'Статистика операций по счету загружена.' })
+    } catch (error) {
+      setAccountStatisticsState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to load account operation statistics',
+        success: '',
+      })
+    }
+  }
+
   const closeAccount = async () => {
     if (!requireToken(setCloseAccountState)) {
       return
@@ -377,6 +422,7 @@ export function AccountsPage({
       const data = await accountsDomain.closeMutation.mutateAsync(accountID)
 
       setCloseResult(data)
+      setAccountOperationStatistics(null)
       applyClosedAccount(data)
       setCloseConfirmOpen(false)
       setCloseAccountState({ loading: false, error: '', success: 'Счет закрыт.' })
@@ -398,7 +444,7 @@ export function AccountsPage({
         <div>
           <h2>Счета пользователя</h2>
           <p>
-            Все основные действия: создание, список, просмотр, deposit, withdraw, close и predict.
+            Все основные действия: создание, список, просмотр, deposit, withdraw, close, predict и полная статистика операций.
           </p>
         </div>
 
@@ -515,6 +561,37 @@ export function AccountsPage({
                   <RequestStatus state={closeAccountState} />
                 </div>
               </div>
+
+              <section className="operationStatisticsSection">
+                <div className="subPanelHeader">
+                  <div>
+                    <h3>Полная статистика операций по счету</h3>
+                    <p className="mutedText">Endpoint: <code>GET /accounts/{'{accountId}'}/operations/statistics</code>.</p>
+                  </div>
+                </div>
+
+                <form className="operationStatisticsForm" onSubmit={loadAccountOperationStatistics}>
+                  <label>
+                    <span>Limit</span>
+                    <input
+                      value={accountStatisticsLimit}
+                      onChange={(event) => setAccountStatisticsLimit(event.target.value)}
+                      placeholder="1-500"
+                    />
+                  </label>
+                  <Button type="submit" disabled={accountStatisticsState.loading || isAccountClosed(selectedAccount)}>
+                    {accountStatisticsState.loading ? 'Загружаю...' : 'Получить статистику'}
+                  </Button>
+                </form>
+
+                <RequestStatus state={accountStatisticsState} />
+
+                {!accountOperationStatistics && !accountStatisticsState.error && (
+                  <div className="empty compactEmpty">Нажми “Получить статистику”, чтобы увидеть историю и суммы по выбранному счету.</div>
+                )}
+
+                {accountOperationStatistics && <OperationStatisticsView statistics={accountOperationStatistics} />}
+              </section>
 
               {predictResult && (
                 <div className="result success">

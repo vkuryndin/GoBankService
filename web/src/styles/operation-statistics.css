@@ -1,0 +1,130 @@
+.operationStatisticsSection,
+.cardsOperationStatisticsPanel {
+  display: grid;
+  gap: 14px;
+  margin-top: 0;
+  min-width: 0;
+}
+
+
+.cardsOperationStatisticsPanel,
+.operationStatisticsContent,
+.operationStatisticsContent > div,
+.operationStatsCards,
+.operationStatsCards > div,
+.operationStatsTables,
+.operationStatsTables > div {
+  min-width: 0;
+}
+
+.cardsOperationStatisticsPanel {
+  overflow: hidden;
+}
+
+.operationStatsCards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operationStatsCards .analyticsCard,
+.operationStatsCards .analyticsCard strong,
+.operationStatsCards .analyticsCard small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.operationStatisticsForm {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(190px, auto);
+  gap: 12px;
+  align-items: end;
+}
+
+.operationStatisticsForm input {
+  min-height: 40px;
+}
+
+.operationStatisticsContent {
+  display: grid;
+  gap: 18px;
+  margin-top: 4px;
+  min-width: 0;
+}
+
+.operationStatsCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.operationStatsCards small {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.operationStatsTables {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.operationStatsTables h4,
+.operationStatisticsContent h4 {
+  margin: 0 0 10px;
+  color: #111827;
+  font-size: 14px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.simpleTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+}
+
+.simpleTable th,
+.simpleTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #374151;
+  font-size: 13px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.simpleTable th {
+  background: #f9fafb;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.simpleTable tr:last-child td {
+  border-bottom: 0;
+}
+
+.operationsTable {
+  min-width: 980px;
+}
+
+.operationsTableWrap {
+  max-height: 420px;
+  overflow: auto;
+}
+
+@media (max-width: 1200px) {
+  .operationStatisticsForm,
+  .operationStatsCards,
+  .operationStatsTables {
+    grid-template-columns: 1fr;
+  }
+}

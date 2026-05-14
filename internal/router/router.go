@@ -94,6 +94,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 	protected.HandleFunc("/accounts/{accountId}/withdraw", deps.AccountHandler.Withdraw).Methods(http.MethodPost)
 	protected.HandleFunc("/accounts/{accountId}/close", deps.AccountHandler.CloseAccount).Methods(http.MethodPost)
 	protected.HandleFunc("/accounts/{accountId}/predict", deps.AnalyticsHandler.PredictBalance).Methods(http.MethodGet)
+	protected.HandleFunc("/accounts/{accountId}/operations/statistics", deps.AnalyticsHandler.GetAccountOperationStatistics).Methods(http.MethodGet)
 
 	protected.HandleFunc("/transfer", deps.TransferHandler.Transfer).Methods(http.MethodPost)
 
@@ -101,6 +102,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 	protected.HandleFunc("/cards", deps.CardHandler.GetUserCards).Methods(http.MethodGet)
 	protected.HandleFunc("/cards/{cardId}", deps.CardHandler.GetCard).Methods(http.MethodGet)
 	protected.HandleFunc("/cards/{cardId}/reveal", deps.CardHandler.RevealCard).Methods(http.MethodPost)
+	protected.HandleFunc("/cards/{cardId}/operations/statistics", deps.AnalyticsHandler.GetCardOperationStatistics).Methods(http.MethodGet)
 	protected.HandleFunc("/cards/{cardId}/close", deps.CardHandler.CloseCard).Methods(http.MethodPost)
 	protected.HandleFunc("/cards/{cardId}/pay", deps.CardHandler.PayByCard).Methods(http.MethodPost)
 	protected.HandleFunc("/cards/{cardId}/transfer", deps.CardHandler.TransferByCard).Methods(http.MethodPost)

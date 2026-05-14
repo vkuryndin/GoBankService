@@ -10,6 +10,8 @@ type Transaction struct {
 	UserID        int64          `json:"user_id"`
 	FromAccountID sql.NullInt64  `json:"-"`
 	ToAccountID   sql.NullInt64  `json:"-"`
+	FromCardID    sql.NullInt64  `json:"-"`
+	ToCardID      sql.NullInt64  `json:"-"`
 	Amount        string         `json:"amount"`
 	Currency      string         `json:"currency"`
 	Type          string         `json:"type"`

@@ -110,6 +110,8 @@ func (r *CreditRepository) CreateWithScheduleAndIssue(
 		userID,
 		nil,
 		&accountID,
+		nil,
+		nil,
 		principalAmount,
 		"credit_issue",
 		"credit issued",

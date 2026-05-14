@@ -1,3 +1,4 @@
+import type { OperationStatisticsResponse } from '../types/analytics'
 import type { CardPaymentResponse, CardResponse, CardRevealRequest, CardTransferResponse, CloseCardResponse } from '../types/card'
 import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
@@ -65,5 +66,15 @@ export const cardsApi = {
       method: 'POST',
       headers: { 'Idempotency-Key': createIdempotencyKey('card') },
     })
+  },
+
+  operationStatistics(
+    _token: string,
+    cardID: number,
+    limit: number,
+  ): Promise<OperationStatisticsResponse> {
+    return apiRequest<OperationStatisticsResponse>(
+      `/api/cards/${cardID}/operations/statistics?limit=${limit}`,
+    )
   },
 }

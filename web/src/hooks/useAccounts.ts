@@ -68,6 +68,11 @@ export function useAccounts(token: string) {
     },
   })
 
+  const operationStatisticsMutation = useMutation({
+    mutationFn: ({ accountID, limit }: { accountID: number; limit: number }) =>
+      accountsApi.operationStatistics(token, accountID, limit),
+  })
+
   return {
     accounts: listQuery.data || [],
     listQuery,
@@ -77,5 +82,6 @@ export function useAccounts(token: string) {
     withdrawMutation,
     closeMutation,
     predictionMutation,
+    operationStatisticsMutation,
   }
 }
