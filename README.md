@@ -38,10 +38,13 @@ API base URL: http://18.185.7.63/api
 - logrus
 - gomail
 - beevik/etree
-- React
+- React 19
 - TypeScript
 - Vite
 - Tailwind CSS
+- ESLint
+- @tanstack/react-query
+- react-router-dom
 - nginx
 
 ## Основные возможности
@@ -72,7 +75,12 @@ API base URL: http://18.185.7.63/api
 - Получение ключевой ставки ЦБ РФ через SOAP.
 - SMTP-уведомления.
 - Admin API для просмотра пользователей, активных сессий и блокировки счетов.
-- React frontend для ручной проверки всех основных сценариев.
+- Современный React frontend с TypeScript и Vite для ручной проверки всех основных сценариев.
+- Кросс-вкладочная синхронизация сессий в frontend.
+- Обработка ошибок через ErrorBoundary и ToastProvider.
+- Разделение публичного и приватного layout в frontend.
+- Защищённые маршруты с проверкой ролей.
+- Кеширование API-запросов через React Query.
 - Frontend доступен по `/app/`.
 - На сервере API доступен через nginx по `/api/...`.
 - Стартовая страница API доступна по `/`.
@@ -106,7 +114,13 @@ API base URL: http://18.185.7.63/api
 - strict parsing конфигурации: ошибки в bool/int env-переменных не подменяются молча default-значениями;
 - audit logs;
 - DB CHECK constraints;
-- graceful shutdown.
+- graceful shutdown;
+- кросс-вкладочная синхронизация сессий в frontend через localStorage events;
+- обработка ошибок через ErrorBoundary;
+- toast notifications для пользовательских сообщений;
+- axios interceptors для автоматической подстановки токенов и обработки 401;
+- кеширование чувствительных данных (ключевые ставки) с TTL;
+- утечка-пруф таймеры в компонентах.
 
 ## Структура проекта
 
@@ -129,7 +143,7 @@ migrations              SQL-миграции
 Dockerfile              сборка Go API
 docker-compose.yml      запуск API, PostgreSQL и nginx
 nginx                   nginx reverse proxy и стартовая страница
-web                     React frontend
+web                     React frontend с TypeScript, Vite, Tailwind CSS
 test.http               ручные сценарии проверки API
 ```
 
@@ -258,69 +272,34 @@ test.http               ручные сценарии проверки API
 │   └── html
 │       └── index.html
 ├── web
+│   ├── Dockerfile
+│   ├── eslint.config.js
+│   ├── index.html
 │   ├── package.json
 │   ├── package-lock.json
-│   ├── vite.config.ts
-│   ├── tsconfig.json
+│   ├── public
+│   ├── src
+│   │   ├── api
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── assets
+│   │   ├── components
+│   │   ├── config
+│   │   ├── contexts
+│   │   ├── features
+│   │   ├── hooks
+│   │   ├── index.css
+│   │   ├── layout
+│   │   ├── main.tsx
+│   │   ├── pages
+│   │   ├── routes
+│   │   ├── styles
+│   │   ├── types
+│   │   └── utils
 │   ├── tsconfig.app.json
+│   ├── tsconfig.json
 │   ├── tsconfig.node.json
-│   ├── index.html
-│   └── src
-│       ├── api
-│       │   ├── adminApi.ts
-│       │   ├── analyticsApi.ts
-│       │   ├── accountsApi.ts
-│       │   ├── authApi.ts
-│       │   ├── cardsApi.ts
-│       │   ├── client.ts
-│       │   ├── creditsApi.ts
-│       │   ├── http.ts
-│       │   ├── mfaApi.ts
-│       │   ├── notificationsApi.ts
-│       │   ├── ratesApi.ts
-│       │   └── transfersApi.ts
-│       ├── components
-│       │   ├── RequestMessage.tsx
-│       │   ├── RequestStatus.tsx
-│       │   ├── Sidebar.tsx
-│       │   ├── Topbar.tsx
-│       │   └── ui
-│       │       ├── Button.tsx
-│       │       ├── Card.tsx
-│       │       └── StatusBadge.tsx
-│       ├── config
-│       │   └── menu.ts
-│       ├── pages
-│       │   ├── AccountsPage.tsx
-│       │   ├── AdminPage.tsx
-│       │   ├── AnalyticsPage.tsx
-│       │   ├── AuthPage.tsx
-│       │   ├── CardsPage.tsx
-│       │   ├── CreditsPage.tsx
-│       │   ├── HealthPage.tsx
-│       │   ├── NotificationsPage.tsx
-│       │   ├── PlaceholderPage.tsx
-│       │   ├── RatesPage.tsx
-│       │   ├── RegisterPage.tsx
-│       │   └── TransfersPage.tsx
-│       ├── types
-│       │   ├── account.ts
-│       │   ├── admin.ts
-│       │   ├── analytics.ts
-│       │   ├── auth.ts
-│       │   ├── card.ts
-│       │   ├── common.ts
-│       │   ├── credit.ts
-│       │   ├── notification.ts
-│       │   ├── rate.ts
-│       │   └── transfer.ts
-│       ├── utils
-│       │   └── format.ts
-│       ├── App.css
-│       ├── App.tsx
-│       ├── index.css
-│       ├── main.tsx
-│       └── vite-env.d.ts
+│   └── vite.config.ts
 ├── README.md
 └── test.http
 ```
@@ -457,6 +436,24 @@ docker compose logs -f bank-nginx
 @baseUrl = http://18.185.7.63/api
 ```
 
+### Локальный запуск frontend
+
+Для разработки frontend локально:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Frontend будет доступен по адресу:
+
+```
+http://localhost:5173
+```
+
+Dev server проксирует API-запросы на `/api` к backend по адресу `http://localhost:8080`.
+
 ### Проверка качества кода
 
 Перед сдачей проект проверялся следующими командами:
@@ -477,24 +474,24 @@ Frontend находится в папке `web`.
 
 Технологии:
 
-- React;
+- React 19;
 - TypeScript;
 - Vite;
-- Tailwind CSS.
+- Tailwind CSS;
+- ESLint;
+- @tanstack/react-query;
+- react-router-dom.
 
-Frontend реализует ручную проверку основных сценариев:
+Frontend реализует ручную проверку основных сценариев API через современный React-приложение с:
 
-- health check;
-- register/login/logout;
-- просмотр текущего пользователя и роли;
-- admin actions;
-- счета;
-- карты;
-- переводы;
-- кредиты по выбранному счету;
-- аналитика;
-- ставки;
-- SMTP test email.
+- Аутентификацией и авторизацией (JWT, MFA);
+- Управлением состоянием через React Context (AuthContext, SharedAccountContext);
+- Защищёнными маршрутами (ProtectedRoute, AdminRoute);
+- Разделением layout (PublicLayout для входа, AppLayout для приложения);
+- Обработкой ошибок (ErrorBoundary, ToastProvider);
+- Кросс-вкладочной синхронизацией сессий;
+- Кешированием данных через React Query;
+- Многоуровневой архитектурой компонентов (pages, features, components, ui).
 
 Локальный запуск frontend:
 
