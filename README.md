@@ -834,7 +834,7 @@ docker system prune --volumes
 
 ### Rollback приложения
 
-```
+```bash
 git log --oneline
 git checkout <previous_commit>
 docker compose build --no-cache --progress=plain bank-api bank-nginx
