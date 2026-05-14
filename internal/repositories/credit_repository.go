@@ -25,6 +25,8 @@ type CreditRiskSummary struct {
 	MonthlyIncome        string
 }
 
+type CreditPolicyValidator func(summary *CreditRiskSummary) error
+
 type CreditRepository struct {
 	db *sql.DB
 }
@@ -46,6 +48,8 @@ func (r *CreditRepository) CreateWithScheduleAndIssue(
 	termMonths int,
 	monthlyPayment string,
 	schedule []PaymentScheduleInput,
+	mfaCodeID int64,
+	validatePolicy CreditPolicyValidator,
 ) (*models.Credit, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
@@ -53,7 +57,26 @@ func (r *CreditRepository) CreateWithScheduleAndIssue(
 	}
 	defer rollbackTx(tx)
 
+	if err := lockUserCreditCreation(ctx, tx, userID); err != nil {
+		return nil, err
+	}
+
 	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
+		return nil, err
+	}
+
+	if validatePolicy != nil {
+		summary, err := getCreditRiskSummaryTx(ctx, tx, userID)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := validatePolicy(summary); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := markMFACodeUsedTx(ctx, tx, mfaCodeID); err != nil {
 		return nil, err
 	}
 
@@ -255,6 +278,14 @@ func (r *CreditRepository) FindScheduleByCreditIDAndUserID(
 }
 
 func (r *CreditRepository) GetCreditRiskSummary(ctx context.Context, userID int64) (*CreditRiskSummary, error) {
+	return getCreditRiskSummary(ctx, r.db, userID)
+}
+
+type creditRiskQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func getCreditRiskSummary(ctx context.Context, queryer creditRiskQueryer, userID int64) (*CreditRiskSummary, error) {
 	query := `
 		WITH credit_data AS (
 			SELECT
@@ -292,7 +323,7 @@ func (r *CreditRepository) GetCreditRiskSummary(ctx context.Context, userID int6
 	`
 
 	summary := &CreditRiskSummary{}
-	if err := r.db.QueryRowContext(ctx, query, userID).Scan(
+	if err := queryer.QueryRowContext(ctx, query, userID).Scan(
 		&summary.ActiveCreditsCount,
 		&summary.OverdueCreditsCount,
 		&summary.TotalPrincipalAmount,
@@ -303,6 +334,20 @@ func (r *CreditRepository) GetCreditRiskSummary(ctx context.Context, userID int6
 	}
 
 	return summary, nil
+}
+
+func getCreditRiskSummaryTx(ctx context.Context, tx *sql.Tx, userID int64) (*CreditRiskSummary, error) {
+	return getCreditRiskSummary(ctx, tx, userID)
+}
+
+func lockUserCreditCreation(ctx context.Context, tx *sql.Tx, userID int64) error {
+	const creditCreationLockNamespace int64 = 920000000000
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, creditCreationLockNamespace+userID); err != nil {
+		return fmt.Errorf("lock user credit creation: %w", err)
+	}
+
+	return nil
 }
 
 func createCredit(

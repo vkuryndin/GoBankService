@@ -64,6 +64,7 @@ type SecurityConfig struct {
 
 type RateLimitConfig struct {
 	Enabled           bool
+	TrustedProxies    []string
 	CleanupInterval   time.Duration
 	GlobalRequests    int
 	GlobalWindow      time.Duration
@@ -531,8 +532,14 @@ func loadRateLimitConfig() (RateLimitConfig, error) {
 		return RateLimitConfig{}, err
 	}
 
+	trustedProxies := envCSV(
+		"RATE_LIMIT_TRUSTED_PROXIES",
+		"127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
+	)
+
 	return RateLimitConfig{
 		Enabled:           enabled,
+		TrustedProxies:    trustedProxies,
 		CleanupInterval:   cleanupInterval,
 		GlobalRequests:    globalRequests,
 		GlobalWindow:      globalWindow,

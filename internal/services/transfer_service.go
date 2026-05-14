@@ -13,10 +13,11 @@ var ErrInvalidTransfer = errors.New("invalid transfer")
 
 type transferAccountStore interface {
 	Transfer(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string) (int64, error)
+	TransferWithMFA(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string, mfaCodeID int64) (int64, error)
 }
 
 type transferMFAVerifier interface {
-	VerifyTransferCode(ctx context.Context, userID int64, request dto.TransferRequest) error
+	VerifyTransferCode(ctx context.Context, userID int64, request dto.TransferRequest) (*MFAVerification, error)
 }
 
 type TransferService struct {
@@ -53,17 +54,19 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 		return nil, ErrInvalidDescription
 	}
 
-	if err := s.mfaService.VerifyTransferCode(ctx, userID, request); err != nil {
+	verification, err := s.mfaService.VerifyTransferCode(ctx, userID, request)
+	if err != nil {
 		return nil, err
 	}
 
-	transactionID, err := s.accountRepository.Transfer(
+	transactionID, err := s.accountRepository.TransferWithMFA(
 		ctx,
 		userID,
 		request.FromAccountID,
 		request.ToAccountID,
 		amount,
 		description,
+		verification.CodeID,
 	)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
@@ -72,6 +75,10 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 
 		if errors.Is(err, repositories.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
+		}
+
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			return nil, ErrInvalidMFACode
 		}
 
 		if errors.Is(err, repositories.ErrAccountBlocked) {

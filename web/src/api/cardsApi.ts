@@ -1,4 +1,4 @@
-import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
+import type { CardPaymentResponse, CardResponse, CardRevealRequest, CardTransferResponse, CloseCardResponse } from '../types/card'
 import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
@@ -16,6 +16,13 @@ export const cardsApi = {
 
   get(_token: string, cardID: number): Promise<CardResponse> {
     return apiRequest<CardResponse>(`/api/cards/${cardID}`)
+  },
+
+  reveal(_token: string, cardID: number, body: CardRevealRequest): Promise<CardResponse> {
+    return apiRequest<CardResponse>(`/api/cards/${cardID}/reveal`, {
+      method: 'POST',
+      body,
+    })
   },
 
   pay(

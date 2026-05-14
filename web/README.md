@@ -1,73 +1,128 @@
-# React + TypeScript + Vite
+# Bank Service Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend for the Go bank-service REST API.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React
+- TypeScript
+- Vite
+- TanStack React Query
+- Axios-compatible API wrapper through `fetch`
+- React Router
+- Plain CSS files by page/feature
 
-## React Compiler
+## Local start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Install dependencies:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm ci
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Start the frontend dev server:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+By default Vite starts on:
+
+```text
+http://localhost:5173
+```
+
+## Backend API contract
+
+The frontend sends requests to API paths with the `/api` prefix:
+
+```text
+/api/health
+/api/login
+/api/accounts
+/api/cards
+/api/credits
+```
+
+In the deployed stand, nginx maps `/api/...` to the Go backend root routes.
+
+Recommended local options:
+
+1. Run the full docker/nginx stack and open `/app/`.
+2. Or configure a Vite proxy for `/api` if you run the Go backend directly on `localhost:8080`.
+
+## Implemented pages
+
+- Health
+- Register
+- Login/logout
+- Accounts
+- Cards
+- Transfers
+- Credits
+- Analytics
+- Rates
+- Notifications
+- Admin
+
+## Cards security flow
+
+A normal card details request does not expose the full card number.
+
+Safe card details:
+
+```http
+GET /api/cards/{cardId}
+```
+
+Full card number reveal requires MFA:
+
+```http
+POST /api/mfa/request
+```
+
+with body:
+
+```json
+{
+  "purpose": "card_reveal",
+  "card_id": 1
+}
+```
+
+Then reveal:
+
+```http
+POST /api/cards/{cardId}/reveal
+```
+
+with body:
+
+```json
+{
+  "mfa_code": "123456"
+}
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+The production build is written to:
+
+```text
+dist/
+```
+
+## Important repository hygiene
+
+Do not commit or archive:
+
+```text
+node_modules/
+dist/
+```
+
+Use `npm ci` to restore dependencies from `package-lock.json`.

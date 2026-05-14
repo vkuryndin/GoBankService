@@ -28,6 +28,20 @@ export function useCards(token: string) {
     },
   })
 
+  const revealMutation = useMutation({
+    mutationFn: ({
+      cardID,
+      body,
+    }: {
+      cardID: number
+      body: Parameters<typeof cardsApi.reveal>[2]
+    }) => cardsApi.reveal(token, cardID, body),
+    onSuccess: (card) => {
+      queryClient.setQueryData(queryKeys.cards.detail(card.id), card)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.cards.all })
+    },
+  })
+
   const payMutation = useMutation({
     mutationFn: ({
       cardID,
@@ -71,6 +85,7 @@ export function useCards(token: string) {
     listQuery,
     detailMutation,
     createMutation,
+    revealMutation,
     payMutation,
     transferMutation,
     closeMutation,

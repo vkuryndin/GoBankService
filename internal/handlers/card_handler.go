@@ -15,8 +15,9 @@ var (
 		errorRules{{target: services.ErrInvalidCardData, status: http.StatusBadRequest, message: "invalid card data"}},
 		accountErrorRules,
 	)
-	getCardErrorRules   = cardErrorRules
-	cardCloseErrorRules = cardErrorRules
+	getCardErrorRules    = cardErrorRules
+	cardRevealErrorRules = joinErrorRules(cardErrorRules, mfaErrorRules)
+	cardCloseErrorRules  = cardErrorRules
 
 	cardPaymentErrorRules = joinErrorRules(
 		errorRules{
@@ -82,6 +83,28 @@ func (h *CardHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 		response, err := h.cardService.GetCard(ctx, userID, cardID)
 		return http.StatusOK, response, err
 	})
+}
+
+func (h *CardHandler) RevealCard(w http.ResponseWriter, r *http.Request) {
+	cardID, err := parseCardID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid card id")
+		return
+	}
+
+	handleAuthedJSON[dto.CardRevealRequest](w, r, cardRevealErrorRules, "reveal card failed",
+		func(ctx context.Context, userID int64, request dto.CardRevealRequest) (int, any, error) {
+			response, err := h.cardService.RevealCard(ctx, userID, cardID, request)
+			if err != nil {
+				recordFinancialAudit(h.auditRecorder, r, userID, "card.reveal.failed", "card", cardID, audit.StatusFailed, nil)
+				return http.StatusOK, nil, err
+			}
+
+			recordFinancialAudit(h.auditRecorder, r, userID, "card.reveal.success", "card", cardID, audit.StatusSuccess, map[string]any{
+				"account_id": response.AccountID,
+			})
+			return http.StatusOK, response, nil
+		})
 }
 
 func (h *CardHandler) CloseCard(w http.ResponseWriter, r *http.Request) {

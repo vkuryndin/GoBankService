@@ -34,3 +34,7 @@ export type CloseCardResponse = {
   status: string
   closed_at: string
 }
+
+export type CardRevealRequest = {
+  mfa_code: string
+}

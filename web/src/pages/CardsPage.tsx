@@ -29,9 +29,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const cardsDomain = useCards(token)
   const cardPaymentMfaFlow = useMfaFlow(token)
   const cardTransferMfaFlow = useMfaFlow(token)
+  const cardRevealMfaFlow = useMfaFlow(token)
   const [cardsState, setCardsState] = useState<RequestState>(emptyState)
   const [createCardState, setCreateCardState] = useState<RequestState>(emptyState)
   const [cardDetailsState, setCardDetailsState] = useState<RequestState>(emptyState)
+  const [cardRevealMfaState, setCardRevealMfaState] = useState<RequestState>(emptyState)
+  const [cardRevealState, setCardRevealState] = useState<RequestState>(emptyState)
   const [cardPaymentMfaState, setCardPaymentMfaState] = useState<RequestState>(emptyState)
   const [cardPaymentState, setCardPaymentState] = useState<RequestState>(emptyState)
   const [cardTransferMfaState, setCardTransferMfaState] = useState<RequestState>(emptyState)
@@ -43,6 +46,8 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [selectedCard, setSelectedCard] = useState<CardResponse | null>(null)
   const [createCardAccountId, setCreateCardAccountId] = useState(sharedAccountId)
   const [createdCard, setCreatedCard] = useState<CardResponse | null>(null)
+
+  const [cardRevealMfaCode, setCardRevealMfaCode] = useState('')
 
   const [cardPaymentAmount, setCardPaymentAmount] = useState('100.00')
   const [cardPaymentCVV, setCardPaymentCVV] = useState('')
@@ -86,6 +91,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardPaymentResult(null)
     setCardTransferResult(null)
     setCardCloseResult(null)
+    setCardRevealMfaCode('')
   }
 
   const upsertCard = (card: CardResponse) => {
@@ -196,11 +202,76 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     try {
       const card = await cardsDomain.detailMutation.mutateAsync(cardID)
       upsertCard(card)
-      setCardDetailsState({ loading: false, error: '', success: 'Данные карты обновлены.' })
+      setCardDetailsState({ loading: false, error: '', success: 'Безопасные данные карты обновлены.' })
     } catch (error) {
       setCardDetailsState({
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to load card',
+        success: '',
+      })
+    }
+  }
+
+
+  const requestCardRevealMFA = async () => {
+    if (!requireToken(setCardRevealMfaState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardRevealMfaState({ loading: false, error: 'Выбери карту.', success: '' })
+      return
+    }
+
+    setCardRevealMfaState({ loading: true, error: '', success: '' })
+
+    try {
+      await cardRevealMfaFlow.requestMutation.mutateAsync({
+        purpose: 'card_reveal',
+        card_id: cardID,
+      })
+
+      setCardRevealMfaState({
+        loading: false,
+        error: '',
+        success: 'MFA-код для показа номера карты отправлен.',
+      })
+    } catch (error) {
+      setCardRevealMfaState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to request MFA code',
+        success: '',
+      })
+    }
+  }
+
+  const revealCardNumber = async () => {
+    if (!requireToken(setCardRevealState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCardRevealState({ loading: false, error: 'Выбери карту.', success: '' })
+      return
+    }
+
+    setCardRevealState({ loading: true, error: '', success: '' })
+
+    try {
+      const card = await cardsDomain.revealMutation.mutateAsync({
+        cardID,
+        body: { mfa_code: cardRevealMfaCode },
+      })
+
+      upsertCard(card)
+      setCardRevealMfaCode('')
+      setCardRevealState({ loading: false, error: '', success: 'Полный номер карты показан.' })
+    } catch (error) {
+      setCardRevealState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to reveal card',
         success: '',
       })
     }
@@ -266,10 +337,10 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       const data = await cardsDomain.payMutation.mutateAsync({
         cardID,
         body: {
-        amount: cardPaymentAmount,
-        cvv: cardPaymentCVV,
-        mfa_code: cardPaymentMfaCode,
-        description: cardPaymentDescription,
+          amount: cardPaymentAmount,
+          cvv: cardPaymentCVV,
+          mfa_code: cardPaymentMfaCode,
+          description: cardPaymentDescription,
         },
       })
 
@@ -358,11 +429,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       const data = await cardsDomain.transferMutation.mutateAsync({
         cardID,
         body: {
-        to_card_id: toCardID,
-        amount: cardTransferAmount,
-        cvv: cardTransferCVV,
-        mfa_code: cardTransferMfaCode,
-        description: cardTransferDescription,
+          to_card_id: toCardID,
+          amount: cardTransferAmount,
+          cvv: cardTransferCVV,
+          mfa_code: cardTransferMfaCode,
+          description: cardTransferDescription,
         },
       })
 
@@ -493,11 +564,28 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
 
               <div className="actions topGap">
                 <Button className="secondary" type="button" onClick={loadCardDetails} disabled={cardDetailsState.loading}>
-                  {cardDetailsState.loading ? 'Обновляю...' : 'Показать детали'}
+                  {cardDetailsState.loading ? 'Обновляю...' : 'Обновить безопасные детали'}
                 </Button>
               </div>
 
               <RequestStatus state={cardDetailsState} />
+
+              <div className="actionBox cardRevealBox">
+                <h4>Показ полного номера карты</h4>
+                <p>Обычный GET больше не возвращает полный номер. Для показа PAN нужен отдельный MFA-код.</p>
+
+                <Button className="secondary" type="button" onClick={requestCardRevealMFA} disabled={cardRevealMfaState.loading || isCardClosed(selectedCard)}>
+                  {cardRevealMfaState.loading ? 'Отправляю...' : 'Запросить MFA для номера'}
+                </Button>
+                <RequestStatus state={cardRevealMfaState} />
+
+                <label><span>MFA code</span><input value={cardRevealMfaCode} onChange={(event) => setCardRevealMfaCode(event.target.value)} disabled={isCardClosed(selectedCard)} /></label>
+
+                <Button type="button" onClick={revealCardNumber} disabled={cardRevealState.loading || isCardClosed(selectedCard)}>
+                  {cardRevealState.loading ? 'Показываю...' : 'Показать полный номер'}
+                </Button>
+                <RequestStatus state={cardRevealState} />
+              </div>
 
               <div className="cardActionsGrid">
                 <form className="actionBox" onSubmit={handleCardPayment}>

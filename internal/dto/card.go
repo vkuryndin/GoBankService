@@ -16,6 +16,10 @@ type CardResponse struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+type CardRevealRequest struct {
+	MFACode string `json:"mfa_code"`
+}
+
 type CardPaymentRequest struct {
 	Amount      string `json:"amount"`
 	CVV         string `json:"cvv"`

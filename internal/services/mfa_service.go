@@ -23,6 +23,7 @@ const (
 	MFAPurposeTransfer     = "transfer"
 	MFAPurposeCardPayment  = "card_payment"
 	MFAPurposeCardTransfer = "card_transfer"
+	MFAPurposeCardReveal   = "card_reveal"
 	MFAPurposeCreditCreate = "credit_create"
 	MFAPurposeWithdraw     = "withdraw"
 )
@@ -34,6 +35,12 @@ var (
 	ErrInvalidMFAOperation   = errors.New("invalid mfa operation")
 	ErrMFARequestTooFrequent = errors.New("mfa request too frequent")
 )
+
+type MFAVerification struct {
+	CodeID        int64
+	Purpose       string
+	OperationHash string
+}
 
 type mfaCodeStore interface {
 	SaveCode(ctx context.Context, userID int64, purpose string, operationHash string, codeHash string, expiresAt time.Time) error
@@ -133,14 +140,14 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 	return nil
 }
 
-func (s *MFAService) VerifyTransferCode(ctx context.Context, userID int64, request dto.TransferRequest) error {
+func (s *MFAService) VerifyTransferCode(ctx context.Context, userID int64, request dto.TransferRequest) (*MFAVerification, error) {
 	code := strings.TrimSpace(request.MFACode)
 	if code == "" {
-		return ErrMFACodeRequired
+		return nil, ErrMFACodeRequired
 	}
 
 	if !isValidMFACodeFormat(code) {
-		return ErrInvalidMFACode
+		return nil, ErrInvalidMFACode
 	}
 
 	mfaRequest := dto.MFARequest{
@@ -158,14 +165,14 @@ func (s *MFAService) VerifyCardPaymentCode(
 	userID int64,
 	cardID int64,
 	request dto.CardPaymentRequest,
-) error {
+) (*MFAVerification, error) {
 	code := strings.TrimSpace(request.MFACode)
 	if code == "" {
-		return ErrMFACodeRequired
+		return nil, ErrMFACodeRequired
 	}
 
 	if !isValidMFACodeFormat(code) {
-		return ErrInvalidMFACode
+		return nil, ErrInvalidMFACode
 	}
 
 	mfaRequest := dto.MFARequest{
@@ -182,14 +189,14 @@ func (s *MFAService) VerifyCardTransferCode(
 	userID int64,
 	fromCardID int64,
 	request dto.CardTransferRequest,
-) error {
+) (*MFAVerification, error) {
 	code := strings.TrimSpace(request.MFACode)
 	if code == "" {
-		return ErrMFACodeRequired
+		return nil, ErrMFACodeRequired
 	}
 
 	if !isValidMFACodeFormat(code) {
-		return ErrInvalidMFACode
+		return nil, ErrInvalidMFACode
 	}
 
 	mfaRequest := dto.MFARequest{
@@ -202,18 +209,41 @@ func (s *MFAService) VerifyCardTransferCode(
 	return s.verifyCode(ctx, userID, MFAPurposeCardTransfer, mfaRequest, code)
 }
 
+func (s *MFAService) VerifyCardRevealCode(
+	ctx context.Context,
+	userID int64,
+	cardID int64,
+	request dto.CardRevealRequest,
+) (*MFAVerification, error) {
+	code := strings.TrimSpace(request.MFACode)
+	if code == "" {
+		return nil, ErrMFACodeRequired
+	}
+
+	if !isValidMFACodeFormat(code) {
+		return nil, ErrInvalidMFACode
+	}
+
+	mfaRequest := dto.MFARequest{
+		Purpose: MFAPurposeCardReveal,
+		CardID:  cardID,
+	}
+
+	return s.verifyCode(ctx, userID, MFAPurposeCardReveal, mfaRequest, code)
+}
+
 func (s *MFAService) VerifyCreditCreateCode(
 	ctx context.Context,
 	userID int64,
 	request dto.CreateCreditRequest,
-) error {
+) (*MFAVerification, error) {
 	code := strings.TrimSpace(request.MFACode)
 	if code == "" {
-		return ErrMFACodeRequired
+		return nil, ErrMFACodeRequired
 	}
 
 	if !isValidMFACodeFormat(code) {
-		return ErrInvalidMFACode
+		return nil, ErrInvalidMFACode
 	}
 
 	mfaRequest := dto.MFARequest{
@@ -231,14 +261,14 @@ func (s *MFAService) VerifyWithdrawCode(
 	userID int64,
 	accountID int64,
 	request dto.WithdrawRequest,
-) error {
+) (*MFAVerification, error) {
 	code := strings.TrimSpace(request.MFACode)
 	if code == "" {
-		return ErrMFACodeRequired
+		return nil, ErrMFACodeRequired
 	}
 
 	if !isValidMFACodeFormat(code) {
-		return ErrInvalidMFACode
+		return nil, ErrInvalidMFACode
 	}
 
 	mfaRequest := dto.MFARequest{
@@ -250,53 +280,65 @@ func (s *MFAService) VerifyWithdrawCode(
 	return s.verifyCode(ctx, userID, MFAPurposeWithdraw, mfaRequest, code)
 }
 
+func (s *MFAService) ConsumeVerifiedCode(ctx context.Context, verification *MFAVerification) error {
+	if verification == nil || verification.CodeID <= 0 {
+		return ErrInvalidMFACode
+	}
+
+	if err := s.mfaRepository.MarkUsed(ctx, verification.CodeID); err != nil {
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			s.recordMFAVerification(ctx, 0, verification.Purpose, audit.StatusFailed, "not_found_or_used")
+			return ErrInvalidMFACode
+		}
+
+		return err
+	}
+
+	return nil
+}
+
 func (s *MFAService) verifyCode(
 	ctx context.Context,
 	userID int64,
 	purpose string,
 	request dto.MFARequest,
 	code string,
-) error {
+) (*MFAVerification, error) {
 	operationHash, err := s.buildOperationHash(ctx, userID, purpose, request)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	activeCode, err := s.mfaRepository.FindActiveCode(ctx, userID, purpose, operationHash)
 	if err != nil {
 		if errors.Is(err, repositories.ErrMFACodeNotFound) {
 			s.recordMFAVerification(ctx, userID, purpose, audit.StatusFailed, "not_found_or_used")
-			return ErrInvalidMFACode
+			return nil, ErrInvalidMFACode
 		}
 
-		return err
+		return nil, err
 	}
 
 	attemptKey := fmt.Sprintf("mfa:%d:%s:%s", userID, purpose, operationHash)
 	if s.attemptLimiter.isLocked(attemptKey) {
 		s.recordMFAVerification(ctx, userID, purpose, audit.StatusBlocked, "too_many_attempts")
-		return ErrInvalidMFACode
+		return nil, ErrInvalidMFACode
 	}
 
 	if !security.CheckPassword(code, activeCode.CodeHash) {
 		s.attemptLimiter.recordFailure(attemptKey)
 		s.recordMFAVerification(ctx, userID, purpose, audit.StatusFailed, "invalid_code")
-		return ErrInvalidMFACode
-	}
-
-	if err := s.mfaRepository.MarkUsed(ctx, activeCode.ID); err != nil {
-		if errors.Is(err, repositories.ErrMFACodeNotFound) {
-			s.recordMFAVerification(ctx, userID, purpose, audit.StatusFailed, "not_found_or_used")
-			return ErrInvalidMFACode
-		}
-
-		return err
+		return nil, ErrInvalidMFACode
 	}
 
 	s.attemptLimiter.reset(attemptKey)
 	s.recordMFAVerification(ctx, userID, purpose, audit.StatusSuccess, "verified")
 
-	return nil
+	return &MFAVerification{
+		CodeID:        activeCode.ID,
+		Purpose:       purpose,
+		OperationHash: operationHash,
+	}, nil
 }
 
 func (s *MFAService) recordMFAVerification(ctx context.Context, userID int64, purpose string, status string, reason string) {
@@ -304,8 +346,13 @@ func (s *MFAService) recordMFAVerification(ctx context.Context, userID int64, pu
 		return
 	}
 
+	var auditUserID *int64
+	if userID > 0 {
+		auditUserID = audit.Int64Ptr(userID)
+	}
+
 	s.auditRecorder.Record(ctx, audit.Event{
-		UserID:       audit.Int64Ptr(userID),
+		UserID:       auditUserID,
 		Action:       "mfa.verify." + status,
 		ResourceType: "mfa_code",
 		Status:       status,
@@ -331,6 +378,9 @@ func (s *MFAService) buildOperationHash(
 
 	case MFAPurposeCardTransfer:
 		return s.buildCardTransferOperationHash(ctx, userID, request)
+
+	case MFAPurposeCardReveal:
+		return s.buildCardRevealOperationHash(ctx, userID, request)
 
 	case MFAPurposeCreditCreate:
 		return s.buildCreditCreateOperationHash(ctx, userID, request)
@@ -535,6 +585,42 @@ func (s *MFAService) buildCardTransferOperationHash(
 	return hashOperation(raw), nil
 }
 
+func (s *MFAService) buildCardRevealOperationHash(
+	ctx context.Context,
+	userID int64,
+	request dto.MFARequest,
+) (string, error) {
+	if request.CardID <= 0 {
+		return "", ErrInvalidMFAOperation
+	}
+
+	card, err := s.cardRepository.FindByIDAndUserID(ctx, request.CardID, userID, s.pgpKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return "", ErrCardNotFound
+		}
+
+		return "", err
+	}
+
+	if card.Status == models.CardStatusClosed {
+		return "", ErrCardClosed
+	}
+
+	if err := ensureCardNotExpired(card); err != nil {
+		return "", err
+	}
+
+	raw := fmt.Sprintf(
+		"user_id=%d|purpose=%s|card_id=%d",
+		userID,
+		MFAPurposeCardReveal,
+		request.CardID,
+	)
+
+	return hashOperation(raw), nil
+}
+
 func (s *MFAService) buildCreditCreateOperationHash(
 	ctx context.Context,
 	userID int64,
@@ -651,6 +737,7 @@ func isAllowedPurpose(purpose string) bool {
 	return purpose == MFAPurposeTransfer ||
 		purpose == MFAPurposeCardPayment ||
 		purpose == MFAPurposeCardTransfer ||
+		purpose == MFAPurposeCardReveal ||
 		purpose == MFAPurposeCreditCreate ||
 		purpose == MFAPurposeWithdraw
 }

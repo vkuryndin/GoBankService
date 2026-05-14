@@ -44,11 +44,12 @@ func (r *MFARepository) SaveCode(
 		SET used_at = NOW()
 		WHERE user_id = $1
 		  AND purpose = $2
+		  AND operation_hash = $3
 		  AND used_at IS NULL
 		  AND expires_at > NOW()
 	`
 
-	if _, err := tx.ExecContext(ctx, invalidateQuery, userID, purpose); err != nil {
+	if _, err := tx.ExecContext(ctx, invalidateQuery, userID, purpose, operationHash); err != nil {
 		return fmt.Errorf("invalidate previous mfa codes: %w", err)
 	}
 

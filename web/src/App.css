@@ -1,11 +1,7 @@
 @import './styles/base.css';
 @import './styles/cards.css';
 @import './styles/transfers.css';
-@import './styles/credits-legacy.css';
-@import './styles/credits-v2.css';
-@import './styles/credits-v3.css';
+@import './styles/credits.css';
 @import './styles/remaining-features.css';
 @import './styles/analytics.css';
 @import './styles/request-status.css';
-@import './styles/credits-v4.css';
-@import './styles/credits-list-width.css';

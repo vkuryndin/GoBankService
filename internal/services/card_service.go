@@ -38,7 +38,9 @@ type cardStore interface {
 
 type cardPaymentAccountStore interface {
 	CardPayment(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
+	CardPaymentWithMFA(ctx context.Context, userID, accountID int64, amount, description string, mfaCodeID int64) (*models.Account, int64, error)
 	Transfer(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string) (int64, error)
+	TransferWithMFA(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string, mfaCodeID int64) (int64, error)
 }
 
 type cardProcessor interface {
@@ -47,8 +49,10 @@ type cardProcessor interface {
 }
 
 type cardPaymentMFAVerifier interface {
-	VerifyCardPaymentCode(ctx context.Context, userID int64, cardID int64, request dto.CardPaymentRequest) error
-	VerifyCardTransferCode(ctx context.Context, userID int64, fromCardID int64, request dto.CardTransferRequest) error
+	VerifyCardPaymentCode(ctx context.Context, userID int64, cardID int64, request dto.CardPaymentRequest) (*MFAVerification, error)
+	VerifyCardTransferCode(ctx context.Context, userID int64, fromCardID int64, request dto.CardTransferRequest) (*MFAVerification, error)
+	VerifyCardRevealCode(ctx context.Context, userID int64, cardID int64, request dto.CardRevealRequest) (*MFAVerification, error)
+	ConsumeVerifiedCode(ctx context.Context, verification *MFAVerification) error
 }
 
 type CardService struct {
@@ -132,6 +136,49 @@ func (s *CardService) GetCard(ctx context.Context, userID, cardID int64) (*dto.C
 	}
 
 	if err := s.verifyCardHMAC(card); err != nil {
+		return nil, err
+	}
+
+	return toMaskedCardResponse(card), nil
+}
+
+func (s *CardService) RevealCard(
+	ctx context.Context,
+	userID int64,
+	cardID int64,
+	request dto.CardRevealRequest,
+) (*dto.CardResponse, error) {
+	if cardID <= 0 {
+		return nil, ErrInvalidCardData
+	}
+
+	card, err := s.cardRepository.FindByIDAndUserID(ctx, cardID, userID, s.pgpKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	if card.Status == models.CardStatusClosed {
+		return nil, ErrCardClosed
+	}
+
+	if err := ensureCardNotExpired(card); err != nil {
+		return nil, err
+	}
+
+	if err := s.verifyCardHMAC(card); err != nil {
+		return nil, err
+	}
+
+	verification, err := s.mfaService.VerifyCardRevealCode(ctx, userID, cardID, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.mfaService.ConsumeVerifiedCode(ctx, verification); err != nil {
 		return nil, err
 	}
 
@@ -223,11 +270,12 @@ func (s *CardService) PayByCard(
 
 	s.cvvAttemptLimiter.reset(cvvAttemptKey)
 
-	if err := s.mfaService.VerifyCardPaymentCode(ctx, userID, cardID, request); err != nil {
+	verification, err := s.mfaService.VerifyCardPaymentCode(ctx, userID, cardID, request)
+	if err != nil {
 		return nil, err
 	}
 
-	_, transactionID, err := s.accountRepository.CardPayment(ctx, userID, card.AccountID, amount, description)
+	_, transactionID, err := s.accountRepository.CardPaymentWithMFA(ctx, userID, card.AccountID, amount, description, verification.CodeID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
@@ -235,6 +283,10 @@ func (s *CardService) PayByCard(
 
 		if errors.Is(err, repositories.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
+		}
+
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			return nil, ErrInvalidMFACode
 		}
 
 		if errors.Is(err, repositories.ErrAccountBlocked) {
@@ -335,11 +387,12 @@ func (s *CardService) TransferByCard(
 		return nil, ErrInvalidCardTransfer
 	}
 
-	if err := s.mfaService.VerifyCardTransferCode(ctx, userID, fromCardID, request); err != nil {
+	verification, err := s.mfaService.VerifyCardTransferCode(ctx, userID, fromCardID, request)
+	if err != nil {
 		return nil, err
 	}
 
-	transactionID, err := s.accountRepository.Transfer(ctx, userID, fromCard.AccountID, toCard.AccountID, amount, description)
+	transactionID, err := s.accountRepository.TransferWithMFA(ctx, userID, fromCard.AccountID, toCard.AccountID, amount, description, verification.CodeID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
@@ -347,6 +400,10 @@ func (s *CardService) TransferByCard(
 
 		if errors.Is(err, repositories.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
+		}
+
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			return nil, ErrInvalidMFACode
 		}
 
 		if errors.Is(err, repositories.ErrAccountBlocked) {
@@ -411,6 +468,7 @@ func toMaskedCardResponse(card *models.CardDetails) *dto.CardResponse {
 		ID:           card.ID,
 		AccountID:    card.AccountID,
 		MaskedNumber: security.MaskCardNumber(card.Number),
+		Expiry:       card.Expiry,
 		Status:       normalizeCardStatus(card.Status),
 		ClosedAt:     formatNullableTime(card.ClosedAt),
 		CreatedAt:    card.CreatedAt.Format(time.RFC3339),

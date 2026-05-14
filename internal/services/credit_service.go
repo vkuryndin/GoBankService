@@ -50,7 +50,7 @@ func (e *CreditPolicyError) PublicDetails() any {
 }
 
 type creditStore interface {
-	CreateWithScheduleAndIssue(ctx context.Context, userID int64, accountID int64, principalAmount string, interestRate string, termMonths int, monthlyPayment string, schedule []repositories.PaymentScheduleInput) (*models.Credit, error)
+	CreateWithScheduleAndIssue(ctx context.Context, userID int64, accountID int64, principalAmount string, interestRate string, termMonths int, monthlyPayment string, schedule []repositories.PaymentScheduleInput, mfaCodeID int64, validatePolicy repositories.CreditPolicyValidator) (*models.Credit, error)
 	FindByUserID(ctx context.Context, userID int64) ([]models.Credit, error)
 	FindByIDAndUserID(ctx context.Context, creditID, userID int64) (*models.Credit, error)
 	FindScheduleByCreditIDAndUserID(ctx context.Context, creditID, userID int64) ([]models.PaymentSchedule, error)
@@ -66,7 +66,7 @@ type bankRateProvider interface {
 }
 
 type creditMFAVerifier interface {
-	VerifyCreditCreateCode(ctx context.Context, userID int64, request dto.CreateCreditRequest) error
+	VerifyCreditCreateCode(ctx context.Context, userID int64, request dto.CreateCreditRequest) (*MFAVerification, error)
 }
 
 type CreditService struct {
@@ -112,13 +112,36 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 		}
 	}
 
-	// MFA is verified after the credit policy check so a valid one-time code is not consumed
-	// when the bank would reject the credit anyway.
-	if err := s.mfaService.VerifyCreditCreateCode(ctx, userID, request); err != nil {
+	// MFA is verified after the first credit policy check so a valid one-time code is not consumed
+	// when the bank would reject the credit anyway. The code is consumed inside the final DB transaction.
+	verification, err := s.mfaService.VerifyCreditCreateCode(ctx, userID, request)
+	if err != nil {
 		return nil, err
 	}
 
 	schedule := buildPaymentSchedule(request.TermMonths, decision.MonthlyPayment)
+	validatePolicy := func(summary *repositories.CreditRiskSummary) error {
+		freshDecision, err := s.buildCreditPolicyDecisionFromSummary(
+			summary,
+			request.AccountID,
+			decision.PrincipalAmount,
+			request.TermMonths,
+			decision.InterestRate,
+			decision.MonthlyPayment,
+		)
+		if err != nil {
+			return err
+		}
+
+		if !freshDecision.Eligible {
+			return &CreditPolicyError{
+				Err:     creditPolicyReasonError(freshDecision.Reason),
+				Details: freshDecision,
+			}
+		}
+
+		return nil
+	}
 
 	credit, err := s.creditRepository.CreateWithScheduleAndIssue(
 		ctx,
@@ -129,6 +152,8 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 		request.TermMonths,
 		decision.MonthlyPayment,
 		schedule,
+		verification.CodeID,
+		validatePolicy,
 	)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
@@ -136,6 +161,10 @@ func (s *CreditService) CreateCredit(ctx context.Context, userID int64, request 
 		}
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
+		}
+
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			return nil, ErrInvalidMFACode
 		}
 
 		if errors.Is(err, repositories.ErrAccountClosed) {
@@ -220,6 +249,22 @@ func (s *CreditService) buildCreditPolicyDecision(
 	interestRate string,
 	monthlyPayment string,
 ) (*dto.CreditCheckResponse, error) {
+	summary, err := s.creditRepository.GetCreditRiskSummary(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.buildCreditPolicyDecisionFromSummary(summary, accountID, principalAmount, termMonths, interestRate, monthlyPayment)
+}
+
+func (s *CreditService) buildCreditPolicyDecisionFromSummary(
+	summary *repositories.CreditRiskSummary,
+	accountID int64,
+	principalAmount string,
+	termMonths int,
+	interestRate string,
+	monthlyPayment string,
+) (*dto.CreditCheckResponse, error) {
 	principal, err := moneyRat(principalAmount)
 	if err != nil {
 		return nil, ErrInvalidAmount
@@ -227,11 +272,6 @@ func (s *CreditService) buildCreditPolicyDecision(
 	requestedMonthlyPayment, err := moneyRat(monthlyPayment)
 	if err != nil {
 		return nil, ErrInvalidAmount
-	}
-
-	summary, err := s.creditRepository.GetCreditRiskSummary(ctx, userID)
-	if err != nil {
-		return nil, err
 	}
 
 	monthlyIncome, err := moneyRat(summary.MonthlyIncome)

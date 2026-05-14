@@ -79,3 +79,7 @@
     grid-column: auto;
   }
 }
+
+.cardRevealBox {
+  margin: 18px 0;
+}

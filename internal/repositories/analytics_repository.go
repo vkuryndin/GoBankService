@@ -81,7 +81,7 @@ func (r *AnalyticsRepository) PredictBalance(
 			WHERE t.status = 'completed'
 			  AND t.created_at >= NOW() - INTERVAL '30 days'
 			  AND (
-				(t.type = 'deposit' AND t.user_id = $2)
+				(t.type IN ('deposit', 'credit_issue') AND t.to_account_id = $1 AND t.user_id = $2)
 				OR (
 					t.type = 'transfer'
 					AND to_acc.id = $1

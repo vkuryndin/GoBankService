@@ -34,6 +34,46 @@ type rateLimiter struct {
 	entries         map[string]rateLimitEntry
 }
 
+var (
+	trustedProxyMu       sync.RWMutex
+	trustedProxyNetworks []*net.IPNet
+)
+
+func ConfigureTrustedProxies(values []string) {
+	networks := make([]*net.IPNet, 0, len(values))
+
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+
+		if !strings.Contains(value, "/") {
+			ip := net.ParseIP(value)
+			if ip == nil {
+				continue
+			}
+
+			if ip.To4() != nil {
+				value += "/32"
+			} else {
+				value += "/128"
+			}
+		}
+
+		_, network, err := net.ParseCIDR(value)
+		if err != nil {
+			continue
+		}
+
+		networks = append(networks, network)
+	}
+
+	trustedProxyMu.Lock()
+	trustedProxyNetworks = networks
+	trustedProxyMu.Unlock()
+}
+
 func NewRateLimiter(
 	enabled bool,
 	rules []RateLimitRule,
@@ -216,24 +256,54 @@ func UserIDKey(r *http.Request) string {
 }
 
 func ClientIP(r *http.Request) string {
-	forwardedFor := r.Header.Get("X-Forwarded-For")
-	if forwardedFor != "" {
-		parts := strings.Split(forwardedFor, ",")
-		candidate := strings.TrimSpace(parts[0])
-		if candidate != "" {
-			return candidate
+	remoteIP := remoteAddrIP(r.RemoteAddr)
+
+	if isTrustedProxy(remoteIP) {
+		forwardedFor := r.Header.Get("X-Forwarded-For")
+		if forwardedFor != "" {
+			parts := strings.Split(forwardedFor, ",")
+			candidate := strings.TrimSpace(parts[0])
+			if net.ParseIP(candidate) != nil {
+				return candidate
+			}
+		}
+
+		realIP := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+		if net.ParseIP(realIP) != nil {
+			return realIP
 		}
 	}
 
-	realIP := strings.TrimSpace(r.Header.Get("X-Real-IP"))
-	if realIP != "" {
-		return realIP
+	if remoteIP != "" {
+		return remoteIP
 	}
 
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	return r.RemoteAddr
+}
+
+func remoteAddrIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
 	if err == nil && host != "" {
 		return host
 	}
 
-	return r.RemoteAddr
+	return remoteAddr
+}
+
+func isTrustedProxy(remoteIP string) bool {
+	ip := net.ParseIP(remoteIP)
+	if ip == nil {
+		return false
+	}
+
+	trustedProxyMu.RLock()
+	defer trustedProxyMu.RUnlock()
+
+	for _, network := range trustedProxyNetworks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
 }

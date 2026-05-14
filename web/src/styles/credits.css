@@ -1,0 +1,676 @@
+.creditsLayout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(340px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.creditCreatePanel,
+.creditDetailsPanel {
+  min-width: 0;
+}
+
+.creditListPanel {
+  grid-column: 1 / 2;
+}
+
+.creditDetailsPanel {
+  grid-column: 2 / 3;
+}
+
+.creditForm,
+.creditMfaBlock {
+  max-width: 620px;
+}
+
+.creditMfaBlock {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.creditCheckGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.creditCheckGrid > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.creditCheckGrid span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.creditCheckGrid strong {
+  color: #1f2937;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.creditList {
+  display: grid;
+  gap: 10px;
+}
+
+.creditItem {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  min-height: auto;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #1f2937;
+  text-align: left;
+}
+
+.creditItem:hover {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+  color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+.creditItem.active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.creditTitle {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+}
+
+.creditMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.scheduleTable table {
+  min-width: 760px;
+}
+
+@media (max-width: 1100px) {
+  .creditsLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .creditListPanel,
+  .creditDetailsPanel {
+    grid-column: auto;
+  }
+
+  .creditCheckGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .creditCheckGrid {
+    grid-template-columns: 1fr;
+  }
+}
+/* Credits layout v2: accounts and credits stay side by side. */
+.creditsLayout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.creditTopGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.creditAccountsPanel,
+.creditTopGrid .creditListPanel,
+.creditCreatePanel,
+.creditDetailsPanel {
+  min-width: 0;
+  grid-column: auto;
+}
+
+.creditCreatePanel,
+.creditDetailsPanel {
+  width: 100%;
+}
+
+.compactList {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.creditForm {
+  display: grid;
+  max-width: none;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.creditForm button {
+  grid-column: 1 / -1;
+}
+
+.creditMfaBlock {
+  display: grid;
+  max-width: none;
+  grid-template-columns: minmax(180px, auto) minmax(180px, 260px) minmax(180px, auto);
+  gap: 14px;
+  align-items: end;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.creditMfaBlock .alert,
+.creditMfaBlock .notice {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+@media (max-width: 1100px) {
+  .creditTopGrid,
+  .creditForm,
+  .creditMfaBlock {
+    grid-template-columns: 1fr;
+  }
+
+  .creditForm button {
+    grid-column: auto;
+  }
+}
+/* Credits redesign v3 */
+.creditsPage {
+  display: grid;
+  gap: 18px;
+}
+
+.creditsHeader {
+  margin-bottom: 0;
+}
+
+.creditsWorkspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(260px, 0.9fr) minmax(360px, 1.2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.creditsPickerPanel,
+.creditApplicationPanel,
+.redesignedCreditDetails {
+  min-width: 0;
+  border-radius: 18px;
+}
+
+.creditsPickerPanel .subPanelHeader,
+.creditApplicationPanel .subPanelHeader {
+  align-items: flex-start;
+}
+
+.creditsPickerPanel .subPanelHeader p,
+.creditApplicationPanel .subPanelHeader p {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.creditPickerList {
+  display: grid;
+  gap: 10px;
+  max-height: 270px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.creditPickerItem {
+  display: grid;
+  width: 100%;
+  gap: 7px;
+  min-height: auto;
+  padding: 12px 13px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #1f2937;
+  text-align: left;
+  box-shadow: none;
+}
+
+.creditPickerItem:hover {
+  border-color: #bfdbfe;
+  background: #f8fbff;
+  color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+.creditPickerItem.selected {
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(255, 255, 255, 0.9));
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.creditPickerMain,
+.creditPickerMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.creditPickerTitle {
+  overflow: hidden;
+  color: #111827;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creditPickerMeta {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.creditApplicationForm {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.creditApplicationForm label span {
+  font-size: 13px;
+}
+
+.creditApplicationForm input {
+  min-height: 40px;
+}
+
+.creditDecision {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid;
+  border-radius: 14px;
+}
+
+.successDecision {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.errorDecision {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.creditDecisionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.creditDecisionHeader span {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.creditDecision p,
+.creditDecision ul {
+  margin: 10px 0 0;
+  color: #4b5563;
+}
+
+.compactCreditCheck {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.creditMfaRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.creditMfaRow input {
+  min-height: 40px;
+}
+
+.compactResult pre {
+  max-height: 220px;
+}
+
+.redesignedCreditDetails {
+  margin-top: 0;
+}
+
+.creditSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.creditSummaryGrid > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.creditSummaryGrid span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.creditSummaryGrid strong {
+  color: #1f2937;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.compactEmpty {
+  margin-top: 0;
+  padding: 16px;
+}
+
+@media (max-width: 1400px) {
+  .creditsWorkspace {
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+  }
+
+  .creditApplicationPanel {
+    grid-column: 1 / -1;
+  }
+
+  .creditApplicationForm {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+    align-items: end;
+  }
+
+  .creditApplicationForm button {
+    grid-column: 1 / -1;
+  }
+
+  .creditMfaRow {
+    grid-template-columns: minmax(180px, auto) minmax(180px, 260px) minmax(180px, auto);
+    align-items: end;
+  }
+
+  .creditSummaryGrid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .creditsWorkspace,
+  .creditApplicationForm,
+  .creditMfaRow,
+  .creditSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .creditApplicationPanel {
+    grid-column: auto;
+  }
+}
+/* Credits v4: card-like flow by selected account */
+.cardsLikeCreditsPage {
+  display: grid;
+  gap: 18px;
+}
+
+.creditCardsTopGrid {
+  display: grid;
+  grid-template-columns: minmax(280px, 420px) minmax(320px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.creditWorkGridV3 {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.92fr) minmax(420px, 1.08fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.creditAccountPanelV3,
+.creditListPanelV3,
+.creditApplicationPanelV3,
+.creditDetailsPanelV3 {
+  min-width: 0;
+  border-radius: 18px;
+}
+
+.creditAccountCardsList,
+.creditCardsListV3 {
+  display: grid;
+  gap: 10px;
+  max-height: 330px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.creditAccountCard,
+.creditLoanCard {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  min-height: auto;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), transparent 48%),
+    #ffffff;
+  color: #1f2937;
+  text-align: left;
+  box-shadow: none;
+}
+
+.creditAccountCard:hover,
+.creditLoanCard:hover {
+  border-color: #bfdbfe;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.12), transparent 48%),
+    #f8fbff;
+  color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+.creditAccountCard.selected,
+.creditLoanCard.selected {
+  border-color: #93c5fd;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.16), transparent 48%),
+    #eff6ff;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.08);
+}
+
+.creditAccountNumber,
+.creditLoanTitle {
+  overflow: hidden;
+  color: #111827;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creditAccountMeta,
+.creditLoanMeta,
+.creditLoanMain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.creditLoanMain {
+  justify-content: space-between;
+}
+
+.creditLoanMeta {
+  justify-content: space-between;
+}
+
+.creditApplicationFormV3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.creditApplicationFormV3 input,
+.creditMfaRowV3 input {
+  min-height: 40px;
+}
+
+.creditMfaRowV3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.creditSummaryGridV3 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.creditSummaryGridV3 > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.creditSummaryGridV3 span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.creditSummaryGridV3 strong {
+  color: #1f2937;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+@media (max-width: 1280px) {
+  .creditCardsTopGrid,
+  .creditWorkGridV3 {
+    grid-template-columns: 1fr;
+  }
+
+  .creditAccountCardsList,
+  .creditCardsListV3 {
+    max-height: none;
+  }
+}
+/* Credits list width fix: keep the credits list compact, like Cards. */
+.creditCardsTopGrid {
+  grid-template-columns: minmax(280px, 420px) minmax(280px, 420px);
+  justify-content: start;
+  align-items: start;
+}
+
+.creditListPanelV3 {
+  width: 100%;
+  max-width: 420px;
+}
+
+.creditAccountPanelV3 {
+  width: 100%;
+  max-width: 420px;
+}
+
+.creditCardsListV3 {
+  width: 100%;
+}
+
+.creditLoanCard {
+  width: 100%;
+}
+
+@media (min-width: 1281px) {
+  .creditCardsTopGrid {
+    grid-template-columns: minmax(280px, 420px) minmax(280px, 420px);
+  }
+}
+
+@media (max-width: 1280px) {
+  .creditListPanelV3,
+  .creditAccountPanelV3 {
+    max-width: none;
+  }
+}
+
+
+/* Router links and error boundary */
+.menuItem {
+  text-decoration: none;
+}
+
+.errorBoundaryPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: #f5f7fb;
+}
+
+.errorBoundaryCard {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid #fecaca;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.errorBoundaryCard p {
+  margin: 0;
+  color: #6b7280;
+}
+
+.errorBoundaryCard pre {
+  max-height: 220px;
+  white-space: pre-wrap;
+}

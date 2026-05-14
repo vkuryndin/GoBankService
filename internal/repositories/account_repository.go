@@ -255,6 +255,45 @@ func (r *AccountRepository) Withdraw(ctx context.Context, userID, accountID int6
 	return account, transactionID, nil
 }
 
+func (r *AccountRepository) WithdrawWithMFA(
+	ctx context.Context,
+	userID int64,
+	accountID int64,
+	amount string,
+	description string,
+	mfaCodeID int64,
+) (*models.Account, int64, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("begin withdraw transaction: %w", err)
+	}
+	defer rollbackTx(tx)
+
+	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
+		return nil, 0, err
+	}
+
+	if err := markMFACodeUsedTx(ctx, tx, mfaCodeID); err != nil {
+		return nil, 0, err
+	}
+
+	account, err := withdrawAccountBalance(ctx, tx, accountID, amount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, amount, "withdraw", description)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, 0, fmt.Errorf("commit withdraw transaction: %w", err)
+	}
+
+	return account, transactionID, nil
+}
+
 func (r *AccountRepository) CardPayment(
 	ctx context.Context,
 	userID int64,
@@ -269,6 +308,45 @@ func (r *AccountRepository) CardPayment(
 	defer rollbackTx(tx)
 
 	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
+		return nil, 0, err
+	}
+
+	account, err := withdrawAccountBalance(ctx, tx, accountID, amount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	transactionID, err := createTransaction(ctx, tx, userID, &accountID, nil, amount, "card_payment", description)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, 0, fmt.Errorf("commit card payment transaction: %w", err)
+	}
+
+	return account, transactionID, nil
+}
+
+func (r *AccountRepository) CardPaymentWithMFA(
+	ctx context.Context,
+	userID int64,
+	accountID int64,
+	amount string,
+	description string,
+	mfaCodeID int64,
+) (*models.Account, int64, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, 0, fmt.Errorf("begin card payment transaction: %w", err)
+	}
+	defer rollbackTx(tx)
+
+	if err := lockAccount(ctx, tx, accountID, userID); err != nil {
+		return nil, 0, err
+	}
+
+	if err := markMFACodeUsedTx(ctx, tx, mfaCodeID); err != nil {
 		return nil, 0, err
 	}
 
@@ -304,6 +382,58 @@ func (r *AccountRepository) Transfer(
 	defer rollbackTx(tx)
 
 	if err := lockTransferAccounts(ctx, tx, userID, fromAccountID, toAccountID); err != nil {
+		return 0, err
+	}
+
+	if _, err := withdrawAccountBalance(ctx, tx, fromAccountID, amount); err != nil {
+		return 0, err
+	}
+
+	if _, err := updateAccountBalance(ctx, tx, toAccountID, amount, "+"); err != nil {
+		return 0, fmt.Errorf("transfer balance update: %w", err)
+	}
+
+	transactionID, err := createTransaction(
+		ctx,
+		tx,
+		userID,
+		&fromAccountID,
+		&toAccountID,
+		amount,
+		"transfer",
+		description,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transfer transaction: %w", err)
+	}
+
+	return transactionID, nil
+}
+
+func (r *AccountRepository) TransferWithMFA(
+	ctx context.Context,
+	userID int64,
+	fromAccountID int64,
+	toAccountID int64,
+	amount string,
+	description string,
+	mfaCodeID int64,
+) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("begin transfer transaction: %w", err)
+	}
+	defer rollbackTx(tx)
+
+	if err := lockTransferAccounts(ctx, tx, userID, fromAccountID, toAccountID); err != nil {
+		return 0, err
+	}
+
+	if err := markMFACodeUsedTx(ctx, tx, mfaCodeID); err != nil {
 		return 0, err
 	}
 

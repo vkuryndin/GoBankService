@@ -31,11 +31,12 @@ type accountStore interface {
 	FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error)
 	Deposit(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
 	Withdraw(ctx context.Context, userID, accountID int64, amount, description string) (*models.Account, int64, error)
+	WithdrawWithMFA(ctx context.Context, userID, accountID int64, amount, description string, mfaCodeID int64) (*models.Account, int64, error)
 	Close(ctx context.Context, userID int64, accountID int64) (*models.Account, error)
 }
 
 type withdrawMFAVerifier interface {
-	VerifyWithdrawCode(ctx context.Context, userID int64, accountID int64, request dto.WithdrawRequest) error
+	VerifyWithdrawCode(ctx context.Context, userID int64, accountID int64, request dto.WithdrawRequest) (*MFAVerification, error)
 }
 
 type AccountService struct {
@@ -123,17 +124,21 @@ func (s *AccountService) Withdraw(ctx context.Context, userID, accountID int64, 
 	}
 
 	// Withdraw directly decreases the user's balance, so it is protected with operation-bound MFA.
-	if err := s.mfaService.VerifyWithdrawCode(ctx, userID, accountID, request); err != nil {
+	verification, err := s.mfaService.VerifyWithdrawCode(ctx, userID, accountID, request)
+	if err != nil {
 		return nil, err
 	}
 
-	account, _, err := s.accountRepository.Withdraw(ctx, userID, accountID, amount, "account withdraw")
+	account, _, err := s.accountRepository.WithdrawWithMFA(ctx, userID, accountID, amount, "account withdraw", verification.CodeID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
 		}
 		if errors.Is(err, repositories.ErrInsufficientFunds) {
 			return nil, ErrInsufficientFunds
+		}
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			return nil, ErrInvalidMFACode
 		}
 		if errors.Is(err, repositories.ErrAccountBlocked) {
 			return nil, ErrAccountBlocked
