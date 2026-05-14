@@ -558,7 +558,7 @@ func closeAccountRow(ctx context.Context, tx *sql.Tx, accountID int64) (*models.
 	query := `
 		UPDATE accounts
 		SET status = 'closed', closed_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND status = 'active'
 		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 	`
 
@@ -589,14 +589,14 @@ func updateAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, amou
 		query = `
 			UPDATE accounts
 			SET balance = balance + $1::numeric
-			WHERE id = $2
+			WHERE id = $2 AND status = 'active' AND is_blocked = FALSE
 			RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 		`
 	case "-":
 		query = `
 			UPDATE accounts
 			SET balance = balance - $1::numeric
-			WHERE id = $2
+			WHERE id = $2 AND status = 'active' AND is_blocked = FALSE
 			RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 		`
 	default:
@@ -617,7 +617,10 @@ func updateAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, amou
 		&account.CreatedAt,
 	)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("update account balance: %w", err)
 	}
 
 	return account, nil
@@ -627,7 +630,7 @@ func withdrawAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, am
 	query := `
 		UPDATE accounts
 		SET balance = balance - $1::numeric
-		WHERE id = $2 AND balance >= $1::numeric
+		WHERE id = $2 AND balance >= $1::numeric AND status = 'active' AND is_blocked = FALSE
 		RETURNING id, user_id, account_number, balance::text, currency, is_blocked, status, closed_at, created_at
 	`
 

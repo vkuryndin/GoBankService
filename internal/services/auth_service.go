@@ -127,7 +127,7 @@ func (s *AuthService) Login(ctx context.Context, request dto.LoginRequest) (*dto
 	tokenHash := security.HashToken(token)
 
 	if err := s.userSessionRepository.CreateSession(ctx, user.ID, tokenHash, claims.ExpiresAt.Time); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create user session: %w", err)
 	}
 
 	return &dto.LoginResponse{
@@ -159,11 +159,11 @@ func (s *AuthService) Logout(ctx context.Context, tokenString string) error {
 		claims.UserID,
 		claims.ExpiresAt.Time,
 	); err != nil {
-		return err
+		return fmt.Errorf("save revoked token: %w", err)
 	}
 
 	if err := s.userSessionRepository.RevokeByTokenHash(ctx, tokenHash); err != nil {
-		return err
+		return fmt.Errorf("revoke user session: %w", err)
 	}
 
 	return nil

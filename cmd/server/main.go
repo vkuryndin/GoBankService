@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,8 +33,20 @@ func main() {
 		logger.Fatalf("config error: %v", err)
 	}
 
+	if cfg.LogFormat == "json" {
+		formatter := &logrus.JSONFormatter{}
+		logger.SetFormatter(formatter)
+		logrus.SetFormatter(formatter)
+	} else {
+		formatter := &logrus.TextFormatter{FullTimestamp: true}
+		logger.SetFormatter(formatter)
+		logrus.SetFormatter(formatter)
+	}
+
 	logger.WithFields(logrus.Fields{
 		"server_port":                          cfg.ServerPort,
+		"log_format":                           cfg.LogFormat,
+		"request_timeout_seconds":              cfg.Server.RequestTimeout.Seconds(),
 		"max_request_body_bytes":               cfg.Security.MaxRequestBodyBytes,
 		"rate_limit_enabled":                   cfg.Security.RateLimit.Enabled,
 		"idempotency_enabled":                  cfg.Security.Idempotency.Enabled,
@@ -41,6 +54,11 @@ func main() {
 		"idempotency_retention_seconds":        cfg.Security.Idempotency.Retention.Seconds(),
 		"idempotency_cleanup_interval_seconds": cfg.Security.Idempotency.CleanupInterval.Seconds(),
 		"cbr_cache_ttl_seconds":                cfg.Security.CBRCacheTTL.Seconds(),
+		"cbr_breaker_failure_limit":            cfg.Security.CBRBreakerFailureLimit,
+		"cbr_breaker_reset_timeout_seconds":    cfg.Security.CBRBreakerResetTimeout.Seconds(),
+		"token_revocation_cache_ttl_seconds":   cfg.Security.TokenRevocationCacheTTL.Seconds(),
+		"mfa_request_cooldown_seconds":         cfg.Security.MFARequestCooldown.Seconds(),
+		"cors_enabled":                         cfg.Security.CORS.Enabled,
 	}).Info("config loaded")
 
 	logger.WithFields(logrus.Fields{
@@ -122,6 +140,7 @@ func main() {
 		notificationService,
 		cfg.Security.MFA.MaxFailures,
 		cfg.Security.MFA.Lockout,
+		cfg.Security.MFARequestCooldown,
 		auditService,
 		cfg.CardPGPKey,
 	)
@@ -138,7 +157,13 @@ func main() {
 		cfg.Security.CVV.MaxFailures,
 		cfg.Security.CVV.Lockout,
 	)
-	rateService := services.NewRateService(cbrClient, cfg.Security.CBRCacheTTL)
+	rateService := services.NewRateService(
+		cbrClient,
+		cfg.Security.CBRCacheTTL,
+		cfg.Security.CBRBreakerFailureLimit,
+		cfg.Security.CBRBreakerResetTimeout,
+		logger,
+	)
 	creditService := services.NewCreditService(
 		creditRepository,
 		accountRepository,
@@ -160,19 +185,21 @@ func main() {
 	)
 	analyticsService := services.NewAnalyticsService(analyticsRepository)
 
+	var schedulerWG sync.WaitGroup
+
 	creditPaymentScheduler := scheduler.NewCreditPaymentScheduler(creditPaymentService, logger)
-	creditPaymentScheduler.Start(appCtx)
+	creditPaymentScheduler.Start(appCtx, &schedulerWG)
 	tokenCleanupScheduler := scheduler.NewTokenCleanupScheduler(tokenRepository, logger)
-	tokenCleanupScheduler.Start(appCtx)
+	tokenCleanupScheduler.Start(appCtx, &schedulerWG)
 	mfaCleanupScheduler := scheduler.NewMFACleanupScheduler(mfaRepository, logger)
-	mfaCleanupScheduler.Start(appCtx)
+	mfaCleanupScheduler.Start(appCtx, &schedulerWG)
 	idempotencyCleanupScheduler := scheduler.NewIdempotencyCleanupScheduler(
 		idempotencyRepository,
 		logger,
 		cfg.Security.Idempotency.CleanupInterval,
 		cfg.Security.Idempotency.Retention,
 	)
-	idempotencyCleanupScheduler.Start(appCtx)
+	idempotencyCleanupScheduler.Start(appCtx, &schedulerWG)
 
 	healthHandler := handlers.NewHealthHandler(database)
 	authHandler := handlers.NewAuthHandler(authService, auditService)
@@ -187,6 +214,7 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(adminService, auditService)
 
 	appRouter := router.NewRouter(
+		appCtx,
 		healthHandler,
 		authHandler,
 		accountHandler,
@@ -202,6 +230,7 @@ func main() {
 		userRepository,
 		idempotencyRepository,
 		cfg.JWTSecret,
+		cfg.Server.RequestTimeout,
 		cfg.Security,
 		auditService,
 		logger,
@@ -234,6 +263,19 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.WithError(err).Error("graceful shutdown failed")
 		return
+	}
+
+	schedulerStopped := make(chan struct{})
+	go func() {
+		schedulerWG.Wait()
+		close(schedulerStopped)
+	}()
+
+	select {
+	case <-schedulerStopped:
+		logger.Info("background schedulers stopped")
+	case <-shutdownCtx.Done():
+		logger.Warn("background scheduler shutdown timeout")
 	}
 
 	logger.Info("server stopped gracefully")

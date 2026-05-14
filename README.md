@@ -73,9 +73,11 @@ API base URL: http://18.185.7.63/api
 - Финансовая аналитика.
 - Прогноз баланса.
 - Получение ключевой ставки ЦБ РФ через SOAP.
+- Защита CBR-интеграции через cache fallback и circuit breaker.
 - SMTP-уведомления.
 - Admin API для просмотра пользователей, активных сессий и блокировки счетов.
-- Современный React frontend с TypeScript и Vite для ручной проверки всех основных сценариев.
+- Backend hardening: timeouts, graceful shutdown, structured logging, CORS и gzip через nginx.
+- React frontend с TypeScript и Vite для ручной проверки всех основных сценариев.
 - Кросс-вкладочная синхронизация сессий в frontend.
 - Обработка ошибок через ErrorBoundary и ToastProvider.
 - Разделение публичного и приватного layout в frontend.
@@ -99,28 +101,38 @@ API base URL: http://18.185.7.63/api
 - JWT `jti`;
 - single-session login;
 - revoked tokens;
+- cache revoked/inactive tokens для снижения нагрузки на БД;
 - проверка владельца счетов, карт и кредитов;
 - MFA для критических операций: withdraw, transfer, card payment, card transfer, credit create;
 - MFA-код атомарно помечается использованным, чтобы исключить повторное применение одного кода при параллельных запросах;
 - ограничение попыток MFA и CVV;
+- cooldown/rate limit на запрос MFA-кода;
 - Idempotency-Key для финансовых POST-операций;
 - request_hash для защиты от переиспользования Idempotency-Key с другим body;
 - rate limiting;
 - ограничение размера request body;
 - HTTP server timeouts;
+- request context timeout для операций backend → DB;
 - security headers;
 - request id;
 - strict JSON decoding;
+- дополнительная backend-валидация входных данных;
 - strict parsing конфигурации: ошибки в bool/int env-переменных не подменяются молча default-значениями;
 - audit logs;
 - DB CHECK constraints;
 - graceful shutdown;
+- корректное завершение scheduler-ов при shutdown;
+- JSON structured logging;
+- configurable CORS;
+- gzip compression через nginx;
+- CBR circuit breaker для защиты от зависаний внешнего сервиса;
+- явные проверки active/status для финансовых операций;
 - кросс-вкладочная синхронизация сессий в frontend через localStorage events;
 - обработка ошибок через ErrorBoundary;
 - toast notifications для пользовательских сообщений;
 - axios interceptors для автоматической подстановки токенов и обработки 401;
-- кеширование чувствительных данных (ключевые ставки) с TTL;
-- утечка-пруф таймеры в компонентах.
+- кеширование ключевой ставки с TTL;
+- очистка таймеров в frontend-компонентах при unmount.
 
 ## Структура проекта
 
@@ -142,7 +154,7 @@ internal/audit          audit events
 migrations              SQL-миграции
 Dockerfile              сборка Go API
 docker-compose.yml      запуск API, PostgreSQL и nginx
-nginx                   nginx reverse proxy и стартовая страница
+nginx                   nginx reverse proxy, gzip compression и стартовая страница
 web                     React frontend с TypeScript, Vite, Tailwind CSS
 test.http               ручные сценарии проверки API
 ```
@@ -310,6 +322,7 @@ test.http               ручные сценарии проверки API
 
 ```env
 SERVER_PORT=8080
+LOG_FORMAT=json
 
 NGINX_HTTP_PORT=80
 POSTGRES_PASSWORD=change_me
@@ -322,6 +335,9 @@ CARD_PGP_KEY=change_me_card_pgp_key
 CARD_HMAC_SECRET=change_me_card_hmac_secret
 
 CBR_URL=https://www.cbr.ru/DailyInfoWebServ/DailyInfo.asmx
+CBR_CACHE_TTL_SECONDS=3600
+CBR_BREAKER_FAILURE_LIMIT=3
+CBR_BREAKER_RESET_TIMEOUT_SECONDS=60
 
 SMTP_ENABLED=false
 SMTP_HOST=smtp.example.com
@@ -330,9 +346,49 @@ SMTP_USER=noreply@example.com
 SMTP_PASSWORD=change_me
 SMTP_FROM=noreply@example.com
 
-RATE_LIMIT_ENABLED=true
-IDEMPOTENCY_REQUIRED=false
+SERVER_REQUEST_TIMEOUT_SECONDS=20
+SERVER_READ_HEADER_TIMEOUT_SECONDS=5
+SERVER_READ_TIMEOUT_SECONDS=15
+SERVER_WRITE_TIMEOUT_SECONDS=30
+SERVER_IDLE_TIMEOUT_SECONDS=60
+SERVER_MAX_HEADER_BYTES=1048576
 
+SECURITY_MAX_REQUEST_BODY_BYTES=1048576
+TOKEN_REVOCATION_CACHE_TTL_SECONDS=5
+
+CORS_ENABLED=false
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+CORS_ALLOWED_METHODS=GET,POST,OPTIONS
+CORS_ALLOWED_HEADERS=Authorization,Content-Type,Idempotency-Key,X-Request-ID
+CORS_ALLOW_CREDENTIALS=false
+CORS_MAX_AGE_SECONDS=600
+
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_CLEANUP_INTERVAL_SECONDS=300
+RATE_LIMIT_GLOBAL_REQUESTS=1000
+RATE_LIMIT_GLOBAL_WINDOW_SECONDS=60
+RATE_LIMIT_LOGIN_REQUESTS=30
+RATE_LIMIT_LOGIN_WINDOW_SECONDS=60
+RATE_LIMIT_REGISTER_REQUESTS=30
+RATE_LIMIT_REGISTER_WINDOW_SECONDS=60
+RATE_LIMIT_MFA_REQUESTS=30
+RATE_LIMIT_MFA_WINDOW_SECONDS=300
+RATE_LIMIT_FINANCIAL_REQUESTS=120
+RATE_LIMIT_FINANCIAL_WINDOW_SECONDS=60
+RATE_LIMIT_ADMIN_REQUESTS=120
+RATE_LIMIT_ADMIN_WINDOW_SECONDS=60
+RATE_LIMIT_RATE_REQUESTS=120
+RATE_LIMIT_RATE_WINDOW_SECONDS=60
+
+MFA_MAX_FAILED_ATTEMPTS=5
+MFA_LOCKOUT_SECONDS=600
+MFA_REQUEST_COOLDOWN_SECONDS=60
+
+CVV_MAX_FAILED_ATTEMPTS=5
+CVV_LOCKOUT_SECONDS=600
+
+IDEMPOTENCY_ENABLED=true
+IDEMPOTENCY_REQUIRED=false
 IDEMPOTENCY_RETENTION_SECONDS=86400
 IDEMPOTENCY_CLEANUP_INTERVAL_SECONDS=3600
 
@@ -411,7 +467,7 @@ docker compose up -d --build
 ```
 bank-api — Go API;
 bank-postgres — PostgreSQL;
-bank-nginx — nginx reverse proxy, стартовая страница и React frontend.
+bank-nginx — nginx reverse proxy, gzip compression, стартовая страница и React frontend.
 ```
 
 Проверка:
@@ -482,7 +538,7 @@ Frontend находится в папке `web`.
 - @tanstack/react-query;
 - react-router-dom.
 
-Frontend реализует ручную проверку основных сценариев API через современный React-приложение с:
+Frontend реализует ручную проверку основных сценариев API через React-приложение с:
 
 - Аутентификацией и авторизацией (JWT, MFA);
 - Управлением состоянием через React Context (AuthContext, SharedAccountContext);
@@ -521,6 +577,21 @@ http://localhost:5173
 ```
 http://18.185.7.63/app/
 ```
+
+## Backend hardening
+
+В backend добавлены дополнительные меры устойчивости:
+
+- финансовые операции выполняются с усиленными транзакционными и status-проверками;
+- revoked/inactive tokens кешируются, чтобы снизить количество запросов к БД на защищенных маршрутах;
+- DB-запросы ограничены request context timeout;
+- scheduler-ы используют application context и завершаются при graceful shutdown;
+- CORS настраивается через переменные окружения;
+- nginx включает gzip compression;
+- CBR-интеграция защищена circuit breaker-ом и cache fallback;
+- MFA request имеет cooldown/rate limit;
+- логи могут выводиться в JSON-формате;
+- входные данные дополнительно валидируются на backend-е.
 
 ## Основные endpoints
 
@@ -688,6 +759,8 @@ CREDIT_POLICY_ENABLED=false
 
 Для ручной проверки кредитных платежей можно в тестовой БД изменить `payment_schedules.payment_date` на `CURRENT_DATE` и перезапустить сервер.
 
+Scheduler-ы запускаются с application context и корректно завершаются при graceful shutdown.
+
 ## Тестирование
 
 В проекте есть файл `test.http` для ручной проверки через REST Client в VS Code.
@@ -737,6 +810,40 @@ ORDER BY id DESC
 LIMIT 20;
 ```
 
+## Backup и rollback
+
+Перед рискованным deploy рекомендуется сделать backup БД:
+
+```bash
+docker exec bank-postgres pg_dump -U bank_user bank_service > backup.sql
+```
+
+### Восстановление из backup
+
+```bash
+cat backup.sql | docker exec -i bank-postgres psql -U bank_user -d bank_service
+```
+
+Без необходимости не выполнять команды, которые удаляют Docker volumes:
+
+```bash
+docker compose down -v
+docker volume rm <volume_name>
+docker system prune --volumes
+```
+
+### Rollback приложения
+
+```
+git log --oneline
+git checkout <previous_commit>
+docker compose build --no-cache --progress=plain bank-api bank-nginx
+docker compose up -d --remove-orphans
+```
+
+Если миграции БД не менялись, rollback проще: достаточно откатить код и пересобрать контейнеры.
+
+
 ## Ограничения
 
 - Поддерживается только валюта RUB.
@@ -745,3 +852,4 @@ LIMIT 20;
 - Закрытый счет не открывается повторно. Счет остается в истории, но финансовые операции по нему запрещены.
 - Защита от volumetric DDoS должна выполняться на уровне reverse proxy или cloud provider.
 - Тестовый сервер доступен по HTTP. Для production нужен домен и HTTPS.
+- In-memory rate limit и token cache рассчитаны на один экземпляр backend. Для нескольких экземпляров нужен Redis или другой общий storage.

@@ -337,7 +337,7 @@ func (r *CardRepository) ValidateCardOwnership(ctx context.Context, userID int64
 		SELECT EXISTS (
 			SELECT 1
 			FROM cards
-			WHERE id = $1 AND user_id = $2
+			WHERE id = $1 AND user_id = $2 AND status = 'active'
 		)
 	`
 

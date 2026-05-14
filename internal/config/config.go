@@ -18,6 +18,7 @@ var moneyValueRegexp = regexp.MustCompile(`^\d+(\.\d{1,2})?$`)
 
 type Config struct {
 	ServerPort     string
+	LogFormat      string
 	DatabaseURL    string
 	JWTSecret      string
 	CardPGPKey     string
@@ -39,6 +40,7 @@ type SMTPConfig struct {
 }
 
 type ServerConfig struct {
+	RequestTimeout    time.Duration
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
@@ -47,12 +49,17 @@ type ServerConfig struct {
 }
 
 type SecurityConfig struct {
-	MaxRequestBodyBytes int64
-	RateLimit           RateLimitConfig
-	MFA                 AttemptLimitConfig
-	CVV                 AttemptLimitConfig
-	CBRCacheTTL         time.Duration
-	Idempotency         IdempotencyConfig
+	MaxRequestBodyBytes     int64
+	TokenRevocationCacheTTL time.Duration
+	MFARequestCooldown      time.Duration
+	CBRBreakerFailureLimit  int
+	CBRBreakerResetTimeout  time.Duration
+	CORS                    CORSConfig
+	RateLimit               RateLimitConfig
+	MFA                     AttemptLimitConfig
+	CVV                     AttemptLimitConfig
+	CBRCacheTTL             time.Duration
+	Idempotency             IdempotencyConfig
 }
 
 type RateLimitConfig struct {
@@ -84,6 +91,15 @@ type IdempotencyConfig struct {
 	Required        bool
 	Retention       time.Duration
 	CleanupInterval time.Duration
+}
+
+type CORSConfig struct {
+	Enabled          bool
+	AllowedOrigins   []string
+	AllowedMethods   []string
+	AllowedHeaders   []string
+	AllowCredentials bool
+	MaxAgeSeconds    int
 }
 
 type CreditPolicyConfig struct {
@@ -127,6 +143,11 @@ func Load() (Config, error) {
 		cbrURL = defaultCBRURL
 	}
 
+	logFormat, err := loadLogFormat()
+	if err != nil {
+		return Config{}, err
+	}
+
 	smtpConfig, err := loadSMTPConfig()
 	if err != nil {
 		return Config{}, err
@@ -149,6 +170,7 @@ func Load() (Config, error) {
 
 	return Config{
 		ServerPort:     serverPort,
+		LogFormat:      logFormat,
 		DatabaseURL:    databaseURL,
 		JWTSecret:      jwtSecret,
 		CardPGPKey:     cardPGPKey,
@@ -158,6 +180,54 @@ func Load() (Config, error) {
 		Server:         serverConfig,
 		Security:       securityConfig,
 		CreditPolicy:   creditPolicyConfig,
+	}, nil
+}
+
+func loadLogFormat() (string, error) {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv("LOG_FORMAT")))
+	if value == "" {
+		return "json", nil
+	}
+
+	switch value {
+	case "json", "text":
+		return value, nil
+	default:
+		return "", errors.New("LOG_FORMAT must be json or text")
+	}
+}
+
+func loadCORSConfig() (CORSConfig, error) {
+	enabled, err := envBool("CORS_ENABLED", false)
+	if err != nil {
+		return CORSConfig{}, err
+	}
+
+	maxAgeSeconds, err := envInt("CORS_MAX_AGE_SECONDS", 600)
+	if err != nil {
+		return CORSConfig{}, err
+	}
+	if maxAgeSeconds < 0 {
+		return CORSConfig{}, errors.New("CORS_MAX_AGE_SECONDS must be non-negative")
+	}
+
+	allowCredentials, err := envBool("CORS_ALLOW_CREDENTIALS", false)
+	if err != nil {
+		return CORSConfig{}, err
+	}
+
+	allowedOrigins := envCSV("CORS_ALLOWED_ORIGINS", "")
+	if enabled && len(allowedOrigins) == 0 {
+		return CORSConfig{}, errors.New("CORS_ALLOWED_ORIGINS is required when CORS_ENABLED=true")
+	}
+
+	return CORSConfig{
+		Enabled:          enabled,
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   envCSV("CORS_ALLOWED_METHODS", "GET,POST,OPTIONS"),
+		AllowedHeaders:   envCSV("CORS_ALLOWED_HEADERS", "Authorization,Content-Type,Idempotency-Key,X-Request-ID"),
+		AllowCredentials: allowCredentials,
+		MaxAgeSeconds:    maxAgeSeconds,
 	}, nil
 }
 
@@ -246,6 +316,11 @@ func loadSMTPConfig() (SMTPConfig, error) {
 }
 
 func loadServerConfig() (ServerConfig, error) {
+	requestTimeout, err := envDurationSeconds("SERVER_REQUEST_TIMEOUT_SECONDS", 20*time.Second)
+	if err != nil {
+		return ServerConfig{}, err
+	}
+
 	readHeaderTimeout, err := envDurationSeconds("SERVER_READ_HEADER_TIMEOUT_SECONDS", 5*time.Second)
 	if err != nil {
 		return ServerConfig{}, err
@@ -272,6 +347,7 @@ func loadServerConfig() (ServerConfig, error) {
 	}
 
 	return ServerConfig{
+		RequestTimeout:    requestTimeout,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
@@ -287,6 +363,34 @@ func loadSecurityConfig() (SecurityConfig, error) {
 	}
 
 	cbrCacheTTL, err := envDurationSeconds("CBR_CACHE_TTL_SECONDS", time.Hour)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
+	tokenRevocationCacheTTL, err := envDurationSeconds("TOKEN_REVOCATION_CACHE_TTL_SECONDS", 5*time.Second)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
+	mfaRequestCooldown, err := envDurationSeconds("MFA_REQUEST_COOLDOWN_SECONDS", time.Minute)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
+	cbrBreakerFailureLimit, err := envInt("CBR_BREAKER_FAILURE_LIMIT", 3)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+	if cbrBreakerFailureLimit < 1 {
+		return SecurityConfig{}, errors.New("CBR_BREAKER_FAILURE_LIMIT must be positive")
+	}
+
+	cbrBreakerResetTimeout, err := envDurationSeconds("CBR_BREAKER_RESET_TIMEOUT_SECONDS", time.Minute)
+	if err != nil {
+		return SecurityConfig{}, err
+	}
+
+	corsConfig, err := loadCORSConfig()
 	if err != nil {
 		return SecurityConfig{}, err
 	}
@@ -327,11 +431,16 @@ func loadSecurityConfig() (SecurityConfig, error) {
 	}
 
 	return SecurityConfig{
-		MaxRequestBodyBytes: maxRequestBodyBytes,
-		RateLimit:           rateLimitConfig,
-		MFA:                 mfaConfig,
-		CVV:                 cvvConfig,
-		CBRCacheTTL:         cbrCacheTTL,
+		MaxRequestBodyBytes:     maxRequestBodyBytes,
+		TokenRevocationCacheTTL: tokenRevocationCacheTTL,
+		MFARequestCooldown:      mfaRequestCooldown,
+		CBRBreakerFailureLimit:  cbrBreakerFailureLimit,
+		CBRBreakerResetTimeout:  cbrBreakerResetTimeout,
+		CORS:                    corsConfig,
+		RateLimit:               rateLimitConfig,
+		MFA:                     mfaConfig,
+		CVV:                     cvvConfig,
+		CBRCacheTTL:             cbrCacheTTL,
 		Idempotency: IdempotencyConfig{
 			Enabled:         idempotencyEnabled,
 			Required:        idempotencyRequired,
@@ -519,6 +628,26 @@ func envInt64(name string, defaultValue int64) (int64, error) {
 	}
 
 	return value, nil
+}
+
+func envCSV(name string, defaultValue string) []string {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		raw = defaultValue
+	}
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }
 
 func envDurationSeconds(name string, defaultValue time.Duration) (time.Duration, error) {

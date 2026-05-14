@@ -81,6 +81,7 @@ var mfaErrorRules = errorRules{
 	{target: services.ErrInvalidMFACode, status: http.StatusForbidden, message: "invalid mfa code"},
 	{target: services.ErrInvalidMFAPurpose, status: http.StatusBadRequest, message: "invalid mfa purpose"},
 	{target: services.ErrInvalidMFAOperation, status: http.StatusBadRequest, message: "invalid mfa operation"},
+	{target: services.ErrMFARequestTooFrequent, status: http.StatusTooManyRequests, message: "mfa request too frequent"},
 }
 
 var cardErrorRules = errorRules{

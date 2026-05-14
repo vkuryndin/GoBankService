@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -32,7 +33,7 @@ func NewIdempotencyCleanupScheduler(
 	}
 }
 
-func (s *IdempotencyCleanupScheduler) Start(ctx context.Context) {
+func (s *IdempotencyCleanupScheduler) Start(ctx context.Context, wg *sync.WaitGroup) {
 	if s.interval <= 0 || s.retention <= 0 {
 		s.logger.Warn("idempotency cleanup scheduler disabled: non-positive interval or retention")
 		return
@@ -43,7 +44,15 @@ func (s *IdempotencyCleanupScheduler) Start(ctx context.Context) {
 		"retention_seconds": s.retention.Seconds(),
 	}).Info("idempotency cleanup scheduler started")
 
+	if wg != nil {
+		wg.Add(1)
+	}
+
 	go func() {
+		if wg != nil {
+			defer wg.Done()
+		}
+
 		s.runOnce(ctx)
 
 		ticker := time.NewTicker(s.interval)

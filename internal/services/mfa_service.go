@@ -28,10 +28,11 @@ const (
 )
 
 var (
-	ErrInvalidMFAPurpose   = errors.New("invalid mfa purpose")
-	ErrMFACodeRequired     = errors.New("mfa code required")
-	ErrInvalidMFACode      = errors.New("invalid mfa code")
-	ErrInvalidMFAOperation = errors.New("invalid mfa operation")
+	ErrInvalidMFAPurpose     = errors.New("invalid mfa purpose")
+	ErrMFACodeRequired       = errors.New("mfa code required")
+	ErrInvalidMFACode        = errors.New("invalid mfa code")
+	ErrInvalidMFAOperation   = errors.New("invalid mfa operation")
+	ErrMFARequestTooFrequent = errors.New("mfa request too frequent")
 )
 
 type mfaCodeStore interface {
@@ -64,6 +65,7 @@ type MFAService struct {
 	attemptLimiter      *attemptLimiter
 	auditRecorder       audit.Recorder
 	pgpKey              string
+	requestCooldown     *cooldownLimiter
 }
 
 func NewMFAService(
@@ -73,6 +75,7 @@ func NewMFAService(
 	notificationService mfaNotificationSender,
 	maxFailedAttempts int,
 	lockout time.Duration,
+	requestCooldown time.Duration,
 	auditRecorder audit.Recorder,
 	pgpKey string,
 ) *MFAService {
@@ -84,6 +87,7 @@ func NewMFAService(
 		attemptLimiter:      newAttemptLimiter(maxFailedAttempts, lockout),
 		auditRecorder:       auditRecorder,
 		pgpKey:              pgpKey,
+		requestCooldown:     newCooldownLimiter(requestCooldown),
 	}
 }
 
@@ -98,6 +102,11 @@ func (s *MFAService) RequestCode(ctx context.Context, userID int64, request dto.
 	operationHash, err := s.buildOperationHash(ctx, userID, purpose, request)
 	if err != nil {
 		return err
+	}
+
+	requestKey := fmt.Sprintf("mfa_request:%d:%s:%s", userID, purpose, operationHash)
+	if !s.requestCooldown.allow(requestKey) {
+		return ErrMFARequestTooFrequent
 	}
 
 	code, err := generateMFACode()

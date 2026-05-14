@@ -40,6 +40,16 @@ func NewRateLimiter(
 	cleanupInterval time.Duration,
 	auditRecorder audit.Recorder,
 ) func(http.Handler) http.Handler {
+	return NewRateLimiterWithContext(context.Background(), enabled, rules, cleanupInterval, auditRecorder)
+}
+
+func NewRateLimiterWithContext(
+	ctx context.Context,
+	enabled bool,
+	rules []RateLimitRule,
+	cleanupInterval time.Duration,
+	auditRecorder audit.Recorder,
+) func(http.Handler) http.Handler {
 	limiter := &rateLimiter{
 		enabled:         enabled,
 		rules:           rules,
@@ -49,7 +59,7 @@ func NewRateLimiter(
 	}
 
 	if enabled && cleanupInterval > 0 {
-		go limiter.cleanupLoop()
+		go limiter.cleanupLoop(ctx)
 	}
 
 	return limiter.middleware
@@ -95,7 +105,7 @@ func (l *rateLimiter) recordBlockedRequest(r *http.Request, rule RateLimitRule, 
 		userID = audit.Int64Ptr(value)
 	}
 
-	l.auditRecorder.Record(context.Background(), audit.Event{
+	l.auditRecorder.Record(r.Context(), audit.Event{
 		UserID:    userID,
 		Action:    "security.rate_limit.blocked",
 		Status:    audit.StatusBlocked,
@@ -147,12 +157,17 @@ func (l *rateLimiter) allow(rule RateLimitRule, key string) (bool, time.Duration
 	return true, 0
 }
 
-func (l *rateLimiter) cleanupLoop() {
+func (l *rateLimiter) cleanupLoop(ctx context.Context) {
 	ticker := time.NewTicker(l.cleanupInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		l.cleanup()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			l.cleanup()
+		}
 	}
 }
 

@@ -94,7 +94,7 @@ func IdempotencyMiddleware(
 			// Validation and business errors should not permanently reserve a key.
 			// Successful requests keep the key to prevent double execution.
 			if recorder.statusCode >= http.StatusBadRequest {
-				if err := store.ReleaseKey(context.Background(), userID, r.Method, r.URL.Path, key); err != nil {
+				if err := store.ReleaseKey(r.Context(), userID, r.Method, r.URL.Path, key); err != nil {
 					logger.WithError(err).Warn("idempotency key release failed")
 				}
 			}
@@ -138,7 +138,7 @@ func recordIdempotencyDuplicate(r *http.Request, auditRecorder audit.Recorder, u
 		details["request_conflict"] = true
 	}
 
-	auditRecorder.Record(context.Background(), audit.Event{
+	auditRecorder.Record(r.Context(), audit.Event{
 		UserID:    audit.Int64Ptr(userID),
 		Action:    "security.idempotency.duplicate",
 		Status:    audit.StatusBlocked,

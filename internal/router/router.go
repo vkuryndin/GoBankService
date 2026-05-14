@@ -1,8 +1,10 @@
 package router
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/config"
@@ -15,6 +17,7 @@ import (
 )
 
 func NewRouter(
+	appCtx context.Context,
 	healthHandler *handlers.HealthHandler,
 	authHandler *handlers.AuthHandler,
 	accountHandler *handlers.AccountHandler,
@@ -30,6 +33,7 @@ func NewRouter(
 	userRepository *repositories.UserRepository,
 	idempotencyRepository *repositories.IdempotencyRepository,
 	jwtSecret string,
+	requestTimeout time.Duration,
 	securityConfig config.SecurityConfig,
 	auditRecorder audit.Recorder,
 	logger *logrus.Logger,
@@ -38,17 +42,32 @@ func NewRouter(
 
 	r.Use(middleware.RequestID())
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.CORS(middleware.CORSConfig{
+		Enabled:          securityConfig.CORS.Enabled,
+		AllowedOrigins:   securityConfig.CORS.AllowedOrigins,
+		AllowedMethods:   securityConfig.CORS.AllowedMethods,
+		AllowedHeaders:   securityConfig.CORS.AllowedHeaders,
+		AllowCredentials: securityConfig.CORS.AllowCredentials,
+		MaxAgeSeconds:    securityConfig.CORS.MaxAgeSeconds,
+	}))
 	r.Use(middleware.RequestLogger(logger))
+	r.Use(middleware.RequestContextTimeout(requestTimeout))
 	r.Use(middleware.MaxRequestBodySize(securityConfig.MaxRequestBodyBytes))
-	r.Use(buildPublicRateLimiter(securityConfig.RateLimit, auditRecorder))
+	r.Use(buildPublicRateLimiter(appCtx, securityConfig.RateLimit, auditRecorder))
 
 	r.HandleFunc("/health", healthHandler.Health).Methods(http.MethodGet)
 	r.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
 	r.HandleFunc("/login", authHandler.Login).Methods(http.MethodPost)
 
+	tokenChecker := middleware.NewCachedTokenRevocationChecker(
+		tokenRepository,
+		securityConfig.TokenRevocationCacheTTL,
+		logger,
+	)
+
 	protected := r.PathPrefix("/").Subrouter()
-	protected.Use(middleware.AuthMiddleware(jwtSecret, tokenRepository))
-	protected.Use(buildProtectedRateLimiter(securityConfig.RateLimit, auditRecorder))
+	protected.Use(middleware.AuthMiddleware(jwtSecret, tokenChecker))
+	protected.Use(buildProtectedRateLimiter(appCtx, securityConfig.RateLimit, auditRecorder))
 	protected.Use(middleware.IdempotencyMiddleware(
 		idempotencyRepository,
 		middleware.IdempotencyConfig{
@@ -104,7 +123,7 @@ func NewRouter(
 	return r
 }
 
-func buildPublicRateLimiter(config config.RateLimitConfig, auditRecorder audit.Recorder) func(http.Handler) http.Handler {
+func buildPublicRateLimiter(ctx context.Context, config config.RateLimitConfig, auditRecorder audit.Recorder) func(http.Handler) http.Handler {
 	rules := []middleware.RateLimitRule{
 		{
 			Name:   "login",
@@ -129,10 +148,10 @@ func buildPublicRateLimiter(config config.RateLimitConfig, auditRecorder audit.R
 		},
 	}
 
-	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval, auditRecorder)
+	return middleware.NewRateLimiterWithContext(ctx, config.Enabled, rules, config.CleanupInterval, auditRecorder)
 }
 
-func buildProtectedRateLimiter(config config.RateLimitConfig, auditRecorder audit.Recorder) func(http.Handler) http.Handler {
+func buildProtectedRateLimiter(ctx context.Context, config config.RateLimitConfig, auditRecorder audit.Recorder) func(http.Handler) http.Handler {
 	rules := []middleware.RateLimitRule{
 		{
 			Name:   "mfa",
@@ -164,7 +183,7 @@ func buildProtectedRateLimiter(config config.RateLimitConfig, auditRecorder audi
 		},
 	}
 
-	return middleware.NewRateLimiter(config.Enabled, rules, config.CleanupInterval, auditRecorder)
+	return middleware.NewRateLimiterWithContext(ctx, config.Enabled, rules, config.CleanupInterval, auditRecorder)
 }
 
 func isFinancialEndpoint(r *http.Request) bool {

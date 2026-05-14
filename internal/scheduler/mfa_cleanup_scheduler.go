@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"bank-service/internal/repositories"
@@ -26,10 +27,18 @@ func NewMFACleanupScheduler(
 	}
 }
 
-func (s *MFACleanupScheduler) Start(ctx context.Context) {
+func (s *MFACleanupScheduler) Start(ctx context.Context, wg *sync.WaitGroup) {
 	s.logger.WithField("interval", s.interval.String()).Info("mfa cleanup scheduler started")
 
+	if wg != nil {
+		wg.Add(1)
+	}
+
 	go func() {
+		if wg != nil {
+			defer wg.Done()
+		}
+
 		s.runOnce(ctx)
 
 		ticker := time.NewTicker(s.interval)

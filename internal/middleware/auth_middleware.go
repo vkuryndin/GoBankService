@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"bank-service/internal/dto"
-	"bank-service/internal/repositories"
 	"bank-service/internal/security"
 	"bank-service/internal/security/httpauth"
 )
@@ -17,7 +16,7 @@ const userIDContextKey contextKey = "user_id"
 
 func AuthMiddleware(
 	jwtSecret string,
-	tokenRepository *repositories.TokenRepository,
+	tokenChecker TokenRevocationChecker,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +34,7 @@ func AuthMiddleware(
 
 			tokenHash := security.HashToken(tokenString)
 
-			revoked, err := tokenRepository.IsTokenRevoked(r.Context(), tokenHash)
+			revoked, err := tokenChecker.IsTokenRevoked(r.Context(), tokenHash)
 			if err != nil {
 				writeAuthError(w, http.StatusInternalServerError, "token check failed")
 				return
