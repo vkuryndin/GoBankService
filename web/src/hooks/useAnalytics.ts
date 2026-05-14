@@ -6,7 +6,7 @@ export function useAnalytics(token: string) {
   const enabled = token.trim() !== ''
 
   const summaryQuery = useQuery({
-    queryKey: queryKeys.analytics.summary(token),
+    queryKey: queryKeys.analytics.summary,
     queryFn: () => analyticsApi.summary(token),
     enabled: false && enabled,
   })

@@ -4,7 +4,7 @@ import { apiRequest } from './client'
 
 export const transfersApi = {
   transfer(
-    token: string,
+    _token: string,
     body: {
       from_account_id: number
       to_account_id: number
@@ -15,7 +15,6 @@ export const transfersApi = {
   ): Promise<TransferResponse> {
     return apiRequest<TransferResponse>('/api/transfer', {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('transfer') },
       body,
     })

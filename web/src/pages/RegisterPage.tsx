@@ -57,7 +57,7 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
       setRegisterState({
         loading: false,
         error: '',
-        success: 'Пользователь зарегистрирован. Теперь можно войти через Login.',
+        success: 'Пользователь зарегистрирован. Теперь можно войти.',
       })
       showToast('Пользователь зарегистрирован.', 'success')
     } catch (error) {
@@ -72,12 +72,13 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
   }
 
   return (
-    <Card variant="plain" className="panel">
-      <div className="panelHeader">
+    <Card variant="plain" className="panel publicAuthCard">
+      <div className="publicAuthHeader">
         <div>
+          <p className="eyebrow">Bank Service</p>
           <h2>Регистрация</h2>
           <p>
-            Запрос к <code>POST /register</code>. После регистрации нужно отдельно выполнить login.
+            Создайте пользователя, затем войдите через страницу входа.
           </p>
         </div>
       </div>
@@ -93,14 +94,24 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
         onSubmit={handleRegister}
       />
 
+      <Button
+        className="secondary publicSecondaryAction"
+        type="button"
+        onClick={onOpenAuth}
+      >
+        Войти
+      </Button>
+
       <RequestStatus state={registerState} />
 
       {registeredUser && (
         <div className="result success">
           <strong>Пользователь создан</strong>
-          <pre>{JSON.stringify(registeredUser, null, 2)}</pre>
+          <p className="mutedText">
+            Email <code>{registeredUser.email}</code> подставлен на странице входа.
+          </p>
           <Button className="secondary topGap" type="button" onClick={onOpenAuth}>
-            Перейти к Login
+            Перейти к входу
           </Button>
         </div>
       )}

@@ -9,6 +9,20 @@ export type CachedKeyRateResponse = KeyRateResponse & {
 }
 
 const rateStorageKey = 'bank_service_key_rate_cache'
+const keyRateCacheTtlMs = 12 * 60 * 60 * 1000
+
+function isFreshCache(rate: CachedKeyRateResponse) {
+  if (!rate.fetched_at) {
+    return false
+  }
+
+  const fetchedAt = new Date(rate.fetched_at).getTime()
+  if (Number.isNaN(fetchedAt)) {
+    return false
+  }
+
+  return Date.now() - fetchedAt <= keyRateCacheTtlMs
+}
 
 function readCachedRate(): CachedKeyRateResponse | null {
   const rawValue = localStorage.getItem(rateStorageKey)
@@ -17,7 +31,14 @@ function readCachedRate(): CachedKeyRateResponse | null {
   }
 
   try {
-    return JSON.parse(rawValue) as CachedKeyRateResponse
+    const cachedRate = JSON.parse(rawValue) as CachedKeyRateResponse
+
+    if (!isFreshCache(cachedRate)) {
+      localStorage.removeItem(rateStorageKey)
+      return null
+    }
+
+    return cachedRate
   } catch {
     localStorage.removeItem(rateStorageKey)
     return null
@@ -92,5 +113,6 @@ export function useKeyRate(token: string) {
     rateState,
     loadRate,
     clearRate,
+    cacheTtlMs: keyRateCacheTtlMs,
   }
 }

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../layout/AppLayout'
+import { PublicLayout } from '../layout/PublicLayout'
 import { AdminPage } from '../pages/AdminPage'
 import { AccountsPage } from '../pages/AccountsPage'
 import { AnalyticsPage } from '../pages/AnalyticsPage'
@@ -15,6 +16,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useSharedAccount } from '../hooks/useSharedAccount'
 import { AdminRoute } from './AdminRoute'
 import { ProtectedRoute } from './ProtectedRoute'
+import { PublicOnlyRoute } from './PublicOnlyRoute'
 
 function RegisterRoute() {
   const navigate = useNavigate()
@@ -102,13 +104,17 @@ function NotificationsRoute() {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route element={<AppLayout />}>
-        <Route index element={<Navigate to="/health" replace />} />
-        <Route path="health" element={<HealthPage />} />
-        <Route path="register" element={<RegisterRoute />} />
-        <Route path="auth" element={<AuthPage />} />
+      <Route element={<PublicLayout />}>
+        <Route element={<PublicOnlyRoute />}>
+          <Route path="auth" element={<AuthPage />} />
+          <Route path="register" element={<RegisterRoute />} />
+        </Route>
+      </Route>
 
-        <Route element={<ProtectedRoute />}>
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AppLayout />}>
+          <Route index element={<Navigate to="/health" replace />} />
+          <Route path="health" element={<HealthPage />} />
           <Route path="accounts" element={<AccountsRoute />} />
           <Route path="cards" element={<CardsRoute />} />
           <Route path="transfers" element={<TransfersRoute />} />
@@ -116,13 +122,13 @@ export function AppRoutes() {
           <Route path="analytics" element={<AnalyticsRoute />} />
           <Route path="rates" element={<RatesPage />} />
           <Route path="notifications" element={<NotificationsRoute />} />
-        </Route>
 
-        <Route element={<AdminRoute />}>
-          <Route path="admin" element={<AdminPageRoute />} />
-        </Route>
+          <Route element={<AdminRoute />}>
+            <Route path="admin" element={<AdminPageRoute />} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/health" replace />} />
+          <Route path="*" element={<Navigate to="/health" replace />} />
+        </Route>
       </Route>
     </Routes>
   )

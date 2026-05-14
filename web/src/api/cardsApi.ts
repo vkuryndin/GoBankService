@@ -3,24 +3,23 @@ import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
 export const cardsApi = {
-  list(token: string): Promise<CardResponse[]> {
-    return apiRequest<CardResponse[]>('/api/cards', { token })
+  list(_token = ''): Promise<CardResponse[]> {
+    return apiRequest<CardResponse[]>('/api/cards')
   },
 
-  create(token: string, accountID: number): Promise<CardResponse> {
+  create(_token: string, accountID: number): Promise<CardResponse> {
     return apiRequest<CardResponse>('/api/cards', {
       method: 'POST',
-      token,
       body: { account_id: accountID },
     })
   },
 
-  get(token: string, cardID: number): Promise<CardResponse> {
-    return apiRequest<CardResponse>(`/api/cards/${cardID}`, { token })
+  get(_token: string, cardID: number): Promise<CardResponse> {
+    return apiRequest<CardResponse>(`/api/cards/${cardID}`)
   },
 
   pay(
-    token: string,
+    _token: string,
     cardID: number,
     body: {
       amount: string
@@ -31,14 +30,13 @@ export const cardsApi = {
   ): Promise<CardPaymentResponse> {
     return apiRequest<CardPaymentResponse>(`/api/cards/${cardID}/pay`, {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('card') },
       body,
     })
   },
 
   transfer(
-    token: string,
+    _token: string,
     cardID: number,
     body: {
       to_card_id: number
@@ -50,16 +48,14 @@ export const cardsApi = {
   ): Promise<CardTransferResponse> {
     return apiRequest<CardTransferResponse>(`/api/cards/${cardID}/transfer`, {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('card') },
       body,
     })
   },
 
-  close(token: string, cardID: number): Promise<CloseCardResponse> {
+  close(_token: string, cardID: number): Promise<CloseCardResponse> {
     return apiRequest<CloseCardResponse>(`/api/cards/${cardID}/close`, {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('card') },
     })
   },

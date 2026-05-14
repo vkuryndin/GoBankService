@@ -9,42 +9,38 @@ export type CreditBaseRequest = {
 }
 
 export const creditsApi = {
-  check(token: string, request: CreditBaseRequest): Promise<CreditCheckResponse> {
+  check(_token: string, request: CreditBaseRequest): Promise<CreditCheckResponse> {
     return apiRequest<CreditCheckResponse>('/api/credits/check', {
       method: 'POST',
-      token,
       body: request,
     })
   },
 
   create(
-    token: string,
+    _token: string,
     request: CreditBaseRequest & { mfa_code: string },
   ): Promise<CreditResponse> {
     return apiRequest<CreditResponse>('/api/credits', {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('credit') },
       body: request,
     })
   },
 
-  list(token: string): Promise<CreditResponse[]> {
-    return apiRequest<CreditResponse[]>('/api/credits', { token })
+  list(_token = ''): Promise<CreditResponse[]> {
+    return apiRequest<CreditResponse[]>('/api/credits')
   },
 
-  async listByAccount(token: string, accountID: number): Promise<CreditResponse[]> {
-    const credits = await apiRequest<CreditResponse[]>('/api/credits', { token })
+  async listByAccount(_token: string, accountID: number): Promise<CreditResponse[]> {
+    const credits = await apiRequest<CreditResponse[]>('/api/credits')
     return credits.filter((credit) => credit.account_id === accountID)
   },
 
-  get(token: string, creditID: number): Promise<CreditResponse> {
-    return apiRequest<CreditResponse>(`/api/credits/${creditID}`, { token })
+  get(_token: string, creditID: number): Promise<CreditResponse> {
+    return apiRequest<CreditResponse>(`/api/credits/${creditID}`)
   },
 
-  schedule(token: string, creditID: number): Promise<PaymentScheduleResponse[]> {
-    return apiRequest<PaymentScheduleResponse[]>(`/api/credits/${creditID}/schedule`, {
-      token,
-    })
+  schedule(_token: string, creditID: number): Promise<PaymentScheduleResponse[]> {
+    return apiRequest<PaymentScheduleResponse[]>(`/api/credits/${creditID}/schedule`)
   },
 }

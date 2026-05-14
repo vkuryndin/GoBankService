@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Go Bank">
+  <defs>
+    <linearGradient id="gb" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#gb)"/>
+  <text
+    x="32"
+    y="39"
+    text-anchor="middle"
+    font-family="Inter, Arial, sans-serif"
+    font-size="22"
+    font-weight="800"
+    fill="#ffffff"
+    letter-spacing="-1"
+  >GB</text>
+</svg>

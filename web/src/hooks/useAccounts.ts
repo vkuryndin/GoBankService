@@ -7,7 +7,7 @@ export function useAccounts(token: string) {
   const enabled = token.trim() !== ''
 
   const listQuery = useQuery({
-    queryKey: queryKeys.accounts.list(token),
+    queryKey: queryKeys.accounts.list,
     queryFn: () => accountsApi.list(token),
     enabled,
   })
@@ -15,7 +15,7 @@ export function useAccounts(token: string) {
   const detailMutation = useMutation({
     mutationFn: (accountID: number) => accountsApi.get(token, accountID),
     onSuccess: (account) => {
-      queryClient.setQueryData(queryKeys.accounts.detail(token, account.id), account)
+      queryClient.setQueryData(queryKeys.accounts.detail(account.id), account)
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
     },
   })
@@ -31,7 +31,7 @@ export function useAccounts(token: string) {
     mutationFn: ({ accountID, amount }: { accountID: number; amount: string }) =>
       accountsApi.deposit(token, accountID, amount),
     onSuccess: (account) => {
-      queryClient.setQueryData(queryKeys.accounts.detail(token, account.id), account)
+      queryClient.setQueryData(queryKeys.accounts.detail(account.id), account)
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
     },
@@ -41,7 +41,7 @@ export function useAccounts(token: string) {
     mutationFn: ({ accountID, amount, mfaCode }: { accountID: number; amount: string; mfaCode: string }) =>
       accountsApi.withdraw(token, accountID, amount, mfaCode),
     onSuccess: (account) => {
-      queryClient.setQueryData(queryKeys.accounts.detail(token, account.id), account)
+      queryClient.setQueryData(queryKeys.accounts.detail(account.id), account)
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
     },
@@ -62,7 +62,7 @@ export function useAccounts(token: string) {
       accountsApi.predict(token, accountID, days),
     onSuccess: (_prediction, request) => {
       queryClient.setQueryData(
-        queryKeys.accounts.prediction(token, request.accountID, request.days),
+        queryKeys.accounts.prediction(request.accountID, request.days),
         _prediction,
       )
     },

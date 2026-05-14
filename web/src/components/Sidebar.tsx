@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { NavLink } from 'react-router-dom'
 import { menuItems } from '../config/menu'
 import type { MenuKey } from '../types/common'
+import { useAuth } from '../hooks/useAuth'
 import { Button } from './ui/Button'
 
 type SidebarProps = {
@@ -22,6 +23,11 @@ export function Sidebar({
   onCollapsedChange,
   onWidthChange,
 }: SidebarProps) {
+  const { isAuthenticated } = useAuth()
+  const visibleMenuItems = isAuthenticated
+    ? menuItems.filter((item) => item.key !== 'auth' && item.key !== 'register')
+    : menuItems
+
   const startSidebarResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (collapsed) {
       return
@@ -82,7 +88,7 @@ export function Sidebar({
       </div>
 
       <nav className="menu" aria-label="Основное меню">
-        {menuItems.map((item) => (
+        {visibleMenuItems.map((item) => (
           <NavLink
             key={item.key}
             className={({ isActive }) =>

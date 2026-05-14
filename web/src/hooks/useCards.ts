@@ -7,7 +7,7 @@ export function useCards(token: string) {
   const enabled = token.trim() !== ''
 
   const listQuery = useQuery({
-    queryKey: queryKeys.cards.list(token),
+    queryKey: queryKeys.cards.list,
     queryFn: () => cardsApi.list(token),
     enabled,
   })
@@ -15,7 +15,7 @@ export function useCards(token: string) {
   const detailMutation = useMutation({
     mutationFn: (cardID: number) => cardsApi.get(token, cardID),
     onSuccess: (card) => {
-      queryClient.setQueryData(queryKeys.cards.detail(token, card.id), card)
+      queryClient.setQueryData(queryKeys.cards.detail(card.id), card)
       void queryClient.invalidateQueries({ queryKey: queryKeys.cards.all })
     },
   })

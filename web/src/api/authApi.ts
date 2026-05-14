@@ -27,14 +27,13 @@ export const authApi = {
     })
   },
 
-  check(token: string): Promise<AuthCheckResponse> {
-    return apiRequest<AuthCheckResponse>('/api/auth/check', { token })
+  check(_token = ''): Promise<AuthCheckResponse> {
+    return apiRequest<AuthCheckResponse>('/api/auth/check')
   },
 
-  logout(token: string): Promise<{ message: string }> {
+  logout(_token = ''): Promise<{ message: string }> {
     return apiRequest<{ message: string }>('/api/logout', {
       method: 'POST',
-      token,
     })
   },
 }

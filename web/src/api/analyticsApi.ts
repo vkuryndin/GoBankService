@@ -4,15 +4,15 @@ import { accountsApi } from './accountsApi'
 import { apiRequest } from './client'
 
 export const analyticsApi = {
-  summary(token: string): Promise<AnalyticsResponse> {
-    return apiRequest<AnalyticsResponse>('/api/analytics', { token })
+  summary(_token = ''): Promise<AnalyticsResponse> {
+    return apiRequest<AnalyticsResponse>('/api/analytics')
   },
 
   predictBalance(
-    token: string,
+    _token: string,
     accountID: number,
     days: number,
   ): Promise<PredictBalanceResponse> {
-    return accountsApi.predict(token, accountID, days)
+    return accountsApi.predict(_token, accountID, days)
   },
 }

@@ -960,3 +960,69 @@ td {
   border-color: #bfdbfe;
   color: #1d4ed8;
 }
+
+.publicPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.1), transparent 34%),
+    #f5f7fb;
+}
+
+.publicShell {
+  width: min(720px, 100%);
+  display: grid;
+  gap: 20px;
+}
+
+.publicBrand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.publicBrand strong {
+  display: block;
+  color: #111827;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.publicBrand span {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+/* Public auth/register pages */
+.publicAuthCard {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.publicAuthHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.publicAuthHeader p:not(.eyebrow) {
+  margin: 8px 0 0;
+  color: #6b7280;
+}
+
+.publicAuthCard .form {
+  max-width: none;
+}
+
+.publicSecondaryAction {
+  width: 100%;
+  margin-top: 12px;
+}

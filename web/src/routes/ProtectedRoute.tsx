@@ -4,18 +4,22 @@ import { useAuth } from '../hooks/useAuth'
 
 export function ProtectedRoute() {
   const location = useLocation()
-  const { isAuthenticated, authCheckState } = useAuth()
+  const { hasToken, isAuthenticated, isAuthChecking, authCheckState } = useAuth()
 
-  if (!isAuthenticated) {
+  if (!hasToken) {
     return <Navigate to="/auth" state={{ from: location }} replace />
   }
 
-  if (authCheckState.loading) {
+  if (isAuthChecking) {
     return (
       <section className="panel">
         <RequestStatus state={authCheckState} />
       </section>
     )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" state={{ from: location }} replace />
   }
 
   return <Outlet />

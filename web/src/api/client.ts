@@ -1,6 +1,8 @@
 import axios from 'axios'
-import type { AxiosError } from 'axios'
-import type { ApiErrorResponse, NormalizedApiError } from '../types/error'
+import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
+import type { ApiErrorBody, NormalizedApiError } from '../types/error'
+import { isApiErrorBody } from '../types/error'
+import { clearAuthToken, getAuthToken } from '../utils/authTokenStorage'
 import { emitSessionExpired } from '../utils/sessionEvents'
 
 export type ApiRequestOptions = {
@@ -33,6 +35,38 @@ export const apiClient = axios.create({
   },
 })
 
+function hasAuthorizationHeader(config: InternalAxiosRequestConfig) {
+  const authorization = config.headers.get?.('Authorization')
+  return typeof authorization === 'string' && authorization.trim() !== ''
+}
+
+apiClient.interceptors.request.use((config) => {
+  if (!hasAuthorizationHeader(config)) {
+    const token = getAuthToken()
+
+    if (token) {
+      config.headers.set?.('Authorization', `Bearer ${token}`)
+    }
+  }
+
+  return config
+})
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    const normalizedError = normalizeApiError(error)
+
+    if (normalizedError.status === 401) {
+      const message = normalizedError.message || 'Сессия истекла. Войдите снова.'
+      clearAuthToken('session_expired', message)
+      emitSessionExpired(message)
+    }
+
+    return Promise.reject(normalizedError)
+  },
+)
+
 export async function readResponseBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') || ''
 
@@ -48,62 +82,49 @@ export function getErrorMessage(body: unknown): string {
     return body
   }
 
-  if (body && typeof body === 'object') {
-    const record = body as ApiErrorResponse
-
-    if (typeof record.error === 'string') {
-      return record.error
-    }
-
-    if (typeof record.message === 'string') {
-      return record.message
-    }
+  if (isApiErrorBody(body)) {
+    return body.error || body.message || ''
   }
 
   return ''
 }
 
 export function getErrorCode(body: unknown): string | undefined {
-  if (body && typeof body === 'object') {
-    const record = body as ApiErrorResponse
-    return typeof record.code === 'string' ? record.code : undefined
+  if (isApiErrorBody(body)) {
+    return body.code
   }
 
   return undefined
 }
 
 export function getErrorDetails(body: unknown): unknown {
-  if (body && typeof body === 'object') {
-    return (body as ApiErrorResponse).details
+  if (isApiErrorBody(body)) {
+    return body.details
   }
 
   return undefined
 }
 
-function maybeEmitSessionExpired(status?: number, message?: string) {
-  if (status === 401) {
-    emitSessionExpired(message || 'Сессия истекла. Войдите снова.')
-  }
+function normalizeBody(body: unknown): ApiErrorBody | unknown {
+  return isApiErrorBody(body) ? body : body
 }
 
 export function normalizeApiError(error: unknown, fallback = 'Request failed'): ApiError {
   if (error instanceof ApiError) {
-    maybeEmitSessionExpired(error.status, error.message)
     return error
   }
 
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<unknown>
-    const body = axiosError.response?.data
-    const normalized = new ApiError({
+    const body = normalizeBody(axiosError.response?.data)
+
+    return new ApiError({
       message: getErrorMessage(body) || axiosError.message || fallback,
       status: axiosError.response?.status,
       code: getErrorCode(body),
       details: getErrorDetails(body),
       body,
     })
-    maybeEmitSessionExpired(normalized.status, normalized.message)
-    return normalized
   }
 
   if (error instanceof Error) {
@@ -124,17 +145,27 @@ export async function parseResponse<T>(response: Response): Promise<T> {
       details: getErrorDetails(body),
       body,
     })
-    maybeEmitSessionExpired(apiError.status, apiError.message)
+
+    if (apiError.status === 401) {
+      const message = apiError.message || 'Сессия истекла. Войдите снова.'
+      clearAuthToken('session_expired', message)
+      emitSessionExpired(message)
+    }
+
     throw apiError
   }
 
   return body as T
 }
 
-export function authHeaders(token: string, withJSON = false): Record<string, string> {
+export function authHeaders(token = '', withJSON = false): Record<string, string> {
+  const resolvedToken = token || getAuthToken()
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    Authorization: `Bearer ${token}`,
+  }
+
+  if (resolvedToken) {
+    headers.Authorization = `Bearer ${resolvedToken}`
   }
 
   if (withJSON) {
@@ -163,26 +194,14 @@ export async function apiRequest<T>(
   }
 
   try {
-    const response = await apiClient.request<unknown>({
+    const response = await apiClient.request<T>({
       url: path,
       method: options.method || 'GET',
       headers,
       data: hasBody ? options.body : undefined,
-      validateStatus: () => true,
     })
 
-    if (response.status < 200 || response.status >= 300) {
-      const apiError = new ApiError({
-        message: getErrorMessage(response.data) || `HTTP ${response.status}`,
-        status: response.status,
-        code: getErrorCode(response.data),
-        details: getErrorDetails(response.data),
-        body: response.data,
-      })
-      throw apiError
-    }
-
-    return response.data as T
+    return response.data
   } catch (error) {
     throw normalizeApiError(error)
   }

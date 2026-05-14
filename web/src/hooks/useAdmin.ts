@@ -6,13 +6,13 @@ export function useAdmin(token: string, enabled: boolean) {
   const queryClient = useQueryClient()
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.admin.users(token),
+    queryKey: queryKeys.admin.users,
     queryFn: () => adminApi.listUsers(token),
     enabled,
   })
 
   const sessionsQuery = useQuery({
-    queryKey: queryKeys.admin.sessions(token),
+    queryKey: queryKeys.admin.sessions,
     queryFn: () => adminApi.listSessions(token),
     enabled,
   })

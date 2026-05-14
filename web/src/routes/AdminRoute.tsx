@@ -4,18 +4,22 @@ import { useAuth } from '../hooks/useAuth'
 
 export function AdminRoute() {
   const location = useLocation()
-  const { isAuthenticated, currentUser, authCheckState } = useAuth()
+  const { hasToken, isAuthenticated, isAuthChecking, currentUser, authCheckState } = useAuth()
 
-  if (!isAuthenticated) {
+  if (!hasToken) {
     return <Navigate to="/auth" state={{ from: location }} replace />
   }
 
-  if (authCheckState.loading) {
+  if (isAuthChecking) {
     return (
       <section className="panel">
         <RequestStatus state={authCheckState} />
       </section>
     )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" state={{ from: location }} replace />
   }
 
   if (!currentUser?.is_admin) {

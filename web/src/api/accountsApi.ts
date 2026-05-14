@@ -3,39 +3,36 @@ import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
 export const accountsApi = {
-  list(token: string): Promise<AccountResponse[]> {
-    return apiRequest<AccountResponse[]>('/api/accounts', { token })
+  list(_token = ''): Promise<AccountResponse[]> {
+    return apiRequest<AccountResponse[]>('/api/accounts')
   },
 
-  create(token: string): Promise<AccountResponse> {
+  create(_token = ''): Promise<AccountResponse> {
     return apiRequest<AccountResponse>('/api/accounts', {
       method: 'POST',
-      token,
     })
   },
 
-  get(token: string, accountID: number): Promise<AccountResponse> {
-    return apiRequest<AccountResponse>(`/api/accounts/${accountID}`, { token })
+  get(_token: string, accountID: number): Promise<AccountResponse> {
+    return apiRequest<AccountResponse>(`/api/accounts/${accountID}`)
   },
 
-  deposit(token: string, accountID: number, amount: string): Promise<AccountResponse> {
+  deposit(_token: string, accountID: number, amount: string): Promise<AccountResponse> {
     return apiRequest<AccountResponse>(`/api/accounts/${accountID}/deposit`, {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('account') },
       body: { amount },
     })
   },
 
   withdraw(
-    token: string,
+    _token: string,
     accountID: number,
     amount: string,
     mfaCode: string,
   ): Promise<AccountResponse> {
     return apiRequest<AccountResponse>(`/api/accounts/${accountID}/withdraw`, {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('account') },
       body: {
         amount,
@@ -44,22 +41,20 @@ export const accountsApi = {
     })
   },
 
-  close(token: string, accountID: number): Promise<CloseAccountResponse> {
+  close(_token: string, accountID: number): Promise<CloseAccountResponse> {
     return apiRequest<CloseAccountResponse>(`/api/accounts/${accountID}/close`, {
       method: 'POST',
-      token,
       headers: { 'Idempotency-Key': createIdempotencyKey('account') },
     })
   },
 
   predict(
-    token: string,
+    _token: string,
     accountID: number,
     days: number,
   ): Promise<PredictBalanceResponse> {
     return apiRequest<PredictBalanceResponse>(
       `/api/accounts/${accountID}/predict?days=${days}`,
-      { token },
     )
   },
 }
