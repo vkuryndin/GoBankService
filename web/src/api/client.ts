@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { AxiosError } from 'axios'
 import type { ApiErrorResponse, NormalizedApiError } from '../types/error'
+import { emitSessionExpired } from '../utils/sessionEvents'
 
 export type ApiRequestOptions = {
   token?: string
@@ -79,21 +80,30 @@ export function getErrorDetails(body: unknown): unknown {
   return undefined
 }
 
+function maybeEmitSessionExpired(status?: number, message?: string) {
+  if (status === 401) {
+    emitSessionExpired(message || 'Сессия истекла. Войдите снова.')
+  }
+}
+
 export function normalizeApiError(error: unknown, fallback = 'Request failed'): ApiError {
   if (error instanceof ApiError) {
+    maybeEmitSessionExpired(error.status, error.message)
     return error
   }
 
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<unknown>
     const body = axiosError.response?.data
-    return new ApiError({
+    const normalized = new ApiError({
       message: getErrorMessage(body) || axiosError.message || fallback,
       status: axiosError.response?.status,
       code: getErrorCode(body),
       details: getErrorDetails(body),
       body,
     })
+    maybeEmitSessionExpired(normalized.status, normalized.message)
+    return normalized
   }
 
   if (error instanceof Error) {
@@ -107,13 +117,15 @@ export async function parseResponse<T>(response: Response): Promise<T> {
   const body = await readResponseBody(response)
 
   if (!response.ok) {
-    throw new ApiError({
+    const apiError = new ApiError({
       message: getErrorMessage(body) || `HTTP ${response.status}`,
       status: response.status,
       code: getErrorCode(body),
       details: getErrorDetails(body),
       body,
     })
+    maybeEmitSessionExpired(apiError.status, apiError.message)
+    throw apiError
   }
 
   return body as T
@@ -160,13 +172,14 @@ export async function apiRequest<T>(
     })
 
     if (response.status < 200 || response.status >= 300) {
-      throw new ApiError({
+      const apiError = new ApiError({
         message: getErrorMessage(response.data) || `HTTP ${response.status}`,
         status: response.status,
         code: getErrorCode(response.data),
         details: getErrorDetails(response.data),
         body: response.data,
       })
+      throw apiError
     }
 
     return response.data as T

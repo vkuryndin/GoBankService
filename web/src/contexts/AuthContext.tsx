@@ -2,6 +2,9 @@ import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { authApi } from '../api/authApi'
+import { sessionExpiredEventName } from '../utils/sessionEvents'
+import type { SessionExpiredEventDetail } from '../utils/sessionEvents'
+import { useToast } from '../hooks/useToast'
 import { queryKeys } from '../api/queryKeys'
 import type { LoginRequest } from '../api/authApi'
 import type { CurrentUser, LoginResponse } from '../types/auth'
@@ -36,6 +39,7 @@ function getErrorText(error: unknown, fallback: string): string {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const queryClient = useQueryClient()
+  const { showToast } = useToast()
   const [token, setTokenState] = useState(() => localStorage.getItem(tokenStorageKey) || '')
   const [loginValue, setLoginValue] = useState('test@example.com')
   const [sessionError, setSessionError] = useState('')
@@ -59,12 +63,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     mutationFn: (tokenToLogout: string) => authApi.logout(tokenToLogout),
   })
 
-  const clearSession = useCallback(() => {
+  const clearSession = useCallback((message = '') => {
     setTokenState('')
-    setSessionError('')
+    setSessionError(message)
     localStorage.removeItem(tokenStorageKey)
     queryClient.removeQueries()
   }, [queryClient])
+
+  useEffect(() => {
+    const onSessionExpired = (event: Event) => {
+      const customEvent = event as CustomEvent<SessionExpiredEventDetail>
+      const message = customEvent.detail?.message || 'Сессия истекла. Войдите снова.'
+      clearSession(message)
+      showToast(message, 'error')
+    }
+
+    window.addEventListener(sessionExpiredEventName, onSessionExpired)
+
+    return () => {
+      window.removeEventListener(sessionExpiredEventName, onSessionExpired)
+    }
+  }, [clearSession, showToast])
+
 
   useEffect(() => {
     if (token) {

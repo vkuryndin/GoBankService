@@ -6,6 +6,9 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useAuth } from '../hooks/useAuth'
 import { useSharedAccount } from '../hooks/useSharedAccount'
+import { useToast } from '../hooks/useToast'
+import { firstValidationError, validatePassword, validateRequired } from '../utils/validation'
+import { AuthLoginForm } from '../features/auth/AuthLoginForm'
 
 export function AuthPage() {
   const {
@@ -19,6 +22,7 @@ export function AuthPage() {
     checkCurrentUser,
   } = useAuth()
   const { clearSharedAccountId } = useSharedAccount()
+  const { showToast } = useToast()
   const [login, setLogin] = useState(loginValue || 'test@example.com')
   const [password, setPassword] = useState('password123')
   const [loginState, setLoginState] = useState<RequestState>(emptyState)
@@ -40,6 +44,15 @@ export function AuthPage() {
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    const validationError = firstValidationError(
+      validateRequired(login, 'Login'),
+      validatePassword(password),
+    )
+    if (validationError) {
+      setLoginState({ loading: false, error: validationError, success: '' })
+      return
+    }
+
     setLoginState({
       loading: true,
       error: '',
@@ -55,14 +68,17 @@ export function AuthPage() {
         error: '',
         success: 'Вход выполнен.',
       })
+      showToast('Вход выполнен.', 'success')
     } catch (error) {
       clearSession()
       clearSharedAccountId()
+      const message = error instanceof Error ? error.message : 'Login failed'
       setLoginState({
         loading: false,
-        error: error instanceof Error ? error.message : 'Login failed',
+        error: message,
         success: '',
       })
+      showToast(message, 'error')
     }
   }
 
@@ -86,37 +102,17 @@ export function AuthPage() {
         </Button>
       </div>
 
-      <form className="form" onSubmit={handleLogin}>
-        <label>
-          <span>Login</span>
-          <input
-            value={login}
-            onChange={(event) => {
-              setLogin(event.target.value)
-              setLoginValue(event.target.value)
-            }}
-            placeholder="email или username"
-            autoComplete="username"
-          />
-        </label>
-
-        <label>
-          <span>Password</span>
-          <input
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder="password"
-            type="password"
-            autoComplete="current-password"
-          />
-        </label>
-
-        <div className="actions">
-          <Button type="submit" disabled={loginState.loading}>
-            {loginState.loading ? 'Вхожу...' : 'Войти'}
-          </Button>
-        </div>
-      </form>
+      <AuthLoginForm
+        login={login}
+        password={password}
+        loading={loginState.loading}
+        onLoginChange={(value) => {
+          setLogin(value)
+          setLoginValue(value)
+        }}
+        onPasswordChange={setPassword}
+        onSubmit={handleLogin}
+      />
 
       <RequestStatus state={loginState} />
       <RequestStatus state={authCheckState} />

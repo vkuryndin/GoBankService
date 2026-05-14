@@ -8,6 +8,12 @@ import { formatDate } from '../utils/format'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { StatusBadge } from '../components/ui/StatusBadge'
+import { DataTable } from '../components/ui/DataTable'
+import { EmptyState } from '../components/ui/EmptyState'
+import { Field } from '../components/ui/Field'
+import { Input } from '../components/ui/Input'
+import { useToast } from '../hooks/useToast'
+import { validatePositiveInteger } from '../utils/validation'
 
 type AdminPageProps = {
   token: string
@@ -16,6 +22,7 @@ type AdminPageProps = {
 }
 
 export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProps) {
+  const { showToast } = useToast()
   const [adminUsersState, setAdminUsersState] = useState<RequestState>(emptyState)
   const [adminSessionsState, setAdminSessionsState] = useState<RequestState>(emptyState)
   const [adminAccountState, setAdminAccountState] = useState<RequestState>(emptyState)
@@ -121,15 +128,17 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
       return
     }
 
-    const accountID = Number(adminAccountId)
-    if (!Number.isInteger(accountID) || accountID <= 0) {
+    const validationError = validatePositiveInteger(adminAccountId, 'Account ID')
+    if (validationError) {
       setAdminAccountState({
         loading: false,
-        error: 'Укажи корректный account_id.',
+        error: validationError,
         success: '',
       })
       return
     }
+
+    const accountID = Number(adminAccountId)
 
     setAdminAccountState({
       loading: true,
@@ -144,18 +153,21 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
         : await adminApi.unblockAccount(token, accountID)
 
       setAdminAccountResult(data)
+      const successMessage = action === 'block' ? 'Счет заблокирован.' : 'Счет разблокирован.'
       setAdminAccountState({
         loading: false,
         error: '',
-        success: action === 'block' ? 'Счет заблокирован.' : 'Счет разблокирован.',
+        success: successMessage,
       })
+      showToast(successMessage, 'success')
     } catch (error) {
+      const message = error instanceof Error ? error.message : `Failed to ${action} account`
       setAdminAccountState({
         loading: false,
-        error:
-          error instanceof Error ? error.message : `Failed to ${action} account`,
+        error: message,
         success: '',
       })
+      showToast(message, 'error')
     }
   }
 
@@ -189,9 +201,9 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
       </div>
 
       {!currentUser?.is_admin && (
-        <div className="empty">
+        <EmptyState>
           Этот раздел доступен только администратору. Войдите под admin-пользователем.
-        </div>
+        </EmptyState>
       )}
 
       <div className="adminGrid">
@@ -204,45 +216,32 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
           <RequestStatus state={adminUsersState} />
 
           {adminUsers.length === 0 && (
-            <div className="empty">Нажми “Загрузить пользователей”.</div>
+            <EmptyState>Нажми “Загрузить пользователей”.</EmptyState>
           )}
 
           {adminUsers.length > 0 && (
-            <div className="tableWrap compactTable">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Email</th>
-                    <th>Username</th>
-                    <th>Role</th>
-                    <th>Accounts</th>
-                    <th>Blocked</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminUsers.map((user) => (
-                    <tr
-                      key={user.id}
-                      className={currentUser?.user_id === user.id ? 'currentRow' : ''}
-                    >
-                      <td>{user.id}</td>
-                      <td>{user.email}</td>
-                      <td>{user.username}</td>
-                      <td>
-                        <StatusBadge tone={user.is_admin ? 'success' : 'muted'}>
-                          {user.is_admin ? 'admin' : 'user'}
-                        </StatusBadge>
-                      </td>
-                      <td>{user.accounts_count}</td>
-                      <td>{user.blocked_accounts_count}</td>
-                      <td>{formatDate(user.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="compactTable"
+              rows={adminUsers}
+              getRowKey={(user) => user.id}
+              columns={[
+                { key: 'id', title: 'ID', render: (user) => user.id },
+                { key: 'email', title: 'Email', render: (user) => user.email },
+                { key: 'username', title: 'Username', render: (user) => user.username },
+                {
+                  key: 'role',
+                  title: 'Role',
+                  render: (user) => (
+                    <StatusBadge tone={user.is_admin ? 'success' : 'muted'}>
+                      {user.is_admin ? 'admin' : 'user'}
+                    </StatusBadge>
+                  ),
+                },
+                { key: 'accounts', title: 'Accounts', render: (user) => user.accounts_count },
+                { key: 'blocked', title: 'Blocked', render: (user) => user.blocked_accounts_count },
+                { key: 'created', title: 'Created', render: (user) => formatDate(user.created_at) },
+              ]}
+            />
           )}
         </section>
 
@@ -255,41 +254,23 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
           <RequestStatus state={adminSessionsState} />
 
           {adminSessions.length === 0 && (
-            <div className="empty">Нажми “Активные сессии”.</div>
+            <EmptyState>Нажми “Активные сессии”.</EmptyState>
           )}
 
           {adminSessions.length > 0 && (
-            <div className="tableWrap compactTable">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Session</th>
-                    <th>User</th>
-                    <th>Email</th>
-                    <th>Username</th>
-                    <th>Created</th>
-                    <th>Expires</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminSessions.map((session) => (
-                    <tr
-                      key={session.session_id}
-                      className={
-                        currentUser?.user_id === session.user_id ? 'currentRow' : ''
-                      }
-                    >
-                      <td>{session.session_id}</td>
-                      <td>{session.user_id}</td>
-                      <td>{session.email}</td>
-                      <td>{session.username}</td>
-                      <td>{formatDate(session.created_at)}</td>
-                      <td>{formatDate(session.expires_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              className="compactTable"
+              rows={adminSessions}
+              getRowKey={(session) => session.session_id}
+              columns={[
+                { key: 'session', title: 'Session', render: (session) => session.session_id },
+                { key: 'user', title: 'User', render: (session) => session.user_id },
+                { key: 'email', title: 'Email', render: (session) => session.email },
+                { key: 'username', title: 'Username', render: (session) => session.username },
+                { key: 'created', title: 'Created', render: (session) => formatDate(session.created_at) },
+                { key: 'expires', title: 'Expires', render: (session) => formatDate(session.expires_at) },
+              ]}
+            />
           )}
         </section>
 
@@ -303,14 +284,13 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
           </p>
 
           <div className="form adminAccountForm">
-            <label>
-              <span>Account ID</span>
-              <input
+            <Field label="Account ID">
+              <Input
                 value={adminAccountId}
                 onChange={(event) => setAdminAccountId(event.target.value)}
                 placeholder="например, 16"
               />
-            </label>
+            </Field>
 
             <div className="actions">
               <Button

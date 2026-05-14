@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { authApi } from '../api/authApi'
 import { RequestStatus } from '../components/RequestStatus'
 import type { RegisterResponse } from '../types/auth'
 import { emptyState, type RequestState } from '../types/common'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { useToast } from '../hooks/useToast'
+import { firstValidationError, validateEmail, validatePassword, validateRequired } from '../utils/validation'
+import { useRegistration } from '../hooks/useRegistration'
+import { RegisterForm } from '../features/register/RegisterForm'
 
 type RegisterPageProps = {
   onRegistered: (email: string) => void
@@ -13,6 +16,8 @@ type RegisterPageProps = {
 }
 
 export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
+  const { showToast } = useToast()
+  const { registerMutation } = useRegistration()
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerUsername, setRegisterUsername] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
@@ -22,6 +27,16 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
   const handleRegister = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    const validationError = firstValidationError(
+      validateEmail(registerEmail),
+      validateRequired(registerUsername, 'Username'),
+      validatePassword(registerPassword),
+    )
+    if (validationError) {
+      setRegisterState({ loading: false, error: validationError, success: '' })
+      return
+    }
+
     setRegisterState({
       loading: true,
       error: '',
@@ -30,7 +45,7 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
     setRegisteredUser(null)
 
     try {
-      const data = await authApi.register({
+      const data = await registerMutation.mutateAsync({
         email: registerEmail,
         username: registerUsername,
         password: registerPassword,
@@ -44,12 +59,15 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
         error: '',
         success: 'Пользователь зарегистрирован. Теперь можно войти через Login.',
       })
+      showToast('Пользователь зарегистрирован.', 'success')
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Registration failed'
       setRegisterState({
         loading: false,
-        error: error instanceof Error ? error.message : 'Registration failed',
+        error: message,
         success: '',
       })
+      showToast(message, 'error')
     }
   }
 
@@ -64,44 +82,16 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
         </div>
       </div>
 
-      <form className="form" onSubmit={handleRegister}>
-        <label>
-          <span>Email</span>
-          <input
-            value={registerEmail}
-            onChange={(event) => setRegisterEmail(event.target.value)}
-            placeholder="user@example.com"
-            autoComplete="email"
-          />
-        </label>
-
-        <label>
-          <span>Username</span>
-          <input
-            value={registerUsername}
-            onChange={(event) => setRegisterUsername(event.target.value)}
-            placeholder="username"
-            autoComplete="username"
-          />
-        </label>
-
-        <label>
-          <span>Password</span>
-          <input
-            value={registerPassword}
-            onChange={(event) => setRegisterPassword(event.target.value)}
-            placeholder="минимум 8 символов"
-            type="password"
-            autoComplete="new-password"
-          />
-        </label>
-
-        <div className="actions">
-          <Button type="submit" disabled={registerState.loading}>
-            {registerState.loading ? 'Регистрирую...' : 'Зарегистрировать'}
-          </Button>
-        </div>
-      </form>
+      <RegisterForm
+        email={registerEmail}
+        username={registerUsername}
+        password={registerPassword}
+        loading={registerState.loading}
+        onEmailChange={setRegisterEmail}
+        onUsernameChange={setRegisterUsername}
+        onPasswordChange={setRegisterPassword}
+        onSubmit={handleRegister}
+      />
 
       <RequestStatus state={registerState} />
 

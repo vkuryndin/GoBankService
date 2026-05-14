@@ -13,6 +13,9 @@ import {
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { useToast } from '../hooks/useToast'
+import { validateAmount, validateDays } from '../utils/validation'
 
 type AccountsPageProps = {
   token: string
@@ -25,6 +28,7 @@ export function AccountsPage({
   sharedAccountId,
   onSharedAccountIdChange,
 }: AccountsPageProps) {
+  const { showToast } = useToast()
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [createAccountState, setCreateAccountState] = useState<RequestState>(emptyState)
   const [accountDetailsState, setAccountDetailsState] = useState<RequestState>(emptyState)
@@ -43,6 +47,7 @@ export function AccountsPage({
   const [predictDays, setPredictDays] = useState('30')
   const [predictResult, setPredictResult] = useState<PredictBalanceResponse | null>(null)
   const [closeResult, setCloseResult] = useState<CloseAccountResponse | null>(null)
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (sharedAccountId && !selectedAccountId) {
@@ -196,6 +201,12 @@ export function AccountsPage({
       return
     }
 
+    const amountError = validateAmount(depositAmount)
+    if (amountError) {
+      setDepositState({ loading: false, error: amountError, success: '' })
+      return
+    }
+
     setDepositState({ loading: true, error: '', success: '' })
 
     try {
@@ -224,6 +235,12 @@ export function AccountsPage({
     const accountID = selectedAccountIDNumber()
     if (!accountID) {
       setWithdrawMfaState({ loading: false, error: 'Выбери счет.', success: '' })
+      return
+    }
+
+    const amountError = validateAmount(withdrawAmount)
+    if (amountError) {
+      setWithdrawMfaState({ loading: false, error: amountError, success: '' })
       return
     }
 
@@ -302,6 +319,12 @@ export function AccountsPage({
       return
     }
 
+    const daysError = validateDays(predictDays)
+    if (daysError) {
+      setPredictState({ loading: false, error: daysError, success: '' })
+      return
+    }
+
     setPredictState({ loading: true, error: '', success: '' })
     setPredictResult(null)
 
@@ -331,10 +354,14 @@ export function AccountsPage({
       return
     }
 
-    const confirmed = window.confirm(
-      'Закрыть выбранный счет? Закрытие возможно только при нулевом балансе и без активного кредита.',
-    )
-    if (!confirmed) {
+    setCloseConfirmOpen(true)
+  }
+
+  const confirmCloseAccount = async () => {
+    const accountID = selectedAccountIDNumber()
+    if (!accountID) {
+      setCloseConfirmOpen(false)
+      setCloseAccountState({ loading: false, error: 'Выбери счет.', success: '' })
       return
     }
 
@@ -346,13 +373,17 @@ export function AccountsPage({
 
       setCloseResult(data)
       applyClosedAccount(data)
+      setCloseConfirmOpen(false)
       setCloseAccountState({ loading: false, error: '', success: 'Счет закрыт.' })
+      showToast('Счет закрыт.', 'success')
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to close account'
       setCloseAccountState({
         loading: false,
-        error: error instanceof Error ? error.message : 'Failed to close account',
+        error: message,
         success: '',
       })
+      showToast(message, 'error')
     }
   }
 
@@ -521,6 +552,16 @@ export function AccountsPage({
           )}
         </section>
       </div>
+      <ConfirmDialog
+        open={closeConfirmOpen}
+        title="Закрыть счет"
+        message="Закрыть выбранный счет? Закрытие возможно только при нулевом балансе и без активного кредита."
+        confirmText="Закрыть счет"
+        danger
+        loading={closeAccountState.loading}
+        onConfirm={() => void confirmCloseAccount()}
+        onCancel={() => setCloseConfirmOpen(false)}
+      />
     </Card>
   )
 }

@@ -7,6 +7,7 @@ import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './contexts/AuthContext'
 import { SharedAccountProvider } from './contexts/SharedAccountContext'
+import { ToastProvider } from './components/ToastProvider'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,13 +29,15 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter basename={routerBasename}>
-          <AuthProvider>
-            <SharedAccountProvider>
-              <App />
-            </SharedAccountProvider>
-          </AuthProvider>
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter basename={routerBasename}>
+            <AuthProvider>
+              <SharedAccountProvider>
+                <App />
+              </SharedAccountProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </ToastProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,

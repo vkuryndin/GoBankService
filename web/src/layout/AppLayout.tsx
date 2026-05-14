@@ -5,6 +5,7 @@ import { getMenuKeyByPath, getPageTitle } from '../config/menu'
 import { RequestStatus } from '../components/RequestStatus'
 import { Sidebar } from '../components/Sidebar'
 import { Topbar } from '../components/Topbar'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useAuth } from '../hooks/useAuth'
 import { useSharedAccount } from '../hooks/useSharedAccount'
 
@@ -13,6 +14,7 @@ const collapsedSidebarWidth = 88
 export function AppLayout() {
   const location = useLocation()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const { currentUser, isAuthenticated, authCheckState, logoutState, logout } = useAuth()
   const { clearSharedAccountId } = useSharedAccount()
@@ -26,9 +28,14 @@ export function AppLayout() {
       : `${sidebarWidth}px`,
   } as CSSProperties
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    setLogoutConfirmOpen(true)
+  }
+
+  const confirmLogout = async () => {
     clearSharedAccountId()
     await logout()
+    setLogoutConfirmOpen(false)
   }
 
   return (
@@ -61,6 +68,17 @@ export function AppLayout() {
         )}
 
         <Outlet />
+
+        <ConfirmDialog
+          open={logoutConfirmOpen}
+          title="Выйти из системы"
+          message="Завершить текущую сессию?"
+          confirmText="Выйти"
+          danger
+          loading={logoutState.loading}
+          onConfirm={() => void confirmLogout()}
+          onCancel={() => setLogoutConfirmOpen(false)}
+        />
       </section>
     </main>
   )

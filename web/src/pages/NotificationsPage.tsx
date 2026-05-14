@@ -1,16 +1,20 @@
 import { useState } from 'react'
-import { notificationsApi } from '../api/notificationsApi'
 import { RequestStatus } from '../components/RequestStatus'
 import { emptyState, type RequestState } from '../types/common'
 import type { MessageResponse } from '../types/notification'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { EmptyState } from '../components/ui/EmptyState'
+import { useNotifications } from '../hooks/useNotifications'
+import { useToast } from '../hooks/useToast'
 
 type NotificationsPageProps = {
   token: string
 }
 
 export function NotificationsPage({ token }: NotificationsPageProps) {
+  const { sendTestEmailMutation } = useNotifications(token)
+  const { showToast } = useToast()
   const [notificationState, setNotificationState] = useState<RequestState>(emptyState)
   const [message, setMessage] = useState<MessageResponse | null>(null)
 
@@ -32,7 +36,7 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
     setMessage(null)
 
     try {
-      const data = await notificationsApi.sendTestEmail(token)
+      const data = await sendTestEmailMutation.mutateAsync()
 
       setMessage(data)
       setNotificationState({
@@ -40,12 +44,15 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
         error: '',
         success: 'Тестовое email-уведомление отправлено.',
       })
+      showToast('Тестовое email-уведомление отправлено.', 'success')
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send test email'
       setNotificationState({
         loading: false,
-        error: error instanceof Error ? error.message : 'Failed to send test email',
+        error: errorMessage,
         success: '',
       })
+      showToast(errorMessage, 'error')
     }
   }
 
@@ -97,9 +104,9 @@ export function NotificationsPage({ token }: NotificationsPageProps) {
       )}
 
       {!message && !notificationState.error && (
-        <div className="empty">
+        <EmptyState>
           Нажми “Отправить test email”. Если SMTP отключен в env, backend вернет понятную ошибку.
-        </div>
+        </EmptyState>
       )}
     </Card>
   )

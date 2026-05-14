@@ -14,6 +14,9 @@ import {
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { useToast } from '../hooks/useToast'
+import { validateAmount, validatePositiveInteger } from '../utils/validation'
 
 type CardsPageProps = {
   token: string
@@ -21,6 +24,7 @@ type CardsPageProps = {
 }
 
 export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
+  const { showToast } = useToast()
   const [cardsState, setCardsState] = useState<RequestState>(emptyState)
   const [createCardState, setCreateCardState] = useState<RequestState>(emptyState)
   const [cardDetailsState, setCardDetailsState] = useState<RequestState>(emptyState)
@@ -50,6 +54,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [cardPaymentResult, setCardPaymentResult] = useState<CardPaymentResponse | null>(null)
   const [cardTransferResult, setCardTransferResult] = useState<CardTransferResponse | null>(null)
   const [cardCloseResult, setCardCloseResult] = useState<CloseCardResponse | null>(null)
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (sharedAccountId && !createCardAccountId) {
@@ -241,6 +246,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       return
     }
 
+    const amountError = validateAmount(cardPaymentAmount)
+    if (amountError) {
+      setCardPaymentState({ loading: false, error: amountError, success: '' })
+      return
+    }
+
     setCardPaymentState({ loading: true, error: '', success: '' })
     setCardPaymentResult(null)
 
@@ -324,6 +335,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       return
     }
 
+    const validationError = validatePositiveInteger(cardTransferToCardId, 'To card ID') || validateAmount(cardTransferAmount)
+    if (validationError) {
+      setCardTransferState({ loading: false, error: validationError, success: '' })
+      return
+    }
+
     setCardTransferState({ loading: true, error: '', success: '' })
     setCardTransferResult(null)
 
@@ -359,8 +376,14 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       return
     }
 
-    const confirmed = window.confirm('Закрыть выбранную карту?')
-    if (!confirmed) {
+    setCloseConfirmOpen(true)
+  }
+
+  const confirmCloseCard = async () => {
+    const cardID = selectedCardIDNumber()
+    if (!cardID) {
+      setCloseConfirmOpen(false)
+      setCardCloseState({ loading: false, error: 'Выбери карту.', success: '' })
       return
     }
 
@@ -372,13 +395,17 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
 
       setCardCloseResult(data)
       applyClosedCard(data)
+      setCloseConfirmOpen(false)
       setCardCloseState({ loading: false, error: '', success: 'Карта закрыта.' })
+      showToast('Карта закрыта.', 'success')
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to close card'
       setCardCloseState({
         loading: false,
-        error: error instanceof Error ? error.message : 'Failed to close card',
+        error: message,
         success: '',
       })
+      showToast(message, 'error')
     }
   }
 
@@ -542,6 +569,16 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
           )}
         </section>
       </div>
+      <ConfirmDialog
+        open={closeConfirmOpen}
+        title="Закрыть карту"
+        message="Закрыть выбранную карту? Операция необратима."
+        confirmText="Закрыть карту"
+        danger
+        loading={cardCloseState.loading}
+        onConfirm={() => void confirmCloseCard()}
+        onCancel={() => setCloseConfirmOpen(false)}
+      />
     </Card>
   )
 }
