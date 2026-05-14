@@ -12,6 +12,14 @@ export function useAccounts(token: string) {
     enabled,
   })
 
+  const detailMutation = useMutation({
+    mutationFn: (accountID: number) => accountsApi.get(token, accountID),
+    onSuccess: (account) => {
+      queryClient.setQueryData(queryKeys.accounts.detail(token, account.id), account)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
+    },
+  })
+
   const createMutation = useMutation({
     mutationFn: () => accountsApi.create(token),
     onSuccess: () => {
@@ -23,8 +31,9 @@ export function useAccounts(token: string) {
     mutationFn: ({ accountID, amount }: { accountID: number; amount: string }) =>
       accountsApi.deposit(token, accountID, amount),
     onSuccess: (account) => {
+      queryClient.setQueryData(queryKeys.accounts.detail(token, account.id), account)
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.detail(token, account.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
     },
   })
 
@@ -32,8 +41,9 @@ export function useAccounts(token: string) {
     mutationFn: ({ accountID, amount, mfaCode }: { accountID: number; amount: string; mfaCode: string }) =>
       accountsApi.withdraw(token, accountID, amount, mfaCode),
     onSuccess: (account) => {
+      queryClient.setQueryData(queryKeys.accounts.detail(token, account.id), account)
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.detail(token, account.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
     },
   })
 
@@ -43,15 +53,29 @@ export function useAccounts(token: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.cards.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.credits.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
+    },
+  })
+
+  const predictionMutation = useMutation({
+    mutationFn: ({ accountID, days }: { accountID: number; days: number }) =>
+      accountsApi.predict(token, accountID, days),
+    onSuccess: (_prediction, request) => {
+      queryClient.setQueryData(
+        queryKeys.accounts.prediction(token, request.accountID, request.days),
+        _prediction,
+      )
     },
   })
 
   return {
     accounts: listQuery.data || [],
     listQuery,
+    detailMutation,
     createMutation,
     depositMutation,
     withdrawMutation,
     closeMutation,
+    predictionMutation,
   }
 }

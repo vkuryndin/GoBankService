@@ -18,6 +18,13 @@ export function useCredits(token: string, accountID?: number) {
     enabled: enabled && Boolean(accountID),
   })
 
+  const listByAccountMutation = useMutation({
+    mutationFn: (nextAccountID: number) => creditsApi.listByAccount(token, nextAccountID),
+    onSuccess: (credits, nextAccountID) => {
+      queryClient.setQueryData(queryKeys.credits.byAccount(token, nextAccountID), credits)
+    },
+  })
+
   const checkMutation = useMutation({
     mutationFn: (request: CreditBaseRequest) => creditsApi.check(token, request),
   })
@@ -28,6 +35,22 @@ export function useCredits(token: string, accountID?: number) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.credits.all })
       void queryClient.invalidateQueries({ queryKey: queryKeys.credits.byAccount(token, credit.account_id) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
+    },
+  })
+
+  const detailMutation = useMutation({
+    mutationFn: (creditID: number) => creditsApi.get(token, creditID),
+    onSuccess: (credit) => {
+      queryClient.setQueryData(queryKeys.credits.detail(token, credit.id), credit)
+      void queryClient.invalidateQueries({ queryKey: queryKeys.credits.byAccount(token, credit.account_id) })
+    },
+  })
+
+  const scheduleMutation = useMutation({
+    mutationFn: (creditID: number) => creditsApi.schedule(token, creditID),
+    onSuccess: (schedule, creditID) => {
+      queryClient.setQueryData(queryKeys.credits.schedule(token, creditID), schedule)
     },
   })
 
@@ -36,7 +59,10 @@ export function useCredits(token: string, accountID?: number) {
     accountCredits: accountCreditsQuery.data || [],
     listQuery,
     accountCreditsQuery,
+    listByAccountMutation,
     checkMutation,
     createMutation,
+    detailMutation,
+    scheduleMutation,
   }
 }

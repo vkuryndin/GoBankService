@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
 import { NavLink } from 'react-router-dom'
 import { menuItems } from '../config/menu'
 import type { MenuKey } from '../types/common'
@@ -46,6 +46,22 @@ export function Sidebar({
     window.addEventListener('mouseup', handleMouseUp)
   }
 
+
+  const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (collapsed) {
+      return
+    }
+
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return
+    }
+
+    event.preventDefault()
+    const direction = event.key === 'ArrowRight' ? 12 : -12
+    const nextWidth = Math.min(maxSidebarWidth, Math.max(minSidebarWidth, width + direction))
+    onWidthChange(nextWidth)
+  }
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -90,7 +106,9 @@ export function Sidebar({
         role="separator"
         aria-orientation="vertical"
         aria-label="Изменить ширину меню"
+        tabIndex={collapsed ? -1 : 0}
         onMouseDown={startSidebarResize}
+        onKeyDown={handleResizeKeyDown}
       />
     </aside>
   )

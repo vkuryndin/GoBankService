@@ -14,7 +14,7 @@ export function useMfaFlow(token: string) {
   const requestCode = async (body: MFARequest, successMessage = 'MFA-код отправлен.') => {
     if (!token) {
       setState({ loading: false, error: 'Сначала нужно войти в систему.', success: '' })
-      return
+      return false
     }
 
     setState({ loading: true, error: '', success: '' })
@@ -22,12 +22,14 @@ export function useMfaFlow(token: string) {
     try {
       await requestMutation.mutateAsync(body)
       setState({ loading: false, error: '', success: successMessage })
+      return true
     } catch (error) {
       setState({
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to request MFA code',
         success: '',
       })
+      return false
     }
   }
 
@@ -41,6 +43,7 @@ export function useMfaFlow(token: string) {
     setCode,
     state,
     setState,
+    requestMutation,
     requestCode,
     reset,
     loading: state.loading,

@@ -23,8 +23,8 @@ export function AuthPage() {
   } = useAuth()
   const { clearSharedAccountId } = useSharedAccount()
   const { showToast } = useToast()
-  const [login, setLogin] = useState(loginValue || 'test@example.com')
-  const [password, setPassword] = useState('password123')
+  const [login, setLogin] = useState(loginValue)
+  const [password, setPassword] = useState('')
   const [loginState, setLoginState] = useState<RequestState>(emptyState)
 
   const isAuthenticated = token.trim() !== ''

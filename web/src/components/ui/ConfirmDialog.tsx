@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Button } from './Button'
 
 type ConfirmDialogProps = {
@@ -23,6 +24,25 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    cancelButtonRef.current?.focus()
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !loading) {
+        onCancel()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [loading, onCancel, open])
+
   if (!open) {
     return null
   }
@@ -34,12 +54,19 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-message"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h3 id="confirm-dialog-title">{title}</h3>
-        <p>{message}</p>
+        <p id="confirm-dialog-message">{message}</p>
         <div className="actions confirmActions">
-          <Button className="secondary" type="button" onClick={onCancel} disabled={loading}>
+          <Button
+            ref={cancelButtonRef}
+            className="secondary"
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+          >
             {cancelText}
           </Button>
           <Button
@@ -47,6 +74,7 @@ export function ConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={loading}
+            aria-busy={loading}
           >
             {loading ? 'Выполняю...' : confirmText}
           </Button>

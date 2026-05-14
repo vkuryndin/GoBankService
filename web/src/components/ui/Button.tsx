@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 
 type ButtonVariant = 'primary' | 'secondary' | 'danger'
@@ -19,18 +20,16 @@ function getVariantClass(variant: ButtonVariant): string {
   return ''
 }
 
-export function Button({
-  variant = 'primary',
-  className = '',
-  children,
-  ...props
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = 'primary', className = '', children, ...props },
+  ref,
+) {
   const variantClass = getVariantClass(variant)
   const buttonClassName = [variantClass, className].filter(Boolean).join(' ')
 
   return (
-    <button className={buttonClassName || undefined} {...props}>
+    <button ref={ref} className={buttonClassName || undefined} {...props}>
       {children}
     </button>
   )
-}
+})

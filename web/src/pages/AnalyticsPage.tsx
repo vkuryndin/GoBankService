@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { accountsApi } from '../api/accountsApi'
-import { analyticsApi } from '../api/analyticsApi'
 import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse, PredictBalanceResponse } from '../types/account'
 import type { AnalyticsResponse } from '../types/analytics'
@@ -11,6 +9,8 @@ import {
   getAccountStatusText,
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
+import { useAccounts } from '../hooks/useAccounts'
+import { useAnalytics } from '../hooks/useAnalytics'
 import { Card } from '../components/ui/Card'
 
 type AnalyticsPageProps = {
@@ -18,6 +18,8 @@ type AnalyticsPageProps = {
 }
 
 export function AnalyticsPage({ token }: AnalyticsPageProps) {
+  const accountsDomain = useAccounts(token)
+  const analyticsDomain = useAnalytics(token)
   const [analyticsState, setAnalyticsState] = useState<RequestState>(emptyState)
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [predictionState, setPredictionState] = useState<RequestState>(emptyState)
@@ -54,9 +56,13 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
     setAnalytics(null)
 
     try {
-      const data = await analyticsApi.summary(token)
+      const result = await analyticsDomain.summaryQuery.refetch()
+      if (result.error) {
+        throw result.error
+      }
+      const data = result.data
 
-      setAnalytics(data)
+      setAnalytics(data || null)
       setAnalyticsState({
         loading: false,
         error: '',
@@ -83,8 +89,11 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
     })
 
     try {
-      const data = await accountsApi.list(token)
-      const list = Array.isArray(data) ? data : []
+      const result = await accountsDomain.listQuery.refetch()
+      if (result.error) {
+        throw result.error
+      }
+      const list = Array.isArray(result.data) ? result.data : []
 
       setAccounts(list)
       if (list.length > 0 && !selectedAccountId) {
@@ -146,7 +155,7 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
     setPrediction(null)
 
     try {
-      const data = await analyticsApi.predictBalance(token, accountID, days)
+      const data = await analyticsDomain.predictionMutation.mutateAsync({ accountID, days })
 
       setPrediction(data)
       setPredictionState({

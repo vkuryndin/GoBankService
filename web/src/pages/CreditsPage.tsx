@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { accountsApi } from '../api/accountsApi'
-import { creditsApi } from '../api/creditsApi'
-import { mfaApi } from '../api/mfaApi'
 import { RequestStatus } from '../components/RequestStatus'
 import { Button } from '../components/ui/Button'
+import { CreditAccountListPanel } from '../features/credits/CreditAccountListPanel'
+import { CreditListPanel } from '../features/credits/CreditListPanel'
+import { useAccounts } from '../hooks/useAccounts'
+import { useCredits } from '../hooks/useCredits'
+import { useMfaFlow } from '../hooks/useMfaFlow'
 import { Card } from '../components/ui/Card'
 import type { AccountResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
@@ -13,11 +15,7 @@ import type {
   CreditResponse,
   PaymentScheduleResponse,
 } from '../types/credit'
-import {
-  formatDate,
-  getAccountBadgeClass,
-  getAccountStatusText,
-} from '../utils/format'
+import { formatDate } from '../utils/format'
 
 type CreditsPageProps = {
   token: string
@@ -54,6 +52,10 @@ export function CreditsPage({
   sharedAccountId,
   onSharedAccountIdChange,
 }: CreditsPageProps) {
+  const selectedAccountID = Number(sharedAccountId)
+  const accountsDomain = useAccounts(token)
+  const creditsDomain = useCredits(token, Number.isInteger(selectedAccountID) && selectedAccountID > 0 ? selectedAccountID : undefined)
+  const creditMfaFlow = useMfaFlow(token)
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [creditsState, setCreditsState] = useState<RequestState>(emptyState)
   const [checkCreditState, setCheckCreditState] = useState<RequestState>(emptyState)
@@ -154,7 +156,7 @@ export function CreditsPage({
     setSchedule([])
 
     try {
-      const list = await creditsApi.listByAccount(token, accountID)
+      const list = await creditsDomain.listByAccountMutation.mutateAsync(accountID)
       setCredits(list)
 
       if (list.length > 0) {
@@ -209,8 +211,11 @@ export function CreditsPage({
     resetCreditSelection()
 
     try {
-      const data = await accountsApi.list(token)
-      const list = Array.isArray(data) ? data : []
+      const result = await accountsDomain.listQuery.refetch()
+      if (result.error) {
+        throw result.error
+      }
+      const list = Array.isArray(result.data) ? result.data : []
       setAccounts(list)
 
       setAccountsState({ loading: false, error: '', success: 'Список счетов загружен.' })
@@ -249,7 +254,7 @@ export function CreditsPage({
     setCreditCheck(null)
 
     try {
-      const data = await creditsApi.check(token, request)
+      const data = await creditsDomain.checkMutation.mutateAsync(request)
 
       setCreditCheck(data)
       setCheckCreditState({
@@ -281,7 +286,7 @@ export function CreditsPage({
     setCreditMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await mfaApi.request(token, {
+      await creditMfaFlow.requestMutation.mutateAsync({
         purpose: 'credit_create',
         account_id: request.account_id,
         principal_amount: request.principal_amount,
@@ -316,7 +321,7 @@ export function CreditsPage({
     setCreatedCredit(null)
 
     try {
-      const data = await creditsApi.create(token, {
+      const data = await creditsDomain.createMutation.mutateAsync({
         ...request,
         mfa_code: creditMfaCode,
       })
@@ -348,7 +353,7 @@ export function CreditsPage({
     setCreditDetailsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await creditsApi.get(token, creditID)
+      const data = await creditsDomain.detailMutation.mutateAsync(creditID)
       upsertCredit(data)
       setCreditDetailsState({ loading: false, error: '', success: 'Данные кредита обновлены.' })
     } catch (error) {
@@ -375,7 +380,7 @@ export function CreditsPage({
     setSchedule([])
 
     try {
-      const data = await creditsApi.schedule(token, creditID)
+      const data = await creditsDomain.scheduleMutation.mutateAsync(creditID)
 
       setSchedule(Array.isArray(data) ? data : [])
       setScheduleState({ loading: false, error: '', success: 'График платежей загружен.' })
@@ -413,93 +418,20 @@ export function CreditsPage({
       <RequestStatus state={creditsState} />
 
       <div className="creditCardsTopGrid">
-        <section className="subPanel creditAccountPanelV3">
-          <div className="subPanelHeader">
-            <div>
-              <h3>Счета</h3>
-              <p className="mutedText">Выбери счет, чтобы загрузить его кредиты.</p>
-            </div>
-            <span>{accounts.length}</span>
-          </div>
+        <CreditAccountListPanel
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
+          onSelect={selectAccount}
+        />
 
-          {accounts.length === 0 && (
-            <div className="empty compactEmpty">Нажми “Загрузить счета”.</div>
-          )}
-
-          {accounts.length > 0 && (
-            <div className="creditAccountCardsList">
-              {accounts.map((account) => (
-                <Button
-                  key={account.id}
-                  className={
-                    selectedAccountId === String(account.id)
-                      ? 'creditAccountCard selected'
-                      : 'creditAccountCard'
-                  }
-                  type="button"
-                  onClick={() => selectAccount(account)}
-                >
-                  <span className="creditAccountNumber">{account.account_number}</span>
-                  <span className="creditAccountMeta">
-                    <span>ID {account.id}</span>
-                    <span>{account.balance} {account.currency}</span>
-                    <span className={getAccountBadgeClass(account)}>
-                      {getAccountStatusText(account)}
-                    </span>
-                  </span>
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="subPanel creditListPanelV3">
-          <div className="subPanelHeader">
-            <div>
-              <h3>Кредиты выбранного счета</h3>
-              <p className="mutedText">
-                {selectedAccount
-                  ? `account_id ${selectedAccount.id}`
-                  : 'Сначала выбери счет.'}
-              </p>
-            </div>
-            <span>{credits.length}</span>
-          </div>
-
-          {!selectedAccount && (
-            <div className="empty compactEmpty">Выбери счет слева.</div>
-          )}
-
-          {selectedAccount && credits.length === 0 && !creditsState.loading && (
-            <div className="empty compactEmpty">У выбранного счета пока нет кредитов.</div>
-          )}
-
-          {credits.length > 0 && (
-            <div className="creditCardsListV3">
-              {credits.map((credit) => (
-                <Button
-                  key={credit.id}
-                  className={
-                    selectedCreditId === String(credit.id)
-                      ? 'creditLoanCard selected'
-                      : 'creditLoanCard'
-                  }
-                  type="button"
-                  onClick={() => selectCredit(credit)}
-                >
-                  <span className="creditLoanMain">
-                    <span className="creditLoanTitle">credit_id {credit.id}</span>
-                    <span className={getCreditBadgeClass(credit)}>{credit.status}</span>
-                  </span>
-                  <span className="creditLoanMeta">
-                    <span>{credit.principal_amount}</span>
-                    <span>{credit.monthly_payment} / мес.</span>
-                  </span>
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
+        <CreditListPanel
+          selectedAccount={selectedAccount}
+          credits={credits}
+          selectedCreditId={selectedCreditId}
+          loading={creditsState.loading}
+          getCreditBadgeClass={getCreditBadgeClass}
+          onSelect={selectCredit}
+        />
       </div>
 
       <div className="creditWorkGridV3">

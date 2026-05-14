@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { accountsApi } from '../api/accountsApi'
-import { mfaApi } from '../api/mfaApi'
 import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
@@ -12,8 +10,11 @@ import {
   isAccountClosed,
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
+import { AccountListPanel } from '../features/accounts/AccountListPanel'
 import { Card } from '../components/ui/Card'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { useAccounts } from '../hooks/useAccounts'
+import { useMfaFlow } from '../hooks/useMfaFlow'
 import { useToast } from '../hooks/useToast'
 import { validateAmount, validateDays } from '../utils/validation'
 
@@ -29,6 +30,8 @@ export function AccountsPage({
   onSharedAccountIdChange,
 }: AccountsPageProps) {
   const { showToast } = useToast()
+  const accountsDomain = useAccounts(token)
+  const withdrawMfaFlow = useMfaFlow(token)
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [createAccountState, setCreateAccountState] = useState<RequestState>(emptyState)
   const [accountDetailsState, setAccountDetailsState] = useState<RequestState>(emptyState)
@@ -115,8 +118,11 @@ export function AccountsPage({
     setAccountsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await accountsApi.list(token)
-      const list = Array.isArray(data) ? data : []
+      const result = await accountsDomain.listQuery.refetch()
+      if (result.error) {
+        throw result.error
+      }
+      const list = Array.isArray(result.data) ? result.data : []
       setAccounts(list)
       setAccountsState({ loading: false, error: '', success: 'Список счетов загружен.' })
 
@@ -145,7 +151,7 @@ export function AccountsPage({
     setCreateAccountState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await accountsApi.create(token)
+      const account = await accountsDomain.createMutation.mutateAsync()
 
       upsertAccount(account)
       setCreateAccountState({
@@ -176,7 +182,7 @@ export function AccountsPage({
     setAccountDetailsState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await accountsApi.get(token, accountID)
+      const account = await accountsDomain.detailMutation.mutateAsync(accountID)
       upsertAccount(account)
       setAccountDetailsState({ loading: false, error: '', success: 'Данные счета обновлены.' })
     } catch (error) {
@@ -210,7 +216,7 @@ export function AccountsPage({
     setDepositState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await accountsApi.deposit(token, accountID, depositAmount)
+      const account = await accountsDomain.depositMutation.mutateAsync({ accountID, amount: depositAmount })
 
       upsertAccount(account)
       setDepositState({
@@ -247,7 +253,7 @@ export function AccountsPage({
     setWithdrawMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await mfaApi.request(token, {
+      await withdrawMfaFlow.requestMutation.mutateAsync({
         purpose: 'withdraw',
         account_id: accountID,
         amount: withdrawAmount,
@@ -283,12 +289,11 @@ export function AccountsPage({
     setWithdrawState({ loading: true, error: '', success: '' })
 
     try {
-      const account = await accountsApi.withdraw(
-        token,
+      const account = await accountsDomain.withdrawMutation.mutateAsync({
         accountID,
-        withdrawAmount,
-        withdrawMfaCode,
-      )
+        amount: withdrawAmount,
+        mfaCode: withdrawMfaCode,
+      })
 
       upsertAccount(account)
       setWithdrawMfaCode('')
@@ -330,7 +335,7 @@ export function AccountsPage({
 
     try {
       const days = Number(predictDays)
-      const data = await accountsApi.predict(token, accountID, days)
+      const data = await accountsDomain.predictionMutation.mutateAsync({ accountID, days })
 
       setPredictResult(data)
       setPredictState({ loading: false, error: '', success: 'Прогноз баланса получен.' })
@@ -369,7 +374,7 @@ export function AccountsPage({
     setCloseResult(null)
 
     try {
-      const data = await accountsApi.close(token, accountID)
+      const data = await accountsDomain.closeMutation.mutateAsync(accountID)
 
       setCloseResult(data)
       applyClosedAccount(data)
@@ -416,35 +421,11 @@ export function AccountsPage({
       <RequestStatus state={createAccountState} />
 
       <div className="accountsLayout">
-        <section className="subPanel">
-          <div className="subPanelHeader">
-            <h3>Мои счета</h3>
-            <span>{accounts.length}</span>
-          </div>
-
-          {accounts.length === 0 && (
-            <div className="empty">Список пуст. Нажми “Загрузить счета” или “Создать счет”.</div>
-          )}
-
-          {accounts.length > 0 && (
-            <div className="accountList">
-              {accounts.map((account) => (
-                <Button
-                  key={account.id}
-                  className={selectedAccountId === String(account.id) ? 'accountItem active' : 'accountItem'}
-                  type="button"
-                  onClick={() => selectAccount(account)}
-                >
-                  <span className="accountNumber">{account.account_number}</span>
-                  <span className="accountMeta">
-                    <span>{account.balance} {account.currency}</span>
-                    <span className={getAccountBadgeClass(account)}>{getAccountStatusText(account)}</span>
-                  </span>
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
+        <AccountListPanel
+          accounts={accounts}
+          selectedAccountId={selectedAccountId}
+          onSelect={selectAccount}
+        />
 
         <section className="subPanel">
           <div className="subPanelHeader">

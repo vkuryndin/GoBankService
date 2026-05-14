@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { cardsApi } from '../api/cardsApi'
-import { mfaApi } from '../api/mfaApi'
 import { RequestStatus } from '../components/RequestStatus'
 import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
 import { emptyState, type RequestState } from '../types/common'
@@ -13,8 +11,11 @@ import {
   isCardClosed,
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
+import { CardListPanel } from '../features/cards/CardListPanel'
 import { Card } from '../components/ui/Card'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { useCards } from '../hooks/useCards'
+import { useMfaFlow } from '../hooks/useMfaFlow'
 import { useToast } from '../hooks/useToast'
 import { validateAmount, validatePositiveInteger } from '../utils/validation'
 
@@ -25,6 +26,9 @@ type CardsPageProps = {
 
 export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const { showToast } = useToast()
+  const cardsDomain = useCards(token)
+  const cardPaymentMfaFlow = useMfaFlow(token)
+  const cardTransferMfaFlow = useMfaFlow(token)
   const [cardsState, setCardsState] = useState<RequestState>(emptyState)
   const [createCardState, setCreateCardState] = useState<RequestState>(emptyState)
   const [cardDetailsState, setCardDetailsState] = useState<RequestState>(emptyState)
@@ -118,8 +122,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await cardsApi.list(token)
-      const list = Array.isArray(data) ? data : []
+      const result = await cardsDomain.listQuery.refetch()
+      if (result.error) {
+        throw result.error
+      }
+      const list = Array.isArray(result.data) ? result.data : []
       setCards(list)
       setCardsState({ loading: false, error: '', success: 'Список карт загружен.' })
 
@@ -155,7 +162,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCreatedCard(null)
 
     try {
-      const card = await cardsApi.create(token, accountID)
+      const card = await cardsDomain.createMutation.mutateAsync(accountID)
 
       upsertCard(card)
       setCreatedCard(card)
@@ -187,7 +194,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardDetailsState({ loading: true, error: '', success: '' })
 
     try {
-      const card = await cardsApi.get(token, cardID)
+      const card = await cardsDomain.detailMutation.mutateAsync(cardID)
       upsertCard(card)
       setCardDetailsState({ loading: false, error: '', success: 'Данные карты обновлены.' })
     } catch (error) {
@@ -213,7 +220,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardPaymentMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await mfaApi.request(token, {
+      await cardPaymentMfaFlow.requestMutation.mutateAsync({
         purpose: 'card_payment',
         card_id: cardID,
         amount: cardPaymentAmount,
@@ -256,11 +263,14 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardPaymentResult(null)
 
     try {
-      const data = await cardsApi.pay(token, cardID, {
+      const data = await cardsDomain.payMutation.mutateAsync({
+        cardID,
+        body: {
         amount: cardPaymentAmount,
         cvv: cardPaymentCVV,
         mfa_code: cardPaymentMfaCode,
         description: cardPaymentDescription,
+        },
       })
 
       setCardPaymentResult(data)
@@ -295,7 +305,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardTransferMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await mfaApi.request(token, {
+      await cardTransferMfaFlow.requestMutation.mutateAsync({
         purpose: 'card_transfer',
         card_id: cardID,
         to_card_id: toCardID,
@@ -345,12 +355,15 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardTransferResult(null)
 
     try {
-      const data = await cardsApi.transfer(token, cardID, {
+      const data = await cardsDomain.transferMutation.mutateAsync({
+        cardID,
+        body: {
         to_card_id: toCardID,
         amount: cardTransferAmount,
         cvv: cardTransferCVV,
         mfa_code: cardTransferMfaCode,
         description: cardTransferDescription,
+        },
       })
 
       setCardTransferResult(data)
@@ -391,7 +404,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardCloseResult(null)
 
     try {
-      const data = await cardsApi.close(token, cardID)
+      const data = await cardsDomain.closeMutation.mutateAsync(cardID)
 
       setCardCloseResult(data)
       applyClosedCard(data)
@@ -452,33 +465,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
           )}
         </section>
 
-        <section className="subPanel">
-          <div className="subPanelHeader"><h3>Мои карты</h3><span>{cards.length}</span></div>
-
-          {cards.length === 0 && (
-            <div className="empty">Список пуст. Нажми “Загрузить карты” или выпусти новую карту.</div>
-          )}
-
-          {cards.length > 0 && (
-            <div className="cardList">
-              {cards.map((card) => (
-                <Button
-                  key={card.id}
-                  className={selectedCardId === String(card.id) ? 'bankCardItem active' : 'bankCardItem'}
-                  type="button"
-                  onClick={() => selectCard(card)}
-                >
-                  <span className="cardNumber">{getCardDisplayNumber(card)}</span>
-                  <span className="cardMeta">
-                    <span>card_id {card.id}</span>
-                    <span>account_id {card.account_id}</span>
-                    <span className={getCardBadgeClass(card)}>{getCardStatusText(card)}</span>
-                  </span>
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
+        <CardListPanel
+          cards={cards}
+          selectedCardId={selectedCardId}
+          onSelect={selectCard}
+        />
 
         <section className="subPanel cardDetailsPanel">
           <div className="subPanelHeader">

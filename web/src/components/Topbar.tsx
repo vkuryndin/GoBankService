@@ -45,6 +45,8 @@ export function Topbar({
           type="button"
           onClick={onLogout}
           disabled={logoutLoading}
+          aria-label="Выйти из текущей сессии"
+          aria-busy={logoutLoading}
         >
           {logoutLoading ? 'Выходим...' : 'Выйти'}
         </Button>

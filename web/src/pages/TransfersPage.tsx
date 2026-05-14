@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { accountsApi } from '../api/accountsApi'
-import { mfaApi } from '../api/mfaApi'
-import { transfersApi } from '../api/transfersApi'
 import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
@@ -12,6 +9,9 @@ import {
   getAccountStatusText,
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
+import { useAccounts } from '../hooks/useAccounts'
+import { useMfaFlow } from '../hooks/useMfaFlow'
+import { useTransfers } from '../hooks/useTransfers'
 import { Card } from '../components/ui/Card'
 
 type TransfersPageProps = {
@@ -25,6 +25,9 @@ export function TransfersPage({
   sharedAccountId,
   onSharedAccountIdChange,
 }: TransfersPageProps) {
+  const accountsDomain = useAccounts(token)
+  const transfersDomain = useTransfers(token)
+  const transferMfaFlow = useMfaFlow(token)
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [transferMfaState, setTransferMfaState] = useState<RequestState>(emptyState)
   const [transferState, setTransferState] = useState<RequestState>(emptyState)
@@ -60,8 +63,11 @@ export function TransfersPage({
     setAccountsState({ loading: true, error: '', success: '' })
 
     try {
-      const data = await accountsApi.list(token)
-      setAccounts(Array.isArray(data) ? data : [])
+      const result = await accountsDomain.listQuery.refetch()
+      if (result.error) {
+        throw result.error
+      }
+      setAccounts(Array.isArray(result.data) ? result.data : [])
       setAccountsState({ loading: false, error: '', success: 'Список счетов загружен.' })
     } catch (error) {
       setAccountsState({
@@ -107,7 +113,7 @@ export function TransfersPage({
     setTransferMfaState({ loading: true, error: '', success: '' })
 
     try {
-      await mfaApi.request(token, {
+      await transferMfaFlow.requestMutation.mutateAsync({
         purpose: 'transfer',
         from_account_id: ids.fromAccountID,
         to_account_id: ids.toAccountID,
@@ -140,7 +146,7 @@ export function TransfersPage({
     setTransferResult(null)
 
     try {
-      const data = await transfersApi.transfer(token, {
+      const data = await transfersDomain.transferMutation.mutateAsync({
         from_account_id: ids.fromAccountID,
         to_account_id: ids.toAccountID,
         amount: transferAmount,
