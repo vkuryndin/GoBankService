@@ -7,7 +7,6 @@ import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCard
 import { emptyState, type RequestState } from '../types/common'
 import {
   formatCardNumber,
-  formatDate,
   getCardBadgeClass,
   getCardDisplayNumber,
   getCardStatusText,
@@ -884,33 +883,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                       ? 'Полные реквизиты показаны после MFA. CVV повторно не показывается.'
                       : 'Обычный просмотр показывает masked number. Полные реквизиты можно показать через MFA ниже.'}
                   </span>
-                </div>
-
-                <div className="detailsGrid cardsDetailsGrid">
-                  <div>
-                    <span>ID</span>
-                    <strong>{selectedCard.id}</strong>
-                  </div>
-                  <div>
-                    <span>Account ID</span>
-                    <strong>{selectedCard.account_id}</strong>
-                  </div>
-                  <div>
-                    <span>Expiry</span>
-                    <strong>{selectedCard.expiry || '-'}</strong>
-                  </div>
-                  <div>
-                    <span>Status</span>
-                    <strong>{selectedCard.status}</strong>
-                  </div>
-                  <div>
-                    <span>Created</span>
-                    <strong>{formatDate(selectedCard.created_at)}</strong>
-                  </div>
-                  <div>
-                    <span>Closed at</span>
-                    <strong>{formatDate(selectedCard.closed_at)}</strong>
-                  </div>
                 </div>
 
                 <div className="actions topGap">
