@@ -58,6 +58,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [createdCard, setCreatedCard] = useState<CardResponse | null>(null)
 
   const [cardRevealMfaCode, setCardRevealMfaCode] = useState('')
+  const [revealedCardDetails, setRevealedCardDetails] = useState<CardResponse | null>(null)
 
   const [cardPaymentAmount, setCardPaymentAmount] = useState('100.00')
   const [cardPaymentCVV, setCardPaymentCVV] = useState('')
@@ -106,6 +107,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setCardStatisticsState(emptyState)
     setCardCloseResult(null)
     setCardRevealMfaCode('')
+    setRevealedCardDetails(null)
     setCardRevealState(emptyState)
     setCardRevealMfaState(emptyState)
   }
@@ -261,7 +263,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       setCardRevealMfaState({
         loading: false,
         error: '',
-        success: 'MFA-код для показа номера карты отправлен.',
+        success: 'MFA-код для показа реквизитов карты отправлен.',
       })
     } catch (error) {
       setCardRevealMfaState({
@@ -293,9 +295,10 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
 
       updateCardListWithoutRevealedNumber(card)
       setSelectedCardId(String(card.id))
-      setSelectedCard(card)
+      setSelectedCard((current) => current ? { ...current, ...card, number: undefined } : { ...card, number: undefined })
+      setRevealedCardDetails(card)
       setCardRevealMfaCode('')
-      setCardRevealState({ loading: false, error: '', success: 'Полный номер карты показан.' })
+      setCardRevealState({ loading: false, error: '', success: 'Секретные реквизиты карты показаны.' })
     } catch (error) {
       setCardRevealState({
         loading: false,
@@ -561,6 +564,14 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   }
 
   const hasOperationResult = cardPaymentResult || cardTransferResult || cardCloseResult
+  const selectedCardSensitiveDetails =
+    selectedCard && revealedCardDetails?.id === selectedCard.id ? revealedCardDetails : null
+  const selectedCardDisplayNumber =
+    selectedCardSensitiveDetails?.number
+      ? formatCardNumber(selectedCardSensitiveDetails.number)
+      : selectedCard
+        ? getCardDisplayNumber(selectedCard)
+        : ''
 
   return (
     <Card variant="plain" className="panel">
@@ -843,10 +854,35 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
             {selectedCard && (
               <>
                 <div className="selectedCardPreview">
-                  <span className="selectedCardLabel">Номер карты</span>
-                  <strong className="selectedCardNumber">{getCardDisplayNumber(selectedCard)}</strong>
+                  <div className="selectedCardPreviewTop">
+                    <span className="selectedCardLabel">Номер карты</span>
+                    {selectedCardSensitiveDetails && <span className="badge mutedBadge">MFA</span>}
+                  </div>
+                  <strong className="selectedCardNumber">{selectedCardDisplayNumber}</strong>
+
+                  <div className="selectedCardPreviewMetaGrid">
+                    <div>
+                      <span>Expiry</span>
+                      <strong>{selectedCardSensitiveDetails?.expiry || selectedCard.expiry || '-'}</strong>
+                    </div>
+                    <div>
+                      <span>Status</span>
+                      <strong>{selectedCard.status}</strong>
+                    </div>
+                    <div>
+                      <span>Card ID</span>
+                      <strong>{selectedCard.id}</strong>
+                    </div>
+                    <div>
+                      <span>Account ID</span>
+                      <strong>{selectedCard.account_id}</strong>
+                    </div>
+                  </div>
+
                   <span className="selectedCardHint">
-                    {selectedCard.number ? 'Полный номер показан после MFA.' : 'Обычный просмотр показывает только masked number.'}
+                    {selectedCardSensitiveDetails
+                      ? 'Полные реквизиты показаны после MFA. CVV повторно не показывается.'
+                      : 'Обычный просмотр показывает masked number. Полные реквизиты можно показать через MFA ниже.'}
                   </span>
                 </div>
 
@@ -891,12 +927,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
           {selectedCard && (
             <section className="subPanel cardRevealPanel">
               <div className="subPanelHeader">
-                <h3>Полный номер карты</h3>
+                <h3>Секретные реквизиты карты</h3>
                 <span className="badge mutedBadge">MFA</span>
               </div>
 
               <p className="mutedText">
-                PAN показывается только через отдельный endpoint <code>POST /cards/{'{cardId}'}/reveal</code>.
+                Полный PAN и срок действия показываются только через отдельный endpoint <code>POST /cards/{'{cardId}'}/reveal</code>. CVV не показывается повторно.
               </p>
 
               <div className="cardRevealActions">
@@ -906,7 +942,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                   onClick={requestCardRevealMFA}
                   disabled={cardRevealMfaState.loading || isCardClosed(selectedCard)}
                 >
-                  {cardRevealMfaState.loading ? 'Отправляю...' : 'Запросить MFA для номера'}
+                  {cardRevealMfaState.loading ? 'Отправляю...' : 'Запросить MFA для реквизитов'}
                 </Button>
                 <RequestStatus state={cardRevealMfaState} />
 
@@ -920,7 +956,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                 </label>
 
                 <Button type="button" onClick={revealCardNumber} disabled={cardRevealState.loading || isCardClosed(selectedCard)}>
-                  {cardRevealState.loading ? 'Показываю...' : 'Показать полный номер'}
+                  {cardRevealState.loading ? 'Показываю...' : 'Показать реквизиты'}
                 </Button>
                 <RequestStatus state={cardRevealState} />
               </div>
