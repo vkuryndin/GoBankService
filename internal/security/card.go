@@ -54,6 +54,47 @@ func GenerateExpiry() string {
 	return time.Now().AddDate(3, 0, 0).Format("01/06")
 }
 
+func NormalizeCardNumber(number string) string {
+	builder := strings.Builder{}
+
+	for _, ch := range strings.TrimSpace(number) {
+		if ch >= '0' && ch <= '9' {
+			builder.WriteRune(ch)
+		}
+	}
+
+	return builder.String()
+}
+
+func IsValidCardNumber(number string) bool {
+	number = NormalizeCardNumber(number)
+	if len(number) < 12 || len(number) > 19 {
+		return false
+	}
+
+	sum := 0
+	doubleDigit := false
+
+	for i := len(number) - 1; i >= 0; i-- {
+		digit, err := strconv.Atoi(string(number[i]))
+		if err != nil {
+			return false
+		}
+
+		if doubleDigit {
+			digit *= 2
+			if digit > 9 {
+				digit -= 9
+			}
+		}
+
+		sum += digit
+		doubleDigit = !doubleDigit
+	}
+
+	return sum%10 == 0
+}
+
 func ComputeHMAC(data string, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(data))

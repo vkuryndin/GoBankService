@@ -47,7 +47,8 @@ export const cardsApi = {
     _token: string,
     cardID: number,
     body: {
-      to_card_id: number
+      to_card_id?: number
+      to_card_number?: string
       amount: string
       cvv: string
       mfa_code: string
@@ -61,13 +62,6 @@ export const cardsApi = {
     })
   },
 
-  close(_token: string, cardID: number): Promise<CloseCardResponse> {
-    return apiRequest<CloseCardResponse>(`/api/cards/${cardID}/close`, {
-      method: 'POST',
-      headers: { 'Idempotency-Key': createIdempotencyKey('card') },
-    })
-  },
-
   operationStatistics(
     _token: string,
     cardID: number,
@@ -76,5 +70,12 @@ export const cardsApi = {
     return apiRequest<OperationStatisticsResponse>(
       `/api/cards/${cardID}/operations/statistics?limit=${limit}`,
     )
+  },
+
+  close(_token: string, cardID: number): Promise<CloseCardResponse> {
+    return apiRequest<CloseCardResponse>(`/api/cards/${cardID}/close`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': createIdempotencyKey('card') },
+    })
   },
 }

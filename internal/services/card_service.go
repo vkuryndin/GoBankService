@@ -32,6 +32,7 @@ type cardStore interface {
 	FindByUserID(ctx context.Context, userID int64, pgpKey string) ([]models.CardDetails, error)
 	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
 	FindActiveByID(ctx context.Context, cardID int64, pgpKey string) (*models.CardDetails, error)
+	FindActiveByNumberHMAC(ctx context.Context, numberHMAC string, pgpKey string) (*models.CardDetails, error)
 	FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error)
 	Close(ctx context.Context, userID int64, cardID int64) (*models.CardDetails, error)
 }
@@ -321,10 +322,6 @@ func (s *CardService) TransferByCard(
 		return nil, err
 	}
 
-	if request.ToCardID <= 0 || request.ToCardID == fromCardID {
-		return nil, ErrInvalidCardTransfer
-	}
-
 	description := strings.TrimSpace(request.Description)
 	if description == "" {
 		description = "card to card transfer"
@@ -371,21 +368,17 @@ func (s *CardService) TransferByCard(
 
 	s.cvvAttemptLimiter.reset(cvvAttemptKey)
 
-	toCard, err := s.cardRepository.FindActiveByID(ctx, request.ToCardID, s.pgpKey)
+	toCard, err := s.findTransferRecipientCard(ctx, request)
 	if err != nil {
-		if errors.Is(err, repositories.ErrCardNotFound) {
-			return nil, ErrCardNotFound
-		}
-
 		return nil, err
+	}
+
+	if toCard.ID == fromCardID || fromCard.AccountID == toCard.AccountID {
+		return nil, ErrInvalidCardTransfer
 	}
 
 	if err := ensureCardNotExpired(toCard); err != nil {
 		return nil, err
-	}
-
-	if fromCard.AccountID == toCard.AccountID {
-		return nil, ErrInvalidCardTransfer
 	}
 
 	verification, err := s.mfaService.VerifyCardTransferCode(ctx, userID, fromCardID, request)
@@ -393,7 +386,7 @@ func (s *CardService) TransferByCard(
 		return nil, err
 	}
 
-	transactionID, err := s.accountRepository.TransferByCardWithMFA(ctx, userID, fromCard.AccountID, toCard.AccountID, fromCardID, request.ToCardID, amount, description, verification.CodeID)
+	transactionID, err := s.accountRepository.TransferByCardWithMFA(ctx, userID, fromCard.AccountID, toCard.AccountID, fromCardID, toCard.ID, amount, description, verification.CodeID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return nil, ErrAccountNotFound
@@ -421,12 +414,49 @@ func (s *CardService) TransferByCard(
 	return &dto.CardTransferResponse{
 		TransactionID: transactionID,
 		FromCardID:    fromCardID,
-		ToCardID:      request.ToCardID,
+		ToCardID:      toCard.ID,
 		FromAccountID: fromCard.AccountID,
 		ToAccountID:   toCard.AccountID,
 		Amount:        amount,
 		Status:        "completed",
 	}, nil
+}
+
+func (s *CardService) findTransferRecipientCard(ctx context.Context, request dto.CardTransferRequest) (*models.CardDetails, error) {
+	toCardNumber := strings.TrimSpace(request.RecipientCardNumber())
+	if toCardNumber != "" {
+		normalizedNumber := security.NormalizeCardNumber(toCardNumber)
+		if !security.IsValidCardNumber(normalizedNumber) {
+			return nil, ErrInvalidCardTransfer
+		}
+
+		toCard, err := s.cardRepository.FindActiveByNumberHMAC(ctx, security.ComputeHMAC(normalizedNumber, s.hmacSecret), s.pgpKey)
+		if err != nil {
+			if errors.Is(err, repositories.ErrCardNotFound) {
+				return nil, ErrCardNotFound
+			}
+
+			return nil, err
+		}
+
+		return toCard, nil
+	}
+
+	toCardID := request.RecipientCardID()
+	if toCardID <= 0 {
+		return nil, ErrInvalidCardTransfer
+	}
+
+	toCard, err := s.cardRepository.FindActiveByID(ctx, toCardID, s.pgpKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	return toCard, nil
 }
 
 func (s *CardService) createCardOnce(ctx context.Context, userID, accountID int64) (*models.CardDetails, error) {

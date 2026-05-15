@@ -16,7 +16,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useCards } from '../hooks/useCards'
 import { useMfaFlow } from '../hooks/useMfaFlow'
 import { useToast } from '../hooks/useToast'
-import { validateAmount, validatePositiveInteger } from '../utils/validation'
+import { validateAmount } from '../utils/validation'
 
 type CardsPageProps = {
   token: string
@@ -60,7 +60,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [cardPaymentMfaCode, setCardPaymentMfaCode] = useState('')
   const [cardPaymentDescription, setCardPaymentDescription] = useState('Card payment')
 
-  const [cardTransferToCardId, setCardTransferToCardId] = useState('')
+  const [cardTransferToCardNumber, setCardTransferToCardNumber] = useState('')
   const [cardTransferAmount, setCardTransferAmount] = useState('100.00')
   const [cardTransferCVV, setCardTransferCVV] = useState('')
   const [cardTransferMfaCode, setCardTransferMfaCode] = useState('')
@@ -363,12 +363,12 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     }
 
     const cardID = selectedCardIDNumber()
-    const toCardID = Number(cardTransferToCardId)
+    const toCardNumber = cardTransferToCardNumber.trim()
 
-    if (!cardID || !Number.isInteger(toCardID) || toCardID <= 0) {
+    if (!cardID || !toCardNumber) {
       setCardTransferMfaState({
         loading: false,
-        error: !cardID ? 'Выбери карту отправителя.' : 'Укажи корректный to_card_id.',
+        error: !cardID ? 'Выбери карту отправителя.' : 'Укажи номер карты получателя.',
         success: '',
       })
       return
@@ -380,7 +380,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       await cardTransferMfaFlow.requestMutation.mutateAsync({
         purpose: 'card_transfer',
         card_id: cardID,
-        to_card_id: toCardID,
+        to_card_number: toCardNumber,
         amount: cardTransferAmount,
       })
 
@@ -406,18 +406,18 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     }
 
     const cardID = selectedCardIDNumber()
-    const toCardID = Number(cardTransferToCardId)
+    const toCardNumber = cardTransferToCardNumber.trim()
 
-    if (!cardID || !Number.isInteger(toCardID) || toCardID <= 0) {
+    if (!cardID || !toCardNumber) {
       setCardTransferState({
         loading: false,
-        error: !cardID ? 'Выбери карту отправителя.' : 'Укажи корректный to_card_id.',
+        error: !cardID ? 'Выбери карту отправителя.' : 'Укажи номер карты получателя.',
         success: '',
       })
       return
     }
 
-    const validationError = validatePositiveInteger(cardTransferToCardId, 'To card ID') || validateAmount(cardTransferAmount)
+    const validationError = validateAmount(cardTransferAmount)
     if (validationError) {
       setCardTransferState({ loading: false, error: validationError, success: '' })
       return
@@ -430,7 +430,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       const data = await cardsDomain.transferMutation.mutateAsync({
         cardID,
         body: {
-          to_card_id: toCardID,
+          to_card_number: toCardNumber,
           amount: cardTransferAmount,
           cvv: cardTransferCVV,
           mfa_code: cardTransferMfaCode,
@@ -668,10 +668,11 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                     <p>Перевод идет с выбранной карты на карту-получатель.</p>
 
                     <label>
-                      <span>To card ID</span>
+                      <span>To card number</span>
                       <input
-                        value={cardTransferToCardId}
-                        onChange={(event) => setCardTransferToCardId(event.target.value)}
+                        value={cardTransferToCardNumber}
+                        onChange={(event) => setCardTransferToCardNumber(event.target.value)}
+                        placeholder="2200 0000 0000 0000"
                         disabled={isCardClosed(selectedCard)}
                       />
                     </label>

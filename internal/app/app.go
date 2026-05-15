@@ -143,6 +143,7 @@ func Run() {
 		cfg.Security.MFARequestCooldown,
 		auditService,
 		cfg.CardPGPKey,
+		cfg.CardHMACSecret,
 	)
 	accountService := services.NewAccountService(accountRepository, mfaService)
 	transferService := services.NewTransferService(accountRepository, mfaService)

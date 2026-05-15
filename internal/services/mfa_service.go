@@ -58,6 +58,7 @@ type mfaCardStore interface {
 	FindActiveAccountIDByID(ctx context.Context, cardID int64) (int64, error)
 	FindByIDAndUserID(ctx context.Context, cardID, userID int64, pgpKey string) (*models.CardDetails, error)
 	FindActiveByID(ctx context.Context, cardID int64, pgpKey string) (*models.CardDetails, error)
+	FindActiveByNumberHMAC(ctx context.Context, numberHMAC string, pgpKey string) (*models.CardDetails, error)
 }
 
 type mfaNotificationSender interface {
@@ -72,6 +73,7 @@ type MFAService struct {
 	attemptLimiter      *attemptLimiter
 	auditRecorder       audit.Recorder
 	pgpKey              string
+	hmacSecret          string
 	requestCooldown     *cooldownLimiter
 }
 
@@ -85,6 +87,7 @@ func NewMFAService(
 	requestCooldown time.Duration,
 	auditRecorder audit.Recorder,
 	pgpKey string,
+	hmacSecret string,
 ) *MFAService {
 	return &MFAService{
 		mfaRepository:       mfaRepository,
@@ -94,6 +97,7 @@ func NewMFAService(
 		attemptLimiter:      newAttemptLimiter(maxFailedAttempts, lockout),
 		auditRecorder:       auditRecorder,
 		pgpKey:              pgpKey,
+		hmacSecret:          hmacSecret,
 		requestCooldown:     newCooldownLimiter(requestCooldown),
 	}
 }
@@ -200,10 +204,11 @@ func (s *MFAService) VerifyCardTransferCode(
 	}
 
 	mfaRequest := dto.MFARequest{
-		Purpose:  MFAPurposeCardTransfer,
-		CardID:   fromCardID,
-		ToCardID: request.ToCardID,
-		Amount:   request.Amount,
+		Purpose:      MFAPurposeCardTransfer,
+		CardID:       fromCardID,
+		ToCardID:          request.RecipientCardID(),
+		ToCardNumber:      request.RecipientCardNumber(),
+		Amount:       request.Amount,
 	}
 
 	return s.verifyCode(ctx, userID, MFAPurposeCardTransfer, mfaRequest, code)
@@ -508,11 +513,7 @@ func (s *MFAService) buildCardTransferOperationHash(
 	userID int64,
 	request dto.MFARequest,
 ) (string, error) {
-	if request.CardID <= 0 || request.ToCardID <= 0 {
-		return "", ErrInvalidMFAOperation
-	}
-
-	if request.CardID == request.ToCardID {
+	if request.CardID <= 0 {
 		return "", ErrInvalidMFAOperation
 	}
 
@@ -538,21 +539,17 @@ func (s *MFAService) buildCardTransferOperationHash(
 		return "", err
 	}
 
-	toCard, err := s.cardRepository.FindActiveByID(ctx, request.ToCardID, s.pgpKey)
+	toCard, err := s.findCardTransferRecipient(ctx, request)
 	if err != nil {
-		if errors.Is(err, repositories.ErrCardNotFound) {
-			return "", ErrCardNotFound
-		}
-
 		return "", err
+	}
+
+	if request.CardID == toCard.ID || fromCard.AccountID == toCard.AccountID {
+		return "", ErrInvalidMFAOperation
 	}
 
 	if err := ensureCardNotExpired(toCard); err != nil {
 		return "", err
-	}
-
-	if fromCard.AccountID == toCard.AccountID {
-		return "", ErrInvalidMFAOperation
 	}
 
 	if err := s.accountRepository.ValidateTransferAccounts(ctx, userID, fromCard.AccountID, toCard.AccountID); err != nil {
@@ -576,13 +573,50 @@ func (s *MFAService) buildCardTransferOperationHash(
 		userID,
 		MFAPurposeCardTransfer,
 		request.CardID,
-		request.ToCardID,
+		toCard.ID,
 		fromCard.AccountID,
 		toCard.AccountID,
 		amount,
 	)
 
 	return hashOperation(raw), nil
+}
+
+func (s *MFAService) findCardTransferRecipient(ctx context.Context, request dto.MFARequest) (*models.CardDetails, error) {
+	toCardNumber := strings.TrimSpace(request.RecipientCardNumber())
+	if toCardNumber != "" {
+		normalizedNumber := security.NormalizeCardNumber(toCardNumber)
+		if !security.IsValidCardNumber(normalizedNumber) {
+			return nil, ErrInvalidMFAOperation
+		}
+
+		toCard, err := s.cardRepository.FindActiveByNumberHMAC(ctx, security.ComputeHMAC(normalizedNumber, s.hmacSecret), s.pgpKey)
+		if err != nil {
+			if errors.Is(err, repositories.ErrCardNotFound) {
+				return nil, ErrCardNotFound
+			}
+
+			return nil, err
+		}
+
+		return toCard, nil
+	}
+
+	toCardID := request.RecipientCardID()
+	if toCardID <= 0 {
+		return nil, ErrInvalidMFAOperation
+	}
+
+	toCard, err := s.cardRepository.FindActiveByID(ctx, toCardID, s.pgpKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	return toCard, nil
 }
 
 func (s *MFAService) buildCardRevealOperationHash(

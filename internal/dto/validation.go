@@ -60,7 +60,7 @@ func (r CardPaymentRequest) Validate() error {
 }
 
 func (r CardTransferRequest) Validate() error {
-	if r.ToCardID <= 0 {
+	if r.RecipientCardID() <= 0 && strings.TrimSpace(r.RecipientCardNumber()) == "" {
 		return ErrInvalidRequest
 	}
 	if err := requireNonBlank(r.Amount); err != nil {

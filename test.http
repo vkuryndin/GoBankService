@@ -1,11 +1,11 @@
 ### Variables
-@baseUrl = http://18.185.7.63/api
+@baseUrl2 = http://18.185.7.63/api
 
 
-@baseUrl2 = http://localhost:8080
+@baseUrl = http://localhost:8080
 
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4NTg0MzY5LCJpYXQiOjE3Nzg0OTc5NjksImp0aSI6IjZlNjU1ZjM2MjcyZjI3Yjg1YjY4NDk3MzEwMDQ5ZWVlIn0.jxo8ehCaDn_G31Ilc5UjooDWx-KJA_E7QljgAnCSsqU
-@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4NTgzMDYzLCJpYXQiOjE3Nzg0OTY2NjMsImp0aSI6ImI0YzczMWY1N2JjNGY4NTEwNTM1ODcxZTAwNTgwZDc0In0.oj572oXwGo0Il4V1SyJjJQixlwr6Jvc5VKDX1Cxxdeo
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxLCJzdWIiOiIxIiwiZXhwIjoxNzc4OTIwNzgxLCJpYXQiOjE3Nzg4MzQzODEsImp0aSI6IjEyMWM4OGI5NWYxY2Y1MzljNWM2OTMyMzQ4NzlkODVkIn0.vRd7f-KLZLWYJv6mYxYdHNBt_thIVX1Z61qxtF-s-o0
+@token2 = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo3LCJzdWIiOiI3IiwiZXhwIjoxNzc4OTIwNzQxLCJpYXQiOjE3Nzg4MzQzNDEsImp0aSI6Ijg0OWM3YzNlNmJhMzdlYmFkMjVlYjAyMWI2NmRhMGExIn0.2MRUSvBCmA83DwSisYllp84Em-6R9r7PhHbcD3U7hvU
 @accountId1user1 = 1
 @accountId2user1 = 2
 @accountId1user2 = 3
@@ -1010,3 +1010,45 @@ Authorization: Bearer {{token2}}
 ### Check auth after logout user 2 should fail
 GET {{baseUrl}}/auth/check
 Authorization: Bearer {{token2}}
+
+
+### =========================
+### Card transfer by card number
+### =========================
+
+
+@fromCardId = 3
+@toCardNumber = 2200 2149 3830 2826
+@amount = 100.00
+@cvv = 814
+@mfaCode = 891690
+
+### 1. Check sender card
+GET {{baseUrl}}/cards/{{fromCardId}}
+Authorization: Bearer {{token2}}
+
+### 2. Request MFA for card transfer by card number
+POST {{baseUrl}}/mfa/request
+Authorization: Bearer {{token2}}
+Content-Type: application/json
+
+{
+  "purpose": "card_transfer",
+  "card_id": {{fromCardId}},
+  "to_card_number": "{{toCardNumber}}",
+  "amount": "{{amount}}"
+}
+
+### 3. Transfer from card to card number
+POST {{baseUrl}}/cards/{{fromCardId}}/transfer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Idempotency-Key: card-transfer-by-number-001
+
+{
+  "to_card_number": "{{toCardNumber}}",
+  "amount": "{{amount}}",
+  "cvv": "{{cvv}}",
+  "mfa_code": "891690",
+  "description": "Card transfer by card number"
+}

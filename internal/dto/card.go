@@ -43,11 +43,30 @@ type CloseCardResponse struct {
 }
 
 type CardTransferRequest struct {
-	ToCardID    int64  `json:"to_card_id"`
-	Amount      string `json:"amount"`
-	CVV         string `json:"cvv"`
-	MFACode     string `json:"mfa_code"`
-	Description string `json:"description"`
+	ToCardID          int64  `json:"to_card_id,omitempty"`
+	ToCardIDCamel     int64  `json:"toCardId,omitempty"`
+	ToCardNumber      string `json:"to_card_number,omitempty"`
+	ToCardNumberCamel string `json:"toCardNumber,omitempty"`
+	Amount            string `json:"amount"`
+	CVV               string `json:"cvv"`
+	MFACode           string `json:"mfa_code"`
+	Description       string `json:"description"`
+}
+
+func (r CardTransferRequest) RecipientCardID() int64 {
+	if r.ToCardID > 0 {
+		return r.ToCardID
+	}
+
+	return r.ToCardIDCamel
+}
+
+func (r CardTransferRequest) RecipientCardNumber() string {
+	if r.ToCardNumber != "" {
+		return r.ToCardNumber
+	}
+
+	return r.ToCardNumberCamel
 }
 
 type CardTransferResponse struct {

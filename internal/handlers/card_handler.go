@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"bank-service/internal/audit"
 	"bank-service/internal/dto"
@@ -169,7 +170,7 @@ func (h *CardHandler) TransferByCard(w http.ResponseWriter, r *http.Request) {
 
 			recordFinancialAudit(h.auditRecorder, r, userID, "finance.card_transfer.success", "transaction", response.TransactionID, audit.StatusSuccess, map[string]any{
 				"from_card_id":    fromCardID,
-				"to_card_id":      request.ToCardID,
+				"to_card_id":      response.ToCardID,
 				"from_account_id": response.FromAccountID,
 				"to_account_id":   response.ToAccountID,
 				"amount":          request.Amount,
@@ -216,8 +217,29 @@ func (h *CardHandler) recordCardTransferFailure(
 	}
 
 	recordFinancialAudit(h.auditRecorder, r, userID, action, "card", fromCardID, status, map[string]any{
-		"from_card_id": fromCardID,
-		"to_card_id":   request.ToCardID,
-		"amount":       request.Amount,
+		"from_card_id":   fromCardID,
+		"to_card_id":     request.RecipientCardID(),
+		"to_card_number": maskCardNumberForAudit(request.RecipientCardNumber()),
+		"amount":         request.Amount,
 	})
+}
+
+func maskCardNumberForAudit(number string) string {
+	number = strings.TrimSpace(number)
+	if number == "" {
+		return ""
+	}
+
+	normalized := ""
+	for _, ch := range number {
+		if ch >= '0' && ch <= '9' {
+			normalized += string(ch)
+		}
+	}
+
+	if len(normalized) < 8 {
+		return "****"
+	}
+
+	return normalized[:4] + " **** **** " + normalized[len(normalized)-4:]
 }
