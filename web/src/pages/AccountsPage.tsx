@@ -6,7 +6,6 @@ import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } fr
 import type { OperationStatisticsResponse } from '../types/analytics'
 import { emptyState, type RequestState } from '../types/common'
 import {
-  formatDate,
   getAccountBadgeClass,
   getAccountStatusText,
   isAccountClosed,
@@ -474,12 +473,30 @@ export function AccountsPage({
         />
 
         <section className="subPanel">
-          <div className="subPanelHeader">
-            <h3>Выбранный счет</h3>
+          <div className="subPanelHeader accountOperationsHeader">
+            <div>
+              <h3>Операции по счету</h3>
+              {selectedAccount && (
+                <p className="mutedText">
+                  Выбран счет <code>{selectedAccount.account_number}</code>, ID {selectedAccount.id}.
+                </p>
+              )}
+            </div>
+
             {selectedAccount && (
-              <span className={getAccountBadgeClass(selectedAccount)}>
-                {getAccountStatusText(selectedAccount)}
-              </span>
+              <div className="accountOperationsHeaderActions">
+                <span className={getAccountBadgeClass(selectedAccount)}>
+                  {getAccountStatusText(selectedAccount)}
+                </span>
+                <Button
+                  className="secondary compactButton"
+                  type="button"
+                  onClick={loadAccountDetails}
+                  disabled={accountDetailsState.loading}
+                >
+                  {accountDetailsState.loading ? 'Обновляю...' : 'Обновить данные'}
+                </Button>
+              </div>
             )}
           </div>
 
@@ -487,21 +504,6 @@ export function AccountsPage({
 
           {selectedAccount && (
             <>
-              <div className="detailsGrid">
-                <div><span>ID</span><strong>{selectedAccount.id}</strong></div>
-                <div><span>Номер</span><strong>{selectedAccount.account_number}</strong></div>
-                <div><span>Баланс</span><strong>{selectedAccount.balance} {selectedAccount.currency}</strong></div>
-                <div><span>Создан</span><strong>{formatDate(selectedAccount.created_at)}</strong></div>
-                <div><span>Blocked</span><strong>{selectedAccount.is_blocked ? 'yes' : 'no'}</strong></div>
-                <div><span>Closed at</span><strong>{formatDate(selectedAccount.closed_at)}</strong></div>
-              </div>
-
-              <div className="actions topGap">
-                <Button className="secondary" type="button" onClick={loadAccountDetails} disabled={accountDetailsState.loading}>
-                  {accountDetailsState.loading ? 'Обновляю...' : 'Обновить данные'}
-                </Button>
-              </div>
-
               <RequestStatus state={accountDetailsState} />
 
               <div className="accountActionsGrid">

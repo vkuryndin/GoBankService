@@ -205,11 +205,28 @@ export function TransfersPage({
                   type="button"
                   onClick={() => selectFromAccount(account)}
                 >
-                  <span className="accountNumber">{account.account_number}</span>
-                  <span className="accountMeta">
-                    <span>ID {account.id}</span>
-                    <span>{account.balance} {account.currency}</span>
+                  <span className="accountItemTop">
+                    <span className="accountLabel">Счет</span>
                     <span className={getAccountBadgeClass(account)}>{getAccountStatusText(account)}</span>
+                  </span>
+                  <span className="accountNumber">{account.account_number}</span>
+                  <span className="accountMetaGrid">
+                    <span>
+                      <small>ID</small>
+                      <strong>{account.id}</strong>
+                    </span>
+                    <span>
+                      <small>Баланс</small>
+                      <strong>{account.balance} {account.currency}</strong>
+                    </span>
+                    <span>
+                      <small>Blocked</small>
+                      <strong>{account.is_blocked ? 'yes' : 'no'}</strong>
+                    </span>
+                    <span>
+                      <small>Closed</small>
+                      <strong>{account.closed_at ? 'yes' : 'no'}</strong>
+                    </span>
                   </span>
                 </Button>
               ))}

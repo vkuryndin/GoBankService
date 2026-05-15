@@ -7,9 +7,6 @@ import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCard
 import { emptyState, type RequestState } from '../types/common'
 import {
   formatCardNumber,
-  getCardBadgeClass,
-  getCardDisplayNumber,
-  getCardStatusText,
   isCardClosed,
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
@@ -40,7 +37,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const cardRevealMfaFlow = useMfaFlow(token)
   const [cardsState, setCardsState] = useState<RequestState>(emptyState)
   const [createCardState, setCreateCardState] = useState<RequestState>(emptyState)
-  const [cardDetailsState, setCardDetailsState] = useState<RequestState>(emptyState)
   const [cardRevealMfaState, setCardRevealMfaState] = useState<RequestState>(emptyState)
   const [cardRevealState, setCardRevealState] = useState<RequestState>(emptyState)
   const [cardPaymentMfaState, setCardPaymentMfaState] = useState<RequestState>(emptyState)
@@ -209,32 +205,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
       setCreateCardState({
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to create card',
-        success: '',
-      })
-    }
-  }
-
-  const loadCardDetails = async () => {
-    if (!requireToken(setCardDetailsState)) {
-      return
-    }
-
-    const cardID = selectedCardIDNumber()
-    if (!cardID) {
-      setCardDetailsState({ loading: false, error: 'Выбери карту.', success: '' })
-      return
-    }
-
-    setCardDetailsState({ loading: true, error: '', success: '' })
-
-    try {
-      const card = await cardsDomain.detailMutation.mutateAsync(cardID)
-      upsertCard(card)
-      setCardDetailsState({ loading: false, error: '', success: 'Безопасные данные карты обновлены.' })
-    } catch (error) {
-      setCardDetailsState({
-        loading: false,
-        error: error instanceof Error ? error.message : 'Failed to load card',
         success: '',
       })
     }
@@ -565,12 +535,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const hasOperationResult = cardPaymentResult || cardTransferResult || cardCloseResult
   const selectedCardSensitiveDetails =
     selectedCard && revealedCardDetails?.id === selectedCard.id ? revealedCardDetails : null
-  const selectedCardDisplayNumber =
-    selectedCardSensitiveDetails?.number
-      ? formatCardNumber(selectedCardSensitiveDetails.number)
-      : selectedCard
-        ? getCardDisplayNumber(selectedCard)
-        : ''
 
   return (
     <Card variant="plain" className="panel">
@@ -591,12 +555,19 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
 
       <div className="cardsWorkspace">
         <aside className="cardsColumn cardsNavigationColumn">
-          <section className="subPanel">
+          <CardListPanel cards={cards} selectedCardId={selectedCardId} revealedCardDetails={selectedCardSensitiveDetails} onSelect={selectCard} />
+        </aside>
+
+        <main className="cardsColumn cardsOperationsColumn">
+          <section className="subPanel cardsCreatePanel">
             <div className="subPanelHeader">
-              <h3>Выпуск карты</h3>
+              <div>
+                <h3>Выпуск карты</h3>
+                <p className="mutedText">Создай новую карту для выбранного или введённого счёта.</p>
+              </div>
             </div>
 
-            <form className="form cardsCreateForm" onSubmit={createCard}>
+            <form className="cardsCreateInlineForm" onSubmit={createCard}>
               <label>
                 <span>Account ID</span>
                 <input
@@ -621,11 +592,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
               </div>
             )}
           </section>
-
-          <CardListPanel cards={cards} selectedCardId={selectedCardId} onSelect={selectCard} />
-        </aside>
-
-        <main className="cardsColumn cardsOperationsColumn">
           <section className="subPanel cardsOperationsPanel">
             <div className="subPanelHeader">
               <h3>Операции по карте</h3>
@@ -842,59 +808,6 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
         </main>
 
         <aside className="cardsColumn cardsDetailsColumn">
-          <section className="subPanel cardDetailsPanel">
-            <div className="subPanelHeader">
-              <h3>Выбранная карта</h3>
-              {selectedCard && <span className={getCardBadgeClass(selectedCard)}>{getCardStatusText(selectedCard)}</span>}
-            </div>
-
-            {!selectedCard && <div className="empty">Выбери карту из списка.</div>}
-
-            {selectedCard && (
-              <>
-                <div className="selectedCardPreview">
-                  <div className="selectedCardPreviewTop">
-                    <span className="selectedCardLabel">Номер карты</span>
-                    {selectedCardSensitiveDetails && <span className="badge mutedBadge">MFA</span>}
-                  </div>
-                  <strong className="selectedCardNumber">{selectedCardDisplayNumber}</strong>
-
-                  <div className="selectedCardPreviewMetaGrid">
-                    <div>
-                      <span>Expiry</span>
-                      <strong>{selectedCardSensitiveDetails?.expiry || selectedCard.expiry || '-'}</strong>
-                    </div>
-                    <div>
-                      <span>Status</span>
-                      <strong>{selectedCard.status}</strong>
-                    </div>
-                    <div>
-                      <span>Card ID</span>
-                      <strong>{selectedCard.id}</strong>
-                    </div>
-                    <div>
-                      <span>Account ID</span>
-                      <strong>{selectedCard.account_id}</strong>
-                    </div>
-                  </div>
-
-                  <span className="selectedCardHint">
-                    {selectedCardSensitiveDetails
-                      ? 'Полные реквизиты показаны после MFA. CVV повторно не показывается.'
-                      : 'Обычный просмотр показывает masked number. Полные реквизиты можно показать через MFA ниже.'}
-                  </span>
-                </div>
-
-                <div className="actions topGap">
-                  <Button className="secondary" type="button" onClick={loadCardDetails} disabled={cardDetailsState.loading}>
-                    {cardDetailsState.loading ? 'Обновляю...' : 'Обновить безопасные детали'}
-                  </Button>
-                </div>
-
-                <RequestStatus state={cardDetailsState} />
-              </>
-            )}
-          </section>
 
           {selectedCard && (
             <section className="subPanel cardRevealPanel">
@@ -904,7 +817,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
               </div>
 
               <p className="mutedText">
-                Полный PAN и срок действия показываются только через отдельный endpoint <code>POST /cards/{'{cardId}'}/reveal</code>. CVV не показывается повторно.
+                Полный PAN и срок действия показываются только через endpoint <code>POST /cards/{'{cardId}'}/reveal</code>. После MFA реквизиты отобразятся в выбранной карточке слева. CVV не показывается повторно.
               </p>
 
               <div className="cardRevealActions">

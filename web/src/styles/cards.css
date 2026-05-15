@@ -4,7 +4,7 @@
 
 .cardsWorkspace {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(420px, 1fr) minmax(300px, 420px);
+  grid-template-columns: minmax(280px, 340px) minmax(420px, 1fr) minmax(280px, 360px);
   gap: 20px;
   align-items: start;
 }
@@ -23,6 +23,25 @@
 
 .cardsCreateForm {
   max-width: none;
+}
+
+.cardsCreatePanel {
+  min-width: 0;
+}
+
+.cardsCreateInlineForm {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 240px);
+  gap: 12px;
+  align-items: end;
+}
+
+.cardsCreateInlineForm label {
+  margin: 0;
+}
+
+.cardsCreateInlineForm input {
+  min-height: 40px;
 }
 
 .cardList {
@@ -73,18 +92,50 @@
   font-size: 15px;
 }
 
-.cardMeta {
+.bankCardItemTop {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cardLabel {
   color: #4b5563;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bankCardMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+
+.bankCardMetaGrid > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bankCardMetaGrid small {
+  color: #4b5563;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bankCardMetaGrid strong {
+  min-width: 0;
+  color: #111827;
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .cardsOperationsPanel,
 .cardsResultsPanel,
-.cardDetailsPanel,
 .cardRevealPanel {
   min-width: 0;
 }
@@ -174,7 +225,8 @@
 @media (max-width: 1100px) {
   .cardsWorkspace,
   .cardsDetailsColumn,
-  .cardsInlineFields {
+  .cardsInlineFields,
+  .cardsCreateInlineForm {
     grid-template-columns: 1fr;
   }
 
@@ -186,7 +238,8 @@
 
 @media (max-width: 560px) {
   .cardsDetailsGrid,
-  .selectedCardPreviewMetaGrid {
+  .selectedCardPreviewMetaGrid,
+  .bankCardMetaGrid {
     grid-template-columns: 1fr;
   }
 }

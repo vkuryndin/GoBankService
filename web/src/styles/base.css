@@ -683,19 +683,23 @@ td {
 .accountItem {
   display: grid;
   width: 100%;
-  gap: 8px;
+  gap: 10px;
   min-height: auto;
   padding: 14px;
   border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: #ffffff;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), transparent 48%),
+    #ffffff;
   color: #1f2937;
   text-align: left;
 }
 
 .accountItem:hover {
   border-color: #bfdbfe;
-  background: #f8fbff;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.12), transparent 48%),
+    #f8fbff;
   color: #1d4ed8;
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
@@ -703,21 +707,82 @@ td {
 
 .accountItem.active {
   border-color: #93c5fd;
-  background: #eff6ff;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.16), transparent 48%),
+    #eff6ff;
 }
 
-.accountNumber {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
-  word-break: break-all;
-}
-
-.accountMeta {
+.accountItemTop {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+}
+
+.accountLabel {
   color: #4b5563;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.accountNumber,
+.selectedAccountNumber {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  word-break: break-all;
+}
+
+.accountNumber {
+  color: #111827;
+  font-size: 14px;
+}
+
+.accountMeta,
+.accountMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+
+.accountMetaGrid > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.accountMetaGrid small {
+  color: #4b5563;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.accountMetaGrid strong {
+  min-width: 0;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.accountOperationsHeader {
+  align-items: flex-start;
+}
+
+.accountOperationsHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.compactButton {
+  min-height: 32px;
+  padding: 0 12px;
   font-size: 13px;
 }
 
@@ -1025,4 +1090,11 @@ td {
 .publicSecondaryAction {
   width: 100%;
   margin-top: 12px;
+}
+
+
+@media (max-width: 560px) {
+  .accountMetaGrid {
+    grid-template-columns: 1fr;
+  }
 }
