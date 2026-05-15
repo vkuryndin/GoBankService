@@ -12,6 +12,7 @@ import (
 var ErrInvalidTransfer = errors.New("invalid transfer")
 
 type transferAccountStore interface {
+	FindIDByAccountNumber(ctx context.Context, accountNumber string) (int64, error)
 	Transfer(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string) (int64, error)
 	TransferWithMFA(ctx context.Context, userID, fromAccountID, toAccountID int64, amount, description string, mfaCodeID int64) (int64, error)
 }
@@ -23,6 +24,32 @@ type transferMFAVerifier interface {
 type TransferService struct {
 	accountRepository transferAccountStore
 	mfaService        transferMFAVerifier
+}
+
+func normalizeAccountNumber(value string) string {
+	return strings.Join(strings.Fields(value), "")
+}
+
+func (s *TransferService) resolveTransferRecipientAccountID(ctx context.Context, request dto.TransferRequest) (int64, error) {
+	if request.ToAccountID > 0 {
+		return request.ToAccountID, nil
+	}
+
+	accountNumber := normalizeAccountNumber(request.RecipientAccountNumber())
+	if accountNumber == "" {
+		return 0, ErrInvalidTransfer
+	}
+
+	accountID, err := s.accountRepository.FindIDByAccountNumber(ctx, accountNumber)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return 0, ErrAccountNotFound
+		}
+
+		return 0, err
+	}
+
+	return accountID, nil
 }
 
 func NewTransferService(
@@ -41,11 +68,16 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 		return nil, err
 	}
 
-	if request.FromAccountID <= 0 || request.ToAccountID <= 0 {
+	toAccountID, err := s.resolveTransferRecipientAccountID(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if request.FromAccountID <= 0 || toAccountID <= 0 {
 		return nil, ErrInvalidTransfer
 	}
 
-	if request.FromAccountID == request.ToAccountID {
+	if request.FromAccountID == toAccountID {
 		return nil, ErrInvalidTransfer
 	}
 
@@ -54,7 +86,10 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 		return nil, ErrInvalidDescription
 	}
 
-	verification, err := s.mfaService.VerifyTransferCode(ctx, userID, request)
+	canonicalRequest := request
+	canonicalRequest.ToAccountID = toAccountID
+
+	verification, err := s.mfaService.VerifyTransferCode(ctx, userID, canonicalRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +98,7 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 		ctx,
 		userID,
 		request.FromAccountID,
-		request.ToAccountID,
+		toAccountID,
 		amount,
 		description,
 		verification.CodeID,
@@ -95,7 +130,7 @@ func (s *TransferService) Transfer(ctx context.Context, userID int64, request dt
 	return &dto.TransferResponse{
 		TransactionID: transactionID,
 		FromAccountID: request.FromAccountID,
-		ToAccountID:   request.ToAccountID,
+		ToAccountID:   toAccountID,
 		Amount:        amount,
 		Status:        "completed",
 	}, nil

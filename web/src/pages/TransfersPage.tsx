@@ -34,7 +34,7 @@ export function TransfersPage({
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([])
   const [transferFromAccountId, setTransferFromAccountId] = useState(sharedAccountId)
-  const [transferToAccountId, setTransferToAccountId] = useState('')
+  const [transferToAccountNumber, setTransferToAccountNumber] = useState('')
   const [transferAmount, setTransferAmount] = useState('100.00')
   const [transferDescription, setTransferDescription] = useState('Account transfer')
   const [transferMfaCode, setTransferMfaCode] = useState('')
@@ -102,19 +102,25 @@ export function TransfersPage({
 
   const validateTransfer = (setState: (state: RequestState) => void) => {
     const fromAccountID = Number(transferFromAccountId)
-    const toAccountID = Number(transferToAccountId)
+    const toAccountNumber = transferToAccountNumber.trim().replace(/\s+/g, '')
 
     if (!Number.isInteger(fromAccountID) || fromAccountID <= 0) {
-      setState({ loading: false, error: 'Укажи корректный from_account_id.', success: '' })
+      setState({ loading: false, error: 'Выбери счет отправителя.', success: '' })
       return null
     }
 
-    if (!Number.isInteger(toAccountID) || toAccountID <= 0) {
-      setState({ loading: false, error: 'Укажи корректный to_account_id.', success: '' })
+    if (toAccountNumber === '') {
+      setState({ loading: false, error: 'Укажи номер счета получателя.', success: '' })
       return null
     }
 
-    return { fromAccountID, toAccountID }
+    const fromAccount = accounts.find((account) => account.id === fromAccountID)
+    if (fromAccount && fromAccount.account_number === toAccountNumber) {
+      setState({ loading: false, error: 'Нельзя переводить на тот же счет.', success: '' })
+      return null
+    }
+
+    return { fromAccountID, toAccountNumber }
   }
 
   const requestTransferMFA = async () => {
@@ -133,7 +139,7 @@ export function TransfersPage({
       await transferMfaFlow.requestMutation.mutateAsync({
         purpose: 'transfer',
         from_account_id: ids.fromAccountID,
-        to_account_id: ids.toAccountID,
+        to_account_number: ids.toAccountNumber,
         amount: transferAmount,
       })
 
@@ -165,7 +171,7 @@ export function TransfersPage({
     try {
       const data = await transfersDomain.transferMutation.mutateAsync({
         from_account_id: ids.fromAccountID,
-        to_account_id: ids.toAccountID,
+        to_account_number: ids.toAccountNumber,
         amount: transferAmount,
         description: transferDescription,
         mfa_code: transferMfaCode,
@@ -187,9 +193,9 @@ export function TransfersPage({
     <Card variant="plain" className="panel">
       <div className="panelHeader">
         <div>
-          <h2>Переводы между счетами</h2>
+          <h2>Переводы по номеру счета</h2>
           <p>
-            Перевод выполняется в два шага: сначала MFA-код, потом операция <code>POST /transfer</code>.
+            Перевод выполняется по номеру счета получателя: сначала MFA-код, потом операция <code>POST /transfer</code>.
           </p>
         </div>
 
@@ -256,13 +262,24 @@ export function TransfersPage({
 
           <form className="form transferForm" onSubmit={handleTransfer}>
             <label>
-              <span>From account ID</span>
-              <input value={transferFromAccountId} onChange={(event) => setTransferFromAccountId(event.target.value)} placeholder="ID счета отправителя" />
+              <span>Счет отправителя</span>
+              <select value={transferFromAccountId} onChange={(event) => setTransferFromAccountId(event.target.value)}>
+                {accounts.length === 0 && <option value="">Нет счетов</option>}
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.account_number} · {account.balance} {account.currency}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
-              <span>To account ID</span>
-              <input value={transferToAccountId} onChange={(event) => setTransferToAccountId(event.target.value)} placeholder="ID счета получателя" />
+              <span>Номер счета получателя</span>
+              <input
+                value={transferToAccountNumber}
+                onChange={(event) => setTransferToAccountNumber(event.target.value)}
+                placeholder="Например: 2200327146406047"
+              />
             </label>
 
             <label>
@@ -299,8 +316,8 @@ export function TransfersPage({
               <strong>Результат перевода</strong>
               <div className="predictionGrid">
                 <div><span>Transaction</span><strong>{transferResult.transaction_id}</strong></div>
-                <div><span>From</span><strong>{transferResult.from_account_id}</strong></div>
-                <div><span>To</span><strong>{transferResult.to_account_id}</strong></div>
+                <div><span>From account ID</span><strong>{transferResult.from_account_id}</strong></div>
+                <div><span>To account ID</span><strong>{transferResult.to_account_id}</strong></div>
                 <div><span>Amount</span><strong>{transferResult.amount}</strong></div>
                 <div><span>Status</span><strong>{transferResult.status}</strong></div>
               </div>

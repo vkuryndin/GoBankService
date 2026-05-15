@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
 import { queryKeys } from '../api/queryKeys'
-import { OperationStatisticsView } from '../components/OperationStatisticsView'
+import { OperationStatisticsPanel } from '../components/analytics/OperationStatisticsPanel'
 import { RequestStatus } from '../components/RequestStatus'
 import type { OperationStatisticsResponse } from '../types/analytics'
 import type { CardPaymentResponse, CardResponse, CardTransferResponse, CloseCardResponse } from '../types/card'
@@ -568,7 +568,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     }
   }
 
-  const hasOperationResult = cardPaymentResult || cardTransferResult || cardCloseResult
+  const hasOperationResult = cardPaymentResult || cardTransferResult
   const selectedCardSensitiveDetails =
     selectedCard && revealedCardDetails?.id === selectedCard.id ? revealedCardDetails : null
 
@@ -764,22 +764,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                       {cardTransferState.loading ? 'Перевожу...' : 'Перевести'}
                     </Button>
                     <RequestStatus state={cardTransferState} />
-                  </form>
-
-                  <div className="actionBox dangerZone cardsDangerZone">
-                    <h4>Закрытие карты</h4>
-                    <p>Закрытая карта больше не участвует в операциях.</p>
-                    <Button
-                      className="danger"
-                      type="button"
-                      onClick={closeCard}
-                      disabled={cardCloseState.loading || isCardClosed(selectedCard)}
-                    >
-                      {cardCloseState.loading ? 'Закрываю...' : 'Закрыть карту'}
-                    </Button>
-                    <RequestStatus state={cardCloseState} />
-                  </div>
-                </div>
+                  </form>                </div>
               </>
             )}
           </section>
@@ -801,50 +786,58 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
                   <pre>{JSON.stringify(cardTransferResult, null, 2)}</pre>
                 </div>
               )}
+            </section>
+          )}
+
+          {selectedCard && (
+            <section className="subPanel cardsOperationStatisticsPanel">
+              <OperationStatisticsPanel
+                title="Статистика операций по карте"
+                description="История и суммы по выбранной карте."
+                endpointLabel="GET /cards/{cardId}/operations/statistics"
+                limit={cardStatisticsLimit}
+                state={cardStatisticsState}
+                statistics={cardOperationStatistics}
+                disabled={isCardClosed(selectedCard)}
+                emptyText="Нажми “Получить статистику”, чтобы увидеть историю и суммы по выбранной карте."
+                onLimitChange={setCardStatisticsLimit}
+                onSubmit={loadCardOperationStatistics}
+              />
+            </section>
+          )}
+        </main>
+
+        <aside className="cardsColumn cardsDetailsColumn">
+          {selectedCard && (
+            <section className="subPanel cardClosePanel dangerZone">
+              <div className="subPanelHeader">
+                <div>
+                  <h3>Закрытие карты</h3>
+                  <p className="mutedText">Закрытая карта больше не участвует в операциях.</p>
+                </div>
+                <span className={isCardClosed(selectedCard) ? 'badge mutedBadge' : 'badge successBadge'}>
+                  {selectedCard.status}
+                </span>
+              </div>
+
+              <Button
+                className="danger"
+                type="button"
+                onClick={closeCard}
+                disabled={cardCloseState.loading || isCardClosed(selectedCard)}
+              >
+                {cardCloseState.loading ? 'Закрываю...' : 'Закрыть карту'}
+              </Button>
+              <RequestStatus state={cardCloseState} />
+
               {cardCloseResult && (
-                <div className="result success">
+                <div className="result success compactResult">
                   <strong>Результат закрытия карты</strong>
                   <pre>{JSON.stringify(cardCloseResult, null, 2)}</pre>
                 </div>
               )}
             </section>
           )}
-
-          {selectedCard && (
-            <section className="subPanel cardsOperationStatisticsPanel">
-              <div className="subPanelHeader">
-                <div>
-                  <h3>Статистика операций по карте</h3>
-                  <p className="mutedText">Endpoint: <code>GET /cards/{'{cardId}'}/operations/statistics</code>.</p>
-                </div>
-              </div>
-
-              <form className="operationStatisticsForm" onSubmit={loadCardOperationStatistics}>
-                <label>
-                  <span>Limit</span>
-                  <input
-                    value={cardStatisticsLimit}
-                    onChange={(event) => setCardStatisticsLimit(event.target.value)}
-                    placeholder="1-500"
-                  />
-                </label>
-                <Button type="submit" disabled={cardStatisticsState.loading || isCardClosed(selectedCard)}>
-                  {cardStatisticsState.loading ? 'Загружаю...' : 'Получить статистику'}
-                </Button>
-              </form>
-
-              <RequestStatus state={cardStatisticsState} />
-
-              {!cardOperationStatistics && !cardStatisticsState.error && (
-                <div className="empty compactEmpty">Нажми “Получить статистику”, чтобы увидеть историю и суммы по выбранной карте.</div>
-              )}
-
-              {cardOperationStatistics && <OperationStatisticsView statistics={cardOperationStatistics} />}
-            </section>
-          )}
-        </main>
-
-        <aside className="cardsColumn cardsDetailsColumn">
 
           {selectedCard && (
             <section className="subPanel cardRevealPanel">

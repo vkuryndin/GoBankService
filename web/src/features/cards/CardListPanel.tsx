@@ -38,7 +38,7 @@ export function CardListPanel({ cards, selectedCardId, revealedCardDetails, onSe
                 <span className="cardLabel">Карта</span>
                 <span className={getCardBadgeClass(card)}>{getCardStatusText(card)}</span>
               </span>
-              <span className="cardNumber">{revealedForCard?.number ? revealedForCard.number.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : getCardDisplayNumber(card)}</span>
+              <span className="cardNumber" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{revealedForCard?.number ? revealedForCard.number.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : getCardDisplayNumber(card)}</span>
               <span className="bankCardMetaGrid">
                 <span>
                   <small>Card ID</small>

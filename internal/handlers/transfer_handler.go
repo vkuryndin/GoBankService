@@ -61,8 +61,9 @@ func (h *TransferHandler) recordTransfer(
 	}
 
 	recordFinancialAudit(h.auditRecorder, r, userID, action, resourceType, resourceID, status, map[string]any{
-		"from_account_id": request.FromAccountID,
-		"to_account_id":   request.ToAccountID,
-		"amount":          request.Amount,
+		"from_account_id":   request.FromAccountID,
+		"to_account_id":     request.ToAccountID,
+		"to_account_number": request.RecipientAccountNumber(),
+		"amount":            request.Amount,
 	})
 }

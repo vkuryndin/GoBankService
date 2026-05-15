@@ -2,6 +2,7 @@ export type AnalyticsResponse = {
   income_this_month: string
   expense_this_month: string
   credit_load: string
+  active_credits_count: number
 }
 
 export type OperationDirection = 'income' | 'expense' | 'neutral'

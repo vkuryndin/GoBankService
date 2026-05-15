@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
 import { queryKeys } from '../api/queryKeys'
-import { OperationStatisticsView } from '../components/OperationStatisticsView'
+import { OperationStatisticsPanel } from '../components/analytics/OperationStatisticsPanel'
 import { RequestStatus } from '../components/RequestStatus'
-import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
+import type { AccountResponse, CloseAccountResponse } from '../types/account'
 import type { OperationStatisticsResponse } from '../types/analytics'
 import { emptyState, type RequestState } from '../types/common'
 import {
@@ -19,7 +19,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog'
 import { useAccounts } from '../hooks/useAccounts'
 import { useMfaFlow } from '../hooks/useMfaFlow'
 import { useToast } from '../hooks/useToast'
-import { validateAmount, validateDays } from '../utils/validation'
+import { validateAmount } from '../utils/validation'
 
 type AccountsPageProps = {
   token: string
@@ -42,7 +42,6 @@ export function AccountsPage({
   const [depositState, setDepositState] = useState<RequestState>(emptyState)
   const [withdrawMfaState, setWithdrawMfaState] = useState<RequestState>(emptyState)
   const [withdrawState, setWithdrawState] = useState<RequestState>(emptyState)
-  const [predictState, setPredictState] = useState<RequestState>(emptyState)
   const [accountStatisticsState, setAccountStatisticsState] = useState<RequestState>(emptyState)
   const [closeAccountState, setCloseAccountState] = useState<RequestState>(emptyState)
 
@@ -52,9 +51,7 @@ export function AccountsPage({
   const [depositAmount, setDepositAmount] = useState('100.00')
   const [withdrawAmount, setWithdrawAmount] = useState('50.00')
   const [withdrawMfaCode, setWithdrawMfaCode] = useState('')
-  const [predictDays, setPredictDays] = useState('30')
   const [accountStatisticsLimit, setAccountStatisticsLimit] = useState('100')
-  const [predictResult, setPredictResult] = useState<PredictBalanceResponse | null>(null)
   const [accountOperationStatistics, setAccountOperationStatistics] = useState<OperationStatisticsResponse | null>(null)
   const [closeResult, setCloseResult] = useState<CloseAccountResponse | null>(null)
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
@@ -114,8 +111,6 @@ export function AccountsPage({
     setSelectedAccountId(String(account.id))
     setSelectedAccount(account)
     onSharedAccountIdChange(String(account.id))
-    setPredictResult(null)
-
     const statisticsLimit = Number(accountStatisticsLimit)
     const cachedStatistics = Number.isInteger(statisticsLimit)
       ? queryClient.getQueryData<OperationStatisticsResponse>(
@@ -357,43 +352,6 @@ export function AccountsPage({
     }
   }
 
-  const loadPrediction = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-
-    if (!requireToken(setPredictState)) {
-      return
-    }
-
-    const accountID = selectedAccountIDNumber()
-    if (!accountID) {
-      setPredictState({ loading: false, error: 'Выбери счет.', success: '' })
-      return
-    }
-
-    const daysError = validateDays(predictDays)
-    if (daysError) {
-      setPredictState({ loading: false, error: daysError, success: '' })
-      return
-    }
-
-    setPredictState({ loading: true, error: '', success: '' })
-    setPredictResult(null)
-
-    try {
-      const days = Number(predictDays)
-      const data = await accountsDomain.predictionMutation.mutateAsync({ accountID, days })
-
-      setPredictResult(data)
-      setPredictState({ loading: false, error: '', success: 'Прогноз баланса получен.' })
-    } catch (error) {
-      setPredictState({
-        loading: false,
-        error: error instanceof Error ? error.message : 'Failed to load prediction',
-        success: '',
-      })
-    }
-  }
-
   const loadAccountOperationStatistics = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -481,7 +439,7 @@ export function AccountsPage({
         <div>
           <h2>Счета пользователя</h2>
           <p>
-            Все основные действия: создание, список, просмотр, deposit, withdraw, close, predict и полная статистика операций.
+            Все основные действия: создание, список, просмотр, deposit, withdraw, close и полная статистика операций.
           </p>
         </div>
 
@@ -578,77 +536,61 @@ export function AccountsPage({
                   </Button>
                   <RequestStatus state={withdrawState} />
                 </form>
-
-                <form className="actionBox" onSubmit={loadPrediction}>
-                  <h4>Прогноз баланса</h4>
-                  <p>Запрос к <code>GET /accounts/{'{accountId}'}/predict</code>.</p>
-                  <label>
-                    <span>Days</span>
-                    <input value={predictDays} onChange={(event) => setPredictDays(event.target.value)} />
-                  </label>
-                  <Button type="submit" disabled={predictState.loading}>
-                    {predictState.loading ? 'Считаю...' : 'Получить прогноз'}
-                  </Button>
-                  <RequestStatus state={predictState} />
-                </form>
-
-                <div className="actionBox dangerZone">
-                  <h4>Закрытие счета</h4>
-                  <p>Закрытие возможно только при нулевом балансе и без активного кредита.</p>
-                  <Button className="danger" type="button" onClick={closeAccount} disabled={closeAccountState.loading || isAccountClosed(selectedAccount)}>
-                    {closeAccountState.loading ? 'Закрываю...' : 'Закрыть счет'}
-                  </Button>
-                  <RequestStatus state={closeAccountState} />
-                </div>
               </div>
 
-              <section className="operationStatisticsSection">
-                <div className="subPanelHeader">
-                  <div>
-                    <h3>Полная статистика операций по счету</h3>
-                    <p className="mutedText">Endpoint: <code>GET /accounts/{'{accountId}'}/operations/statistics</code>.</p>
-                  </div>
+              <OperationStatisticsPanel
+                title="Полная статистика операций по счету"
+                description="История и суммы по выбранному счету."
+                endpointLabel="GET /accounts/{accountId}/operations/statistics"
+                limit={accountStatisticsLimit}
+                state={accountStatisticsState}
+                statistics={accountOperationStatistics}
+                disabled={isAccountClosed(selectedAccount)}
+                emptyText="Нажми “Получить статистику”, чтобы увидеть историю и суммы по выбранному счету."
+                onLimitChange={setAccountStatisticsLimit}
+                onSubmit={loadAccountOperationStatistics}
+              />
+            </>
+          )}
+        </section>
+
+        <aside className="accountsSideColumn">
+          {selectedAccount ? (
+            <section className="subPanel accountClosePanel dangerZone">
+              <div className="subPanelHeader">
+                <div>
+                  <h3>Закрытие счета</h3>
+                  <p className="mutedText">Закрытие возможно только при нулевом балансе и без активного кредита.</p>
                 </div>
+                <span className={getAccountBadgeClass(selectedAccount)}>
+                  {getAccountStatusText(selectedAccount)}
+                </span>
+              </div>
 
-                <form className="operationStatisticsForm" onSubmit={loadAccountOperationStatistics}>
-                  <label>
-                    <span>Limit</span>
-                    <input
-                      value={accountStatisticsLimit}
-                      onChange={(event) => setAccountStatisticsLimit(event.target.value)}
-                      placeholder="1-500"
-                    />
-                  </label>
-                  <Button type="submit" disabled={accountStatisticsState.loading || isAccountClosed(selectedAccount)}>
-                    {accountStatisticsState.loading ? 'Загружаю...' : 'Получить статистику'}
-                  </Button>
-                </form>
-
-                <RequestStatus state={accountStatisticsState} />
-
-                {!accountOperationStatistics && !accountStatisticsState.error && (
-                  <div className="empty compactEmpty">Нажми “Получить статистику”, чтобы увидеть историю и суммы по выбранному счету.</div>
-                )}
-
-                {accountOperationStatistics && <OperationStatisticsView statistics={accountOperationStatistics} />}
-              </section>
-
-              {predictResult && (
-                <div className="result success">
-                  <strong>Прогноз баланса</strong>
-                  <pre>{JSON.stringify(predictResult, null, 2)}</pre>
-                </div>
-              )}
+              <Button
+                className="danger"
+                type="button"
+                onClick={closeAccount}
+                disabled={closeAccountState.loading || isAccountClosed(selectedAccount)}
+              >
+                {closeAccountState.loading ? 'Закрываю...' : 'Закрыть счет'}
+              </Button>
+              <RequestStatus state={closeAccountState} />
 
               {closeResult && (
-                <div className="result success">
+                <div className="result success compactResult">
                   <strong>Результат закрытия счета</strong>
                   <pre>{JSON.stringify(closeResult, null, 2)}</pre>
                 </div>
               )}
-            </>
+            </section>
+          ) : (
+            <section className="subPanel accountClosePanel">
+              <h3>Закрытие счета</h3>
+              <div className="empty compactEmpty">Выбери счет, чтобы открыть действия справа.</div>
+            </section>
           )}
-        </section>
+        </aside>
       </div>
       <ConfirmDialog
         open={closeConfirmOpen}

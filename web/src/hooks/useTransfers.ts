@@ -4,7 +4,8 @@ import { transfersApi } from '../api/transfersApi'
 
 export type TransferMutationRequest = {
   from_account_id: number
-  to_account_id: number
+  to_account_id?: number
+  to_account_number?: string
   amount: string
   description: string
   mfa_code: string

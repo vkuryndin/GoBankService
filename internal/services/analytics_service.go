@@ -38,9 +38,10 @@ func (s *AnalyticsService) GetAnalytics(ctx context.Context, userID int64) (*dto
 	}
 
 	return &dto.AnalyticsResponse{
-		IncomeThisMonth:  analytics.Income,
-		ExpenseThisMonth: analytics.Expense,
-		CreditLoad:       analytics.CreditLoad,
+		IncomeThisMonth:    analytics.Income,
+		ExpenseThisMonth:   analytics.Expense,
+		CreditLoad:         analytics.CreditLoad,
+		ActiveCreditsCount: analytics.ActiveCreditsCount,
 	}, nil
 }
 

@@ -33,9 +33,18 @@ func (r WithdrawRequest) Validate() error {
 }
 
 func (r TransferRequest) Validate() error {
-	if r.FromAccountID <= 0 || r.ToAccountID <= 0 || r.FromAccountID == r.ToAccountID {
+	if r.FromAccountID <= 0 {
 		return ErrInvalidRequest
 	}
+
+	if r.ToAccountID <= 0 && strings.TrimSpace(r.RecipientAccountNumber()) == "" {
+		return ErrInvalidRequest
+	}
+
+	if r.ToAccountID > 0 && r.FromAccountID == r.ToAccountID {
+		return ErrInvalidRequest
+	}
+
 	if err := requireNonBlank(r.Amount); err != nil {
 		return err
 	}

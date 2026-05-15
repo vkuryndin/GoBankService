@@ -8,9 +8,10 @@ import (
 )
 
 type MonthlyAnalytics struct {
-	Income     string
-	Expense    string
-	CreditLoad string
+	Income             string
+	Expense            string
+	CreditLoad         string
+	ActiveCreditsCount int64
 }
 
 type BalancePrediction struct {
@@ -52,10 +53,16 @@ func (r *AnalyticsRepository) GetMonthlyAnalytics(ctx context.Context, userID in
 		return nil, err
 	}
 
+	activeCreditsCount, err := r.getActiveCreditsCount(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MonthlyAnalytics{
-		Income:     income,
-		Expense:    expense,
-		CreditLoad: creditLoad,
+		Income:             income,
+		Expense:            expense,
+		CreditLoad:         creditLoad,
+		ActiveCreditsCount: activeCreditsCount,
 	}, nil
 }
 
@@ -225,6 +232,22 @@ func (r *AnalyticsRepository) getCreditLoad(ctx context.Context, userID int64) (
 	}
 
 	return creditLoad, nil
+}
+
+func (r *AnalyticsRepository) getActiveCreditsCount(ctx context.Context, userID int64) (int64, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM credits
+		WHERE user_id = $1
+		  AND status = 'active'
+	`
+
+	var count int64
+	if err := r.db.QueryRowContext(ctx, query, userID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("get active credits count: %w", err)
+	}
+
+	return count, nil
 }
 
 type OperationStatistics struct {

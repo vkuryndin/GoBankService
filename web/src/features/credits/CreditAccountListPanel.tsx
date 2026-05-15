@@ -37,7 +37,7 @@ export function CreditAccountListPanel({ accounts, selectedAccountId, onSelect }
                 <span className="accountLabel">Счет</span>
                 <span className={getAccountBadgeClass(account)}>{getAccountStatusText(account)}</span>
               </span>
-              <span className="creditAccountNumber">{account.account_number}</span>
+              <span className="creditAccountNumber" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{account.account_number}</span>
               <span className="creditAccountMeta accountMetaGrid">
                 <span>
                   <small>ID</small>

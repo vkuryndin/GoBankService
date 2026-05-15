@@ -1,21 +1,31 @@
 package dto
 
 type MFARequest struct {
-	Purpose           string `json:"purpose"`
-	FromAccountID     int64  `json:"from_account_id,omitempty"`
-	ToAccountID       int64  `json:"to_account_id,omitempty"`
-	CardID            int64  `json:"card_id,omitempty"`
-	ToCardID          int64  `json:"to_card_id,omitempty"`
-	ToCardIDCamel     int64  `json:"toCardId,omitempty"`
-	ToCardNumber      string `json:"to_card_number,omitempty"`
-	ToCardNumberCamel string `json:"toCardNumber,omitempty"`
-	AccountID         int64  `json:"account_id,omitempty"`
-	Amount            string `json:"amount,omitempty"`
-	PrincipalAmount   string `json:"principal_amount,omitempty"`
-	TermMonths        int    `json:"term_months,omitempty"`
-	CreditID          int64  `json:"credit_id,omitempty"`
-	PrepaymentMode    string `json:"prepayment_mode,omitempty"`
-	Mode              string `json:"mode,omitempty"`
+	Purpose              string `json:"purpose"`
+	FromAccountID        int64  `json:"from_account_id,omitempty"`
+	ToAccountID          int64  `json:"to_account_id,omitempty"`
+	ToAccountNumber      string `json:"to_account_number,omitempty"`
+	ToAccountNumberCamel string `json:"toAccountNumber,omitempty"`
+	CardID               int64  `json:"card_id,omitempty"`
+	ToCardID             int64  `json:"to_card_id,omitempty"`
+	ToCardIDCamel        int64  `json:"toCardId,omitempty"`
+	ToCardNumber         string `json:"to_card_number,omitempty"`
+	ToCardNumberCamel    string `json:"toCardNumber,omitempty"`
+	AccountID            int64  `json:"account_id,omitempty"`
+	Amount               string `json:"amount,omitempty"`
+	PrincipalAmount      string `json:"principal_amount,omitempty"`
+	TermMonths           int    `json:"term_months,omitempty"`
+	CreditID             int64  `json:"credit_id,omitempty"`
+	PrepaymentMode       string `json:"prepayment_mode,omitempty"`
+	Mode                 string `json:"mode,omitempty"`
+}
+
+func (r MFARequest) RecipientAccountNumber() string {
+	if r.ToAccountNumber != "" {
+		return r.ToAccountNumber
+	}
+
+	return r.ToAccountNumberCamel
 }
 
 func (r MFARequest) RecipientCardID() int64 {

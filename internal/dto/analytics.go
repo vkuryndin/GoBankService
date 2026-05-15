@@ -1,9 +1,10 @@
 package dto
 
 type AnalyticsResponse struct {
-	IncomeThisMonth  string `json:"income_this_month"`
-	ExpenseThisMonth string `json:"expense_this_month"`
-	CreditLoad       string `json:"credit_load"`
+	IncomeThisMonth    string `json:"income_this_month"`
+	ExpenseThisMonth   string `json:"expense_this_month"`
+	CreditLoad         string `json:"credit_load"`
+	ActiveCreditsCount int64  `json:"active_credits_count"`
 }
 
 type OperationStatisticsResponse struct {

@@ -92,6 +92,14 @@
   font-size: 15px;
 }
 
+
+.cardNumber,
+.selectedCardNumber {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
 .bankCardItemTop {
   display: flex;
   align-items: center;
@@ -136,6 +144,7 @@
 
 .cardsOperationsPanel,
 .cardsResultsPanel,
+.cardClosePanel,
 .cardRevealPanel {
   min-width: 0;
 }
@@ -278,4 +287,18 @@
   min-width: 0;
   color: #111827;
   overflow-wrap: anywhere;
+}
+
+
+.cardClosePanel {
+  display: grid;
+  gap: 12px;
+}
+
+.cardClosePanel .subPanelHeader {
+  align-items: flex-start;
+}
+
+.cardClosePanel .result {
+  margin-top: 0;
 }

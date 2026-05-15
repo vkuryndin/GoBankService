@@ -128,6 +128,26 @@ func (r *AccountRepository) FindByIDAndUserID(ctx context.Context, accountID, us
 	return account, nil
 }
 
+func (r *AccountRepository) FindIDByAccountNumber(ctx context.Context, accountNumber string) (int64, error) {
+	query := `
+		SELECT id
+		FROM accounts
+		WHERE account_number = $1
+	`
+
+	var accountID int64
+	err := r.db.QueryRowContext(ctx, query, accountNumber).Scan(&accountID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrAccountNotFound
+		}
+
+		return 0, fmt.Errorf("find account id by account number: %w", err)
+	}
+
+	return accountID, nil
+}
+
 // ValidateTransferAccounts keeps transfers safe before an MFA code is issued.
 // The source account must belong to the authenticated user; the destination account may belong to another user,
 // but both accounts have to exist and be available for operations.

@@ -34,7 +34,7 @@ export function AccountListPanel({ accounts, selectedAccountId, onSelect }: Acco
                 <span className="accountLabel">Счет</span>
                 <span className={getAccountBadgeClass(account)}>{getAccountStatusText(account)}</span>
               </span>
-              <span className="accountNumber">{account.account_number}</span>
+              <span className="accountNumber" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>{account.account_number}</span>
               <span className="accountMetaGrid">
                 <span>
                   <small>ID</small>

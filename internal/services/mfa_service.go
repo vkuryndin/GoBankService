@@ -50,6 +50,7 @@ type mfaCodeStore interface {
 }
 
 type mfaAccountStore interface {
+	FindIDByAccountNumber(ctx context.Context, accountNumber string) (int64, error)
 	ValidateTransferAccounts(ctx context.Context, userID int64, fromAccountID int64, toAccountID int64) error
 	FindByIDAndUserID(ctx context.Context, accountID, userID int64) (*models.Account, error)
 }
@@ -156,10 +157,11 @@ func (s *MFAService) VerifyTransferCode(ctx context.Context, userID int64, reque
 	}
 
 	mfaRequest := dto.MFARequest{
-		Purpose:       MFAPurposeTransfer,
-		FromAccountID: request.FromAccountID,
-		ToAccountID:   request.ToAccountID,
-		Amount:        request.Amount,
+		Purpose:         MFAPurposeTransfer,
+		FromAccountID:   request.FromAccountID,
+		ToAccountID:     request.ToAccountID,
+		ToAccountNumber: request.RecipientAccountNumber(),
+		Amount:          request.Amount,
 	}
 
 	return s.verifyCode(ctx, userID, MFAPurposeTransfer, mfaRequest, code)
@@ -432,11 +434,16 @@ func (s *MFAService) buildTransferOperationHash(
 	userID int64,
 	request dto.MFARequest,
 ) (string, error) {
-	if request.FromAccountID <= 0 || request.ToAccountID <= 0 {
+	toAccountID, err := s.resolveTransferRecipientAccountID(ctx, request)
+	if err != nil {
+		return "", err
+	}
+
+	if request.FromAccountID <= 0 || toAccountID <= 0 {
 		return "", ErrInvalidMFAOperation
 	}
 
-	if request.FromAccountID == request.ToAccountID {
+	if request.FromAccountID == toAccountID {
 		return "", ErrInvalidMFAOperation
 	}
 
@@ -449,7 +456,7 @@ func (s *MFAService) buildTransferOperationHash(
 		ctx,
 		userID,
 		request.FromAccountID,
-		request.ToAccountID,
+		toAccountID,
 	); err != nil {
 		if errors.Is(err, repositories.ErrAccountNotFound) {
 			return "", ErrAccountNotFound
@@ -471,11 +478,33 @@ func (s *MFAService) buildTransferOperationHash(
 		userID,
 		MFAPurposeTransfer,
 		request.FromAccountID,
-		request.ToAccountID,
+		toAccountID,
 		amount,
 	)
 
 	return hashOperation(raw), nil
+}
+
+func (s *MFAService) resolveTransferRecipientAccountID(ctx context.Context, request dto.MFARequest) (int64, error) {
+	if request.ToAccountID > 0 {
+		return request.ToAccountID, nil
+	}
+
+	accountNumber := normalizeAccountNumber(request.RecipientAccountNumber())
+	if accountNumber == "" {
+		return 0, ErrInvalidMFAOperation
+	}
+
+	accountID, err := s.accountRepository.FindIDByAccountNumber(ctx, accountNumber)
+	if err != nil {
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return 0, ErrAccountNotFound
+		}
+
+		return 0, err
+	}
+
+	return accountID, nil
 }
 
 func (s *MFAService) buildCardPaymentOperationHash(
