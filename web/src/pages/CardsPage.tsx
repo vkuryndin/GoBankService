@@ -15,6 +15,7 @@ import { Button } from '../components/ui/Button'
 import { CardListPanel } from '../features/cards/CardListPanel'
 import { Card } from '../components/ui/Card'
 import { ConfirmDialog } from '../components/ui/ConfirmDialog'
+import { OperationConfirmDialog } from '../components/ui/OperationConfirmDialog'
 import { useCards } from '../hooks/useCards'
 import { useMfaFlow } from '../hooks/useMfaFlow'
 import { useToast } from '../hooks/useToast'
@@ -75,6 +76,7 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const [cardOperationStatistics, setCardOperationStatistics] = useState<OperationStatisticsResponse | null>(null)
   const [cardCloseResult, setCardCloseResult] = useState<CloseCardResponse | null>(null)
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
+  const [cardTransferConfirmOpen, setCardTransferConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (sharedAccountId && !createCardAccountId) {
@@ -456,6 +458,34 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     const validationError = validateAmount(cardTransferAmount)
     if (validationError) {
       setCardTransferState({ loading: false, error: validationError, success: '' })
+      return
+    }
+
+    if (cardTransferCVV.trim() === '' || cardTransferMfaCode.trim() === '') {
+      setCardTransferState({ loading: false, error: 'Введи CVV и MFA code.', success: '' })
+      return
+    }
+
+    setCardTransferResult(null)
+    setCardTransferState(emptyState)
+    setCardTransferConfirmOpen(true)
+  }
+
+  const confirmCardTransfer = async () => {
+    if (!requireToken(setCardTransferState)) {
+      return
+    }
+
+    const cardID = selectedCardIDNumber()
+    const toCardNumber = cardTransferToCardNumber.trim()
+
+    if (!cardID || !toCardNumber) {
+      setCardTransferConfirmOpen(false)
+      setCardTransferState({
+        loading: false,
+        error: !cardID ? 'Выбери карту отправителя.' : 'Укажи номер карты получателя.',
+        success: '',
+      })
       return
     }
 
@@ -879,6 +909,38 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
           )}
         </aside>
       </div>
+
+      <OperationConfirmDialog
+        open={cardTransferConfirmOpen}
+        title="Подтвердить перевод с карты"
+        message="Проверь детали операции перед выполнением."
+        confirmText="Выполнить перевод"
+        loading={cardTransferState.loading}
+        error={cardTransferState.error}
+        result={
+          cardTransferResult ? (
+            <div className="operationDialogResultGrid">
+              <div><span>Status</span><strong>{cardTransferResult.status}</strong></div>
+              <div><span>Transaction ID</span><strong>{cardTransferResult.transaction_id}</strong></div>
+              <div><span>From card ID</span><strong>{cardTransferResult.from_card_id}</strong></div>
+              <div><span>To card ID</span><strong>{cardTransferResult.to_card_id || '-'}</strong></div>
+              <div><span>Amount</span><strong>{cardTransferResult.amount} RUB</strong></div>
+              <div><span>Recipient</span><strong>{formatCardNumber(cardTransferToCardNumber)}</strong></div>
+            </div>
+          ) : undefined
+        }
+        onConfirm={() => void confirmCardTransfer()}
+        onClose={() => setCardTransferConfirmOpen(false)}
+      >
+        <div className="operationConfirmDetails">
+          <div><span>Операция</span><strong>Перевод с карты на карту</strong></div>
+          <div><span>Карта отправителя</span><strong>{selectedCard ? formatCardNumber(selectedCard.number || selectedCard.masked_number) : '-'}</strong></div>
+          <div><span>Карта получателя</span><strong>{formatCardNumber(cardTransferToCardNumber)}</strong></div>
+          <div><span>Сумма</span><strong>{cardTransferAmount} RUB</strong></div>
+          <div><span>Описание</span><strong>{cardTransferDescription || '-'}</strong></div>
+          <div><span>Статус</span><strong>{cardTransferResult ? cardTransferResult.status : 'Ожидает подтверждения'}</strong></div>
+        </div>
+      </OperationConfirmDialog>
 
       <ConfirmDialog
         open={closeConfirmOpen}

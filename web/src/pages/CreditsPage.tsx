@@ -4,6 +4,7 @@ import type { FormEvent } from 'react'
 import { CreditOperationHistoryView } from '../components/analytics/CreditOperationHistoryView'
 import { RequestStatus } from '../components/RequestStatus'
 import { Button } from '../components/ui/Button'
+import { OperationConfirmDialog } from '../components/ui/OperationConfirmDialog'
 import { CreditAccountListPanel } from '../features/credits/CreditAccountListPanel'
 import { CreditListPanel } from '../features/credits/CreditListPanel'
 import { queryKeys } from '../api/queryKeys'
@@ -118,6 +119,7 @@ export function CreditsPage({
   const [selectedCredit, setSelectedCredit] = useState<CreditResponse | null>(null)
   const [schedule, setSchedule] = useState<PaymentScheduleResponse[]>([])
   const [creditOperations, setCreditOperations] = useState<CreditOperationResponse[]>([])
+  const [creditCreateConfirmOpen, setCreditCreateConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (sharedAccountId && !selectedAccountId) {
@@ -463,6 +465,27 @@ export function CreditsPage({
 
     const request = getCreditRequest(setCreateCreditState)
     if (!request) {
+      return
+    }
+
+    if (creditMfaCode.trim() === '') {
+      setCreateCreditState({ loading: false, error: 'Введи MFA code.', success: '' })
+      return
+    }
+
+    setCreatedCredit(null)
+    setCreateCreditState(emptyState)
+    setCreditCreateConfirmOpen(true)
+  }
+
+  const confirmCreateCredit = async () => {
+    if (!requireToken(setCreateCreditState)) {
+      return
+    }
+
+    const request = getCreditRequest(setCreateCreditState)
+    if (!request) {
+      setCreditCreateConfirmOpen(false)
       return
     }
 
@@ -1060,6 +1083,39 @@ export function CreditsPage({
           )}
         </section>
       </div>
+      <OperationConfirmDialog
+        open={creditCreateConfirmOpen}
+        title="Подтвердить выдачу кредита"
+        message="Проверь параметры кредита перед оформлением."
+        confirmText="Оформить кредит"
+        loading={createCreditState.loading}
+        error={createCreditState.error}
+        result={
+          createdCredit ? (
+            <div className="operationDialogResultGrid">
+              <div><span>Status</span><strong>{createdCredit.status}</strong></div>
+              <div><span>Credit ID</span><strong>{createdCredit.id}</strong></div>
+              <div><span>Account ID</span><strong>{createdCredit.account_id}</strong></div>
+              <div><span>Principal</span><strong>{createdCredit.principal_amount} RUB</strong></div>
+              <div><span>Monthly payment</span><strong>{createdCredit.monthly_payment} RUB</strong></div>
+              <div><span>Term</span><strong>{createdCredit.term_months} мес.</strong></div>
+              <div><span>Interest rate</span><strong>{createdCredit.interest_rate}%</strong></div>
+              <div><span>Created</span><strong>{formatDate(createdCredit.created_at)}</strong></div>
+            </div>
+          ) : undefined
+        }
+        onConfirm={() => void confirmCreateCredit()}
+        onClose={() => setCreditCreateConfirmOpen(false)}
+      >
+        <div className="operationConfirmDetails">
+          <div><span>Операция</span><strong>Выдача кредита</strong></div>
+          <div><span>Счет</span><strong>{selectedAccount?.account_number || selectedAccountId}</strong></div>
+          <div><span>Сумма кредита</span><strong>{principalAmount} RUB</strong></div>
+          <div><span>Срок</span><strong>{termMonths} мес.</strong></div>
+          <div><span>Платеж</span><strong>{creditCheck?.monthly_payment ? `${creditCheck.monthly_payment} RUB / мес.` : 'Будет рассчитан backend'}</strong></div>
+          <div><span>Статус</span><strong>{createdCredit ? createdCredit.status : 'Ожидает подтверждения'}</strong></div>
+        </div>
+      </OperationConfirmDialog>
     </Card>
   )
 }

@@ -1,4 +1,3 @@
-import { Button } from '../../components/ui/Button'
 import type { AccountResponse } from '../../types/account'
 import { getAccountBadgeClass, getAccountStatusText } from '../../utils/format'
 
@@ -26,11 +25,18 @@ export function CreditAccountListPanel({ accounts, selectedAccountId, onSelect }
       {accounts.length > 0 && (
         <div className="creditAccountCardsList">
           {accounts.map((account) => (
-            <Button
+            <div
               key={account.id}
               className={selectedAccountId === String(account.id) ? 'creditAccountCard selected' : 'creditAccountCard'}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(account)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelect(account)
+                }
+              }}
               aria-pressed={selectedAccountId === String(account.id)}
             >
               <span className="accountItemTop">
@@ -56,7 +62,7 @@ export function CreditAccountListPanel({ accounts, selectedAccountId, onSelect }
                   <strong>{account.closed_at ? 'yes' : 'no'}</strong>
                 </span>
               </span>
-            </Button>
+            </div>
           ))}
         </div>
       )}

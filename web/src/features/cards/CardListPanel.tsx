@@ -1,4 +1,3 @@
-import { Button } from '../../components/ui/Button'
 import type { CardResponse } from '../../types/card'
 import { formatDate, getCardBadgeClass, getCardDisplayNumber, getCardStatusText } from '../../utils/format'
 
@@ -27,11 +26,18 @@ export function CardListPanel({ cards, selectedCardId, revealedCardDetails, onSe
             const isSelected = selectedCardId === String(card.id)
             const revealedForCard = isSelected && revealedCardDetails?.id === card.id ? revealedCardDetails : null
             return (
-            <Button
+            <div
               key={card.id}
               className={isSelected ? 'bankCardItem active' : 'bankCardItem'}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(card)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelect(card)
+                }
+              }}
               aria-pressed={isSelected}
             >
               <span className="bankCardItemTop">
@@ -61,7 +67,7 @@ export function CardListPanel({ cards, selectedCardId, revealedCardDetails, onSe
                   <strong>{formatDate(card.closed_at)}</strong>
                 </span>
               </span>
-            </Button>
+            </div>
             )
           })}
         </div>

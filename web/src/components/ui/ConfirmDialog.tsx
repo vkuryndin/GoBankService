@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { Button } from './Button'
 
 type ConfirmDialogProps = {
   open: boolean
   title: string
-  message: string
+  message?: string
+  children?: ReactNode
   confirmText?: string
   cancelText?: string
   danger?: boolean
@@ -17,6 +19,7 @@ export function ConfirmDialog({
   open,
   title,
   message,
+  children,
   confirmText = 'Подтвердить',
   cancelText = 'Отмена',
   danger = false,
@@ -58,7 +61,8 @@ export function ConfirmDialog({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h3 id="confirm-dialog-title">{title}</h3>
-        <p id="confirm-dialog-message">{message}</p>
+        {message && <p id="confirm-dialog-message">{message}</p>}
+        {children}
         <div className="actions confirmActions">
           <Button
             ref={cancelButtonRef}

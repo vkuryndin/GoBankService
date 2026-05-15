@@ -1,4 +1,3 @@
-import { Button } from '../../components/ui/Button'
 import type { AccountResponse } from '../../types/account'
 import { getAccountBadgeClass, getAccountStatusText } from '../../utils/format'
 
@@ -23,11 +22,18 @@ export function AccountListPanel({ accounts, selectedAccountId, onSelect }: Acco
       {accounts.length > 0 && (
         <div className="accountList">
           {accounts.map((account) => (
-            <Button
+            <div
               key={account.id}
               className={selectedAccountId === String(account.id) ? 'accountItem active' : 'accountItem'}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(account)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelect(account)
+                }
+              }}
               aria-pressed={selectedAccountId === String(account.id)}
             >
               <span className="accountItemTop">
@@ -53,7 +59,7 @@ export function AccountListPanel({ accounts, selectedAccountId, onSelect }: Acco
                   <strong>{account.closed_at ? 'yes' : 'no'}</strong>
                 </span>
               </span>
-            </Button>
+            </div>
           ))}
         </div>
       )}

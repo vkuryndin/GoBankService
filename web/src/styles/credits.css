@@ -816,3 +816,10 @@
   font-size: 13px;
   line-height: 1.45;
 }
+
+
+.creditAccountCard:focus-visible {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+  outline: none;
+}

@@ -9,6 +9,7 @@ import {
   getAccountStatusText,
 } from '../utils/format'
 import { Button } from '../components/ui/Button'
+import { OperationConfirmDialog } from '../components/ui/OperationConfirmDialog'
 import { useAccounts } from '../hooks/useAccounts'
 import { useMfaFlow } from '../hooks/useMfaFlow'
 import { useTransfers } from '../hooks/useTransfers'
@@ -39,6 +40,7 @@ export function TransfersPage({
   const [transferDescription, setTransferDescription] = useState('Account transfer')
   const [transferMfaCode, setTransferMfaCode] = useState('')
   const [transferResult, setTransferResult] = useState<TransferResponse | null>(null)
+  const [transferConfirmOpen, setTransferConfirmOpen] = useState(false)
 
   useEffect(() => {
     if (sharedAccountId && !transferFromAccountId) {
@@ -123,6 +125,8 @@ export function TransfersPage({
     return { fromAccountID, toAccountNumber }
   }
 
+  const selectedTransferFromAccount = accounts.find((account) => String(account.id) === transferFromAccountId)
+
   const requestTransferMFA = async () => {
     if (!requireToken(setTransferMfaState)) {
       return
@@ -162,6 +166,27 @@ export function TransfersPage({
 
     const ids = validateTransfer(setTransferState)
     if (!ids) {
+      return
+    }
+
+    if (transferMfaCode.trim() === '') {
+      setTransferState({ loading: false, error: 'Введи MFA code.', success: '' })
+      return
+    }
+
+    setTransferResult(null)
+    setTransferState(emptyState)
+    setTransferConfirmOpen(true)
+  }
+
+  const confirmTransfer = async () => {
+    if (!requireToken(setTransferState)) {
+      return
+    }
+
+    const ids = validateTransfer(setTransferState)
+    if (!ids) {
+      setTransferConfirmOpen(false)
       return
     }
 
@@ -326,6 +351,37 @@ export function TransfersPage({
           )}
         </section>
       </div>
+      <OperationConfirmDialog
+        open={transferConfirmOpen}
+        title="Подтвердить перевод"
+        message="Проверь детали операции перед выполнением."
+        confirmText="Выполнить перевод"
+        loading={transferState.loading}
+        error={transferState.error}
+        result={
+          transferResult ? (
+            <div className="operationDialogResultGrid">
+              <div><span>Status</span><strong>{transferResult.status}</strong></div>
+              <div><span>Transaction ID</span><strong>{transferResult.transaction_id}</strong></div>
+              <div><span>From account ID</span><strong>{transferResult.from_account_id}</strong></div>
+              <div><span>To account ID</span><strong>{transferResult.to_account_id}</strong></div>
+              <div><span>Recipient number</span><strong>{transferToAccountNumber.trim()}</strong></div>
+              <div><span>Amount</span><strong>{transferResult.amount} RUB</strong></div>
+            </div>
+          ) : undefined
+        }
+        onConfirm={() => void confirmTransfer()}
+        onClose={() => setTransferConfirmOpen(false)}
+      >
+        <div className="operationConfirmDetails">
+          <div><span>Операция</span><strong>Перевод со счета на счет</strong></div>
+          <div><span>Счет отправителя</span><strong>{selectedTransferFromAccount?.account_number || transferFromAccountId}</strong></div>
+          <div><span>Счет получателя</span><strong>{transferToAccountNumber.trim()}</strong></div>
+          <div><span>Сумма</span><strong>{transferAmount} RUB</strong></div>
+          <div><span>Описание</span><strong>{transferDescription || '-'}</strong></div>
+          <div><span>Статус</span><strong>{transferResult ? transferResult.status : 'Ожидает подтверждения'}</strong></div>
+        </div>
+      </OperationConfirmDialog>
     </Card>
   )
 }

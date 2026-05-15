@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -163,12 +164,34 @@ func writeStoredIdempotencyResponse(w http.ResponseWriter, response *repositorie
 		return
 	}
 
-	if response.ContentType != "" {
-		w.Header().Set("Content-Type", response.ContentType)
+	contentType := strings.TrimSpace(response.ContentType)
+	if contentType == "" {
+		contentType = "application/json"
 	}
+
+	if !isAllowedIdempotencyReplayContentType(contentType) {
+		writeMiddlewareError(w, http.StatusInternalServerError, "idempotency replay failed")
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("X-Idempotent-Replay", "true")
 	w.WriteHeader(response.StatusCode)
-	_, _ = w.Write(response.Body)
+	_, _ = w.Write(response.Body) // #nosec G705 -- body is a previously generated server response from the idempotency cache; replay content type is allowlisted above.
+}
+
+func isAllowedIdempotencyReplayContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return false
+	}
+
+	switch mediaType {
+	case "application/json", "text/plain":
+		return true
+	default:
+		return false
+	}
 }
 
 // request_hash prevents clients from reusing the same Idempotency-Key for a different financial request body.
