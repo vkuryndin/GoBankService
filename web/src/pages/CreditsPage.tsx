@@ -928,7 +928,12 @@ export function CreditsPage({
                 >
                   {creditDetailsState.loading ? 'Обновляю...' : 'Обновить кредит'}
                 </Button>
-                <Button type="button" onClick={loadSchedule} disabled={scheduleState.loading}>
+                <Button
+                  className="secondary"
+                  type="button"
+                  onClick={loadSchedule}
+                  disabled={scheduleState.loading}
+                >
                   {scheduleState.loading ? 'Загружаю...' : 'Показать график'}
                 </Button>
                 <Button
@@ -955,61 +960,70 @@ export function CreditsPage({
                   </div>
                 </div>
 
-                <div className="creditPrepaymentForm">
-                  <label>
-                    <span>Amount</span>
-                    <input
-                      value={prepaymentAmount}
-                      onChange={(event) => setPrepaymentAmount(event.target.value)}
-                      placeholder="10000.00"
-                      disabled={selectedCredit.status !== 'active' || prepaymentAutofillState.loading}
-                    />
-                  </label>
+                {selectedCredit.status !== 'active' ? (
+                  <div className="creditPrepaymentUnavailable">
+                    <strong>Кредит закрыт или неактивен.</strong>
+                    <p>
+                      Досрочное погашение недоступно. График платежей и историю операций можно посмотреть кнопками выше.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="creditPrepaymentForm">
+                      <label>
+                        <span>Amount</span>
+                        <input
+                          value={prepaymentAmount}
+                          onChange={(event) => setPrepaymentAmount(event.target.value)}
+                          placeholder="10000.00"
+                          disabled={prepaymentAutofillState.loading}
+                        />
+                      </label>
 
-                  <label>
-                    <span>Mode</span>
-                    <select
-                      value={prepaymentMode}
-                      onChange={(event) => changePrepaymentMode(event.target.value as CreditPrepaymentMode)}
-                      disabled={selectedCredit.status !== 'active'}
-                    >
-                      <option value="reduce_term">Уменьшить срок</option>
-                      <option value="reduce_payment">Уменьшить платеж</option>
-                      <option value="full_close">Погасить полностью</option>
-                    </select>
-                  </label>
+                      <label>
+                        <span>Mode</span>
+                        <select
+                          value={prepaymentMode}
+                          onChange={(event) => changePrepaymentMode(event.target.value as CreditPrepaymentMode)}
+                        >
+                          <option value="reduce_term">Уменьшить срок</option>
+                          <option value="reduce_payment">Уменьшить платеж</option>
+                          <option value="full_close">Погасить полностью</option>
+                        </select>
+                      </label>
 
-                  <Button
-                    className="secondary"
-                    type="button"
-                    onClick={requestPrepaymentMFA}
-                    disabled={prepaymentMfaState.loading || selectedCredit.status !== 'active'}
-                  >
-                    {prepaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
-                  </Button>
+                      <Button
+                        className="secondary"
+                        type="button"
+                        onClick={requestPrepaymentMFA}
+                        disabled={prepaymentMfaState.loading || prepaymentAutofillState.loading}
+                      >
+                        {prepaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                      </Button>
 
-                  <label>
-                    <span>MFA code</span>
-                    <input
-                      value={prepaymentMfaCode}
-                      onChange={(event) => setPrepaymentMfaCode(event.target.value)}
-                      placeholder="6 цифр"
-                      disabled={selectedCredit.status !== 'active'}
-                    />
-                  </label>
+                      <label>
+                        <span>MFA code</span>
+                        <input
+                          value={prepaymentMfaCode}
+                          onChange={(event) => setPrepaymentMfaCode(event.target.value)}
+                          placeholder="6 цифр"
+                        />
+                      </label>
 
-                  <Button
-                    type="button"
-                    onClick={prepayCredit}
-                    disabled={prepaymentState.loading || selectedCredit.status !== 'active'}
-                  >
-                    {prepaymentState.loading ? 'Погашаю...' : 'Погасить досрочно'}
-                  </Button>
-                </div>
+                      <Button
+                        type="button"
+                        onClick={prepayCredit}
+                        disabled={prepaymentState.loading || prepaymentMfaCode.trim() === ''}
+                      >
+                        {prepaymentState.loading ? 'Погашаю...' : 'Погасить досрочно'}
+                      </Button>
+                    </div>
 
-                <RequestStatus state={prepaymentAutofillState} />
-                <RequestStatus state={prepaymentMfaState} />
-                <RequestStatus state={prepaymentState} />
+                    <RequestStatus state={prepaymentAutofillState} />
+                    <RequestStatus state={prepaymentMfaState} />
+                    <RequestStatus state={prepaymentState} />
+                  </>
+                )}
 
                 {prepaymentResult && (
                   <div className="result success compactResult">
