@@ -83,6 +83,12 @@ export function useCards(token: string) {
   const operationStatisticsMutation = useMutation({
     mutationFn: ({ cardID, limit }: { cardID: number; limit: number }) =>
       cardsApi.operationStatistics(token, cardID, limit),
+    onSuccess: (statistics, request) => {
+      queryClient.setQueryData(
+        queryKeys.cards.operationStatistics(request.cardID, request.limit),
+        statistics,
+      )
+    },
   })
 
   return {

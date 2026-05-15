@@ -71,6 +71,12 @@ export function useAccounts(token: string) {
   const operationStatisticsMutation = useMutation({
     mutationFn: ({ accountID, limit }: { accountID: number; limit: number }) =>
       accountsApi.operationStatistics(token, accountID, limit),
+    onSuccess: (statistics, request) => {
+      queryClient.setQueryData(
+        queryKeys.accounts.operationStatistics(request.accountID, request.limit),
+        statistics,
+      )
+    },
   })
 
   return {

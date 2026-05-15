@@ -1021,7 +1021,7 @@ Authorization: Bearer {{token2}}
 @toCardNumber = 2200 2149 3830 2826
 @amount = 100.00
 @cvv = 814
-@mfaCode = 891690
+@mfaCode = 957494
 
 ### 1. Check sender card
 GET {{baseUrl}}/cards/{{fromCardId}}
@@ -1041,7 +1041,7 @@ Content-Type: application/json
 
 ### 3. Transfer from card to card number
 POST {{baseUrl}}/cards/{{fromCardId}}/transfer
-Authorization: Bearer {{token}}
+Authorization: Bearer {{token2}}
 Content-Type: application/json
 Idempotency-Key: card-transfer-by-number-001
 
@@ -1049,6 +1049,6 @@ Idempotency-Key: card-transfer-by-number-001
   "to_card_number": "{{toCardNumber}}",
   "amount": "{{amount}}",
   "cvv": "{{cvv}}",
-  "mfa_code": "891690",
+  "mfa_code": "221019",
   "description": "Card transfer by card number"
 }

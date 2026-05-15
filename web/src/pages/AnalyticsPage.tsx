@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RequestStatus } from '../components/RequestStatus'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -14,6 +14,12 @@ export function AnalyticsPage({ token }: AnalyticsPageProps) {
   const analyticsDomain = useAnalytics(token)
   const [analyticsState, setAnalyticsState] = useState<RequestState>(emptyState)
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null)
+
+  useEffect(() => {
+    if (analyticsDomain.summaryQuery.data) {
+      setAnalytics(analyticsDomain.summaryQuery.data)
+    }
+  }, [analyticsDomain.summaryQuery.data])
 
   const loadAnalytics = async () => {
     if (!token) {

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
+import { queryKeys } from '../api/queryKeys'
 import { OperationStatisticsView } from '../components/OperationStatisticsView'
 import { RequestStatus } from '../components/RequestStatus'
 import type { OperationStatisticsResponse } from '../types/analytics'
@@ -31,6 +33,7 @@ const formatCardForDisplay = (card: CardResponse): CardResponse => ({
 
 export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
   const { showToast } = useToast()
+  const queryClient = useQueryClient()
   const cardsDomain = useCards(token)
   const cardPaymentMfaFlow = useMfaFlow(token)
   const cardTransferMfaFlow = useMfaFlow(token)
@@ -79,6 +82,31 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     }
   }, [sharedAccountId, createCardAccountId])
 
+  useEffect(() => {
+    const cachedCards = cardsDomain.listQuery.data
+    if (!cachedCards) {
+      return
+    }
+
+    setCards(cachedCards)
+
+    if (cachedCards.length === 0) {
+      setSelectedCardId('')
+      setSelectedCard(null)
+      return
+    }
+
+    const cardToSelect =
+      cachedCards.find((item) => String(item.id) === selectedCardId) ||
+      (selectedCard
+        ? cachedCards.find((item) => item.id === selectedCard.id)
+        : undefined) ||
+      cachedCards[0]
+
+    setSelectedCardId(String(cardToSelect.id))
+    setSelectedCard(cardToSelect)
+  }, [cardsDomain.listQuery.data])
+
   const requireToken = (setState: (state: RequestState) => void): boolean => {
     if (token) {
       return true
@@ -98,7 +126,15 @@ export function CardsPage({ token, sharedAccountId }: CardsPageProps) {
     setSelectedCard(card)
     setCardPaymentResult(null)
     setCardTransferResult(null)
-    setCardOperationStatistics(null)
+
+    const statisticsLimit = Number(cardStatisticsLimit)
+    const cachedStatistics = Number.isInteger(statisticsLimit)
+      ? queryClient.getQueryData<OperationStatisticsResponse>(
+        queryKeys.cards.operationStatistics(card.id, statisticsLimit),
+      )
+      : undefined
+    setCardOperationStatistics(cachedStatistics || null)
+
     setCardStatisticsState(emptyState)
     setCardCloseResult(null)
     setCardRevealMfaCode('')

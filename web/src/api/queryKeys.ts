@@ -16,11 +16,23 @@ export const queryKeys = {
       accountID,
       days,
     ] as const,
+    operationStatistics: (accountID: number, limit: number) => [
+      'accounts',
+      'operation-statistics',
+      accountID,
+      limit,
+    ] as const,
   },
   cards: {
     all: ['cards'] as const,
     list: ['cards', 'list'] as const,
     detail: (cardID: number) => ['cards', 'detail', cardID] as const,
+    operationStatistics: (cardID: number, limit: number) => [
+      'cards',
+      'operation-statistics',
+      cardID,
+      limit,
+    ] as const,
   },
   credits: {
     all: ['credits'] as const,

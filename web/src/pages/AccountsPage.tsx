@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
+import { queryKeys } from '../api/queryKeys'
 import { OperationStatisticsView } from '../components/OperationStatisticsView'
 import { RequestStatus } from '../components/RequestStatus'
 import type { AccountResponse, CloseAccountResponse, PredictBalanceResponse } from '../types/account'
@@ -31,6 +33,7 @@ export function AccountsPage({
   onSharedAccountIdChange,
 }: AccountsPageProps) {
   const { showToast } = useToast()
+  const queryClient = useQueryClient()
   const accountsDomain = useAccounts(token)
   const withdrawMfaFlow = useMfaFlow(token)
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
@@ -62,6 +65,33 @@ export function AccountsPage({
     }
   }, [sharedAccountId, selectedAccountId])
 
+  useEffect(() => {
+    const cachedAccounts = accountsDomain.listQuery.data
+    if (!cachedAccounts) {
+      return
+    }
+
+    setAccounts(cachedAccounts)
+
+    if (cachedAccounts.length === 0) {
+      setSelectedAccountId('')
+      setSelectedAccount(null)
+      return
+    }
+
+    const accountToSelect =
+      cachedAccounts.find((item) => String(item.id) === selectedAccountId) ||
+      cachedAccounts.find((item) => String(item.id) === sharedAccountId) ||
+      (selectedAccount
+        ? cachedAccounts.find((item) => item.id === selectedAccount.id)
+        : undefined) ||
+      cachedAccounts[0]
+
+    setSelectedAccountId(String(accountToSelect.id))
+    setSelectedAccount(accountToSelect)
+    onSharedAccountIdChange(String(accountToSelect.id))
+  }, [accountsDomain.listQuery.data])
+
   const requireToken = (setState: (state: RequestState) => void): boolean => {
     if (token) {
       return true
@@ -85,7 +115,15 @@ export function AccountsPage({
     setSelectedAccount(account)
     onSharedAccountIdChange(String(account.id))
     setPredictResult(null)
-    setAccountOperationStatistics(null)
+
+    const statisticsLimit = Number(accountStatisticsLimit)
+    const cachedStatistics = Number.isInteger(statisticsLimit)
+      ? queryClient.getQueryData<OperationStatisticsResponse>(
+        queryKeys.accounts.operationStatistics(account.id, statisticsLimit),
+      )
+      : undefined
+    setAccountOperationStatistics(cachedStatistics || null)
+
     setAccountStatisticsState(emptyState)
     setCloseResult(null)
   }

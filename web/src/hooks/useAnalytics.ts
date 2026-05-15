@@ -8,7 +8,8 @@ export function useAnalytics(token: string) {
   const summaryQuery = useQuery({
     queryKey: queryKeys.analytics.summary,
     queryFn: () => analyticsApi.summary(token),
-    enabled: false && enabled,
+    enabled,
+    staleTime: 5 * 60_000,
   })
 
   return {

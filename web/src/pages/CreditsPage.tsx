@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
 import { RequestStatus } from '../components/RequestStatus'
 import { Button } from '../components/ui/Button'
 import { CreditAccountListPanel } from '../features/credits/CreditAccountListPanel'
 import { CreditListPanel } from '../features/credits/CreditListPanel'
+import { queryKeys } from '../api/queryKeys'
 import { useAccounts } from '../hooks/useAccounts'
 import { useCredits } from '../hooks/useCredits'
 import { useMfaFlow } from '../hooks/useMfaFlow'
@@ -92,6 +94,7 @@ export function CreditsPage({
 }: CreditsPageProps) {
   const selectedAccountID = Number(sharedAccountId)
   const accountsDomain = useAccounts(token)
+  const queryClient = useQueryClient()
   const creditsDomain = useCredits(token, Number.isInteger(selectedAccountID) && selectedAccountID > 0 ? selectedAccountID : undefined)
   const creditMfaFlow = useMfaFlow(token)
   const creditPrepaymentMfaFlow = useMfaFlow(token)
@@ -132,6 +135,70 @@ export function CreditsPage({
       setSelectedAccountId(sharedAccountId)
     }
   }, [sharedAccountId, selectedAccountId])
+
+  useEffect(() => {
+    const cachedAccounts = accountsDomain.listQuery.data
+    if (!cachedAccounts) {
+      return
+    }
+
+    setAccounts(cachedAccounts)
+
+    if (cachedAccounts.length === 0) {
+      setSelectedAccountId('')
+      setSelectedAccount(null)
+      return
+    }
+
+    const accountToSelect =
+      cachedAccounts.find((item) => String(item.id) === selectedAccountId) ||
+      cachedAccounts.find((item) => String(item.id) === sharedAccountId) ||
+      (selectedAccount
+        ? cachedAccounts.find((item) => item.id === selectedAccount.id)
+        : undefined) ||
+      cachedAccounts[0]
+
+    setSelectedAccountId(String(accountToSelect.id))
+    setSelectedAccount(accountToSelect)
+    onSharedAccountIdChange(String(accountToSelect.id))
+  }, [accountsDomain.listQuery.data])
+
+  useEffect(() => {
+    const cachedCredits = creditsDomain.accountCreditsQuery.data
+    if (!cachedCredits) {
+      return
+    }
+
+    setCredits(cachedCredits)
+
+    if (cachedCredits.length === 0) {
+      setSelectedCreditId('')
+      setSelectedCredit(null)
+      setSchedule([])
+      setCreditOperations([])
+      return
+    }
+
+    const creditToSelect =
+      cachedCredits.find((item) => String(item.id) === selectedCreditId) ||
+      (selectedCredit
+        ? cachedCredits.find((item) => item.id === selectedCredit.id)
+        : undefined) ||
+      cachedCredits[0]
+
+    setSelectedCreditId(String(creditToSelect.id))
+    setSelectedCredit(creditToSelect)
+
+    const cachedSchedule = queryClient.getQueryData<PaymentScheduleResponse[]>(
+      queryKeys.credits.schedule(creditToSelect.id),
+    )
+    setSchedule(cachedSchedule || [])
+
+    const cachedOperations = queryClient.getQueryData<CreditOperationResponse[]>(
+      queryKeys.credits.operations(creditToSelect.id),
+    )
+    setCreditOperations(cachedOperations || [])
+  }, [creditsDomain.accountCreditsQuery.data])
 
   const requireToken = (setState: (state: RequestState) => void): boolean => {
     if (token) {
@@ -189,8 +256,17 @@ export function CreditsPage({
   const selectCredit = (credit: CreditResponse) => {
     setSelectedCreditId(String(credit.id))
     setSelectedCredit(credit)
-    setSchedule([])
-    setCreditOperations([])
+
+    const cachedSchedule = queryClient.getQueryData<PaymentScheduleResponse[]>(
+      queryKeys.credits.schedule(credit.id),
+    )
+    setSchedule(cachedSchedule || [])
+
+    const cachedOperations = queryClient.getQueryData<CreditOperationResponse[]>(
+      queryKeys.credits.operations(credit.id),
+    )
+    setCreditOperations(cachedOperations || [])
+
     setCreditDetailsState(emptyState)
     setScheduleState(emptyState)
     setOperationHistoryState(emptyState)

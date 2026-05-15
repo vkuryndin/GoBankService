@@ -46,6 +46,23 @@ export function TransfersPage({
     }
   }, [sharedAccountId, transferFromAccountId])
 
+  useEffect(() => {
+    const cachedAccounts = accountsDomain.listQuery.data
+    if (!cachedAccounts) {
+      return
+    }
+
+    setAccounts(cachedAccounts)
+
+    if (!transferFromAccountId && cachedAccounts.length > 0) {
+      const accountToSelect =
+        cachedAccounts.find((item) => String(item.id) === sharedAccountId) ||
+        cachedAccounts[0]
+
+      setTransferFromAccountId(String(accountToSelect.id))
+    }
+  }, [accountsDomain.listQuery.data])
+
   const requireToken = (setState: (state: RequestState) => void): boolean => {
     if (token) {
       return true
