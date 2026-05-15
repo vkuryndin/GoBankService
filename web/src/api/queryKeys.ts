@@ -28,6 +28,7 @@ export const queryKeys = {
     byAccount: (accountID: number) => ['credits', 'by-account', accountID] as const,
     detail: (creditID: number) => ['credits', 'detail', creditID] as const,
     schedule: (creditID: number) => ['credits', 'schedule', creditID] as const,
+    operations: (creditID: number) => ['credits', 'operations', creditID] as const,
   },
   admin: {
     all: ['admin'] as const,

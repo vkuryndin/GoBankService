@@ -12,6 +12,7 @@ import type { AccountResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
 import type {
   CreditCheckResponse,
+  CreditOperationResponse,
   CreditPrepaymentMode,
   CreditPrepaymentResponse,
   CreditResponse,
@@ -44,6 +45,18 @@ function getScheduleBadgeClass(payment: PaymentScheduleResponse): string {
   }
 
   if (payment.status === 'overdue') {
+    return 'badge dangerBadge'
+  }
+
+  return 'badge mutedBadge'
+}
+
+function getCreditOperationBadgeClass(operation: CreditOperationResponse): string {
+  if (operation.status === 'completed' || operation.status === 'paid') {
+    return 'badge successBadge'
+  }
+
+  if (operation.status === 'failed' || operation.status === 'overdue') {
     return 'badge dangerBadge'
   }
 
@@ -89,6 +102,7 @@ export function CreditsPage({
   const [createCreditState, setCreateCreditState] = useState<RequestState>(emptyState)
   const [creditDetailsState, setCreditDetailsState] = useState<RequestState>(emptyState)
   const [scheduleState, setScheduleState] = useState<RequestState>(emptyState)
+  const [operationHistoryState, setOperationHistoryState] = useState<RequestState>(emptyState)
   const [prepaymentMfaState, setPrepaymentMfaState] = useState<RequestState>(emptyState)
   const [prepaymentState, setPrepaymentState] = useState<RequestState>(emptyState)
 
@@ -111,6 +125,7 @@ export function CreditsPage({
   const [selectedCreditId, setSelectedCreditId] = useState('')
   const [selectedCredit, setSelectedCredit] = useState<CreditResponse | null>(null)
   const [schedule, setSchedule] = useState<PaymentScheduleResponse[]>([])
+  const [creditOperations, setCreditOperations] = useState<CreditOperationResponse[]>([])
 
   useEffect(() => {
     if (sharedAccountId && !selectedAccountId) {
@@ -136,6 +151,7 @@ export function CreditsPage({
     setSelectedCreditId('')
     setSelectedCredit(null)
     setSchedule([])
+    setCreditOperations([])
     setCreditCheck(null)
     setCreatedCredit(null)
     setPrepaymentResult(null)
@@ -174,8 +190,10 @@ export function CreditsPage({
     setSelectedCreditId(String(credit.id))
     setSelectedCredit(credit)
     setSchedule([])
+    setCreditOperations([])
     setCreditDetailsState(emptyState)
     setScheduleState(emptyState)
+    setOperationHistoryState(emptyState)
     setPrepaymentMfaState(emptyState)
     setPrepaymentState(emptyState)
     setPrepaymentAutofillState(emptyState)
@@ -193,6 +211,7 @@ export function CreditsPage({
     setSelectedCreditId('')
     setSelectedCredit(null)
     setSchedule([])
+    setCreditOperations([])
 
     try {
       const list = await creditsDomain.listByAccountMutation.mutateAsync(accountID)
@@ -461,6 +480,39 @@ export function CreditsPage({
   }
 
 
+  const loadCreditOperations = async () => {
+    if (!requireToken(setOperationHistoryState)) {
+      return
+    }
+
+    const creditID = Number(selectedCreditId)
+    if (!Number.isInteger(creditID) || creditID <= 0) {
+      setOperationHistoryState({ loading: false, error: 'Выбери кредит.', success: '' })
+      return
+    }
+
+    setOperationHistoryState({ loading: true, error: '', success: '' })
+    setCreditOperations([])
+
+    try {
+      const data = await creditsDomain.operationsMutation.mutateAsync(creditID)
+
+      setCreditOperations(Array.isArray(data) ? data : [])
+      setOperationHistoryState({
+        loading: false,
+        error: '',
+        success: 'История операций по кредиту загружена.',
+      })
+    } catch (error) {
+      setOperationHistoryState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to load credit operation history',
+        success: '',
+      })
+    }
+  }
+
+
   const getSelectedCreditID = (setState: (state: RequestState) => void): number | null => {
     const creditID = Number(selectedCreditId)
     if (!Number.isInteger(creditID) || creditID <= 0) {
@@ -602,6 +654,7 @@ export function CreditsPage({
       upsertCredit(data.credit)
       await refreshAccountsAfterCreditBalanceChange(data.credit.account_id)
       setSchedule([])
+      setCreditOperations([])
       setPrepaymentMfaCode('')
       setPrepaymentState({ loading: false, error: '', success: 'Досрочное погашение выполнено.' })
     } catch (error) {
@@ -802,10 +855,19 @@ export function CreditsPage({
                 <Button type="button" onClick={loadSchedule} disabled={scheduleState.loading}>
                   {scheduleState.loading ? 'Загружаю...' : 'Показать график'}
                 </Button>
+                <Button
+                  className="secondary"
+                  type="button"
+                  onClick={loadCreditOperations}
+                  disabled={operationHistoryState.loading}
+                >
+                  {operationHistoryState.loading ? 'Загружаю...' : 'Показать историю операций'}
+                </Button>
               </div>
 
               <RequestStatus state={creditDetailsState} />
               <RequestStatus state={scheduleState} />
+              <RequestStatus state={operationHistoryState} />
 
               <section className="creditPrepaymentBox">
                 <div className="subPanelHeader">
@@ -883,6 +945,47 @@ export function CreditsPage({
 
               {schedule.length === 0 && !scheduleState.error && (
                 <div className="empty compactEmpty">Нажми “Показать график”, чтобы загрузить платежи выбранного кредита.</div>
+              )}
+
+              {creditOperations.length > 0 && (
+                <div className="tableWrap creditOperationHistoryTable topGap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Event</th>
+                        <th>Amount</th>
+                        <th>Penalty</th>
+                        <th>Status</th>
+                        <th>Transaction</th>
+                        <th>Schedule</th>
+                        <th>Payment date</th>
+                        <th>Occurred at</th>
+                        <th>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {creditOperations.map((operation, index) => (
+                        <tr key={`${operation.source}-${operation.event_type}-${operation.transaction_id || operation.schedule_id || index}`}>
+                          <td>{operation.source}</td>
+                          <td>{operation.event_type}</td>
+                          <td>{operation.amount || '-'}</td>
+                          <td>{operation.penalty_amount || '-'}</td>
+                          <td>
+                            {operation.status ? (
+                              <span className={getCreditOperationBadgeClass(operation)}>{operation.status}</span>
+                            ) : '-'}
+                          </td>
+                          <td>{operation.transaction_id || '-'}</td>
+                          <td>{operation.schedule_id || '-'}</td>
+                          <td>{formatDate(operation.payment_date)}</td>
+                          <td>{formatDate(operation.occurred_at)}</td>
+                          <td>{operation.description || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {schedule.length > 0 && (

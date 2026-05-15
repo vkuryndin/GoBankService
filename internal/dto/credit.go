@@ -77,3 +77,16 @@ type PaymentScheduleResponse struct {
 	Status        string `json:"status"`
 	PaidAt        string `json:"paid_at,omitempty"`
 }
+
+type CreditOperationResponse struct {
+	Source        string `json:"source"`
+	EventType     string `json:"event_type"`
+	TransactionID *int64 `json:"transaction_id,omitempty"`
+	ScheduleID    *int64 `json:"schedule_id,omitempty"`
+	Amount        string `json:"amount,omitempty"`
+	PenaltyAmount string `json:"penalty_amount,omitempty"`
+	Status        string `json:"status,omitempty"`
+	Description   string `json:"description,omitempty"`
+	PaymentDate   string `json:"payment_date,omitempty"`
+	OccurredAt    string `json:"occurred_at,omitempty"`
+}

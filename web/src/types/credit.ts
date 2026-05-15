@@ -58,3 +58,17 @@ export type PaymentScheduleResponse = {
   status: string
   paid_at?: string
 }
+
+
+export type CreditOperationResponse = {
+  source: string
+  event_type: string
+  transaction_id?: number
+  schedule_id?: number
+  amount?: string
+  penalty_amount?: string
+  status?: string
+  description?: string
+  payment_date?: string
+  occurred_at?: string
+}

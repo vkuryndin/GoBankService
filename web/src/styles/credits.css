@@ -785,3 +785,12 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.creditOperationHistoryTable table {
+  min-width: 980px;
+}
+
+.creditOperationHistoryTable td {
+  vertical-align: top;
+}

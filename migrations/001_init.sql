@@ -161,6 +161,13 @@ CREATE INDEX IF NOT EXISTS idx_payment_schedules_credit_id ON payment_schedules(
 CREATE INDEX IF NOT EXISTS idx_payment_schedules_payment_date ON payment_schedules(payment_date);
 
 
+ALTER TABLE transactions
+ADD COLUMN IF NOT EXISTS credit_id BIGINT REFERENCES credits(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_transactions_credit_id
+ON transactions(credit_id);
+
+
 ALTER TABLE users
 ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 

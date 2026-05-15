@@ -1,4 +1,4 @@
-import type { CreditCheckResponse, CreditPrepaymentMode, CreditPrepaymentResponse, CreditResponse, PaymentScheduleResponse } from '../types/credit'
+import type { CreditCheckResponse, CreditOperationResponse, CreditPrepaymentMode, CreditPrepaymentResponse, CreditResponse, PaymentScheduleResponse } from '../types/credit'
 import { createIdempotencyKey } from '../utils/idempotency'
 import { apiRequest } from './client'
 
@@ -58,5 +58,9 @@ export const creditsApi = {
 
   schedule(_token: string, creditID: number): Promise<PaymentScheduleResponse[]> {
     return apiRequest<PaymentScheduleResponse[]>(`/api/credits/${creditID}/schedule`)
+  },
+
+  operations(_token: string, creditID: number): Promise<CreditOperationResponse[]> {
+    return apiRequest<CreditOperationResponse[]>(`/api/credits/${creditID}/operations`)
   },
 }

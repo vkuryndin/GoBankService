@@ -154,13 +154,12 @@ func (r *CreditPaymentRepository) ProcessPayment(
 		return nil, err
 	}
 
-	if _, err := createTransaction(
+	if _, err := createCreditTransaction(
 		ctx,
 		tx,
 		lockedPayment.UserID,
+		lockedPayment.CreditID,
 		&lockedPayment.AccountID,
-		nil,
-		nil,
 		nil,
 		lockedPayment.Amount,
 		"credit_payment",
@@ -170,13 +169,12 @@ func (r *CreditPaymentRepository) ProcessPayment(
 	}
 
 	if isPositiveMoney(lockedPayment.PenaltyAmount) {
-		if _, err := createTransaction(
+		if _, err := createCreditTransaction(
 			ctx,
 			tx,
 			lockedPayment.UserID,
+			lockedPayment.CreditID,
 			&lockedPayment.AccountID,
-			nil,
-			nil,
 			nil,
 			lockedPayment.PenaltyAmount,
 			"penalty",

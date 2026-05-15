@@ -56,6 +56,7 @@ type creditStore interface {
 	FindByUserID(ctx context.Context, userID int64) ([]models.Credit, error)
 	FindByIDAndUserID(ctx context.Context, creditID, userID int64) (*models.Credit, error)
 	FindScheduleByCreditIDAndUserID(ctx context.Context, creditID, userID int64) ([]models.PaymentSchedule, error)
+	FindOperationHistoryByCreditIDAndUserID(ctx context.Context, creditID, userID int64) ([]repositories.CreditOperationHistoryItem, error)
 	GetCreditRiskSummary(ctx context.Context, userID int64) (*repositories.CreditRiskSummary, error)
 	Prepay(ctx context.Context, userID int64, creditID int64, amount string, mode string, mfaCodeID int64) (*repositories.CreditPrepaymentResult, error)
 }
@@ -532,6 +533,28 @@ func normalizeCreditPrepaymentMode(mode string) string {
 	}
 }
 
+func (s *CreditService) GetCreditOperationHistory(
+	ctx context.Context,
+	userID int64,
+	creditID int64,
+) ([]dto.CreditOperationResponse, error) {
+	operations, err := s.creditRepository.FindOperationHistoryByCreditIDAndUserID(ctx, creditID, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCreditNotFound) {
+			return nil, ErrCreditNotFound
+		}
+
+		return nil, err
+	}
+
+	responses := make([]dto.CreditOperationResponse, 0, len(operations))
+	for _, operation := range operations {
+		responses = append(responses, *toCreditOperationResponse(operation))
+	}
+
+	return responses, nil
+}
+
 func calculateAnnuityPayment(principal float64, annualRate float64, termMonths int) float64 {
 	monthlyRate := annualRate / 100 / 12
 
@@ -556,6 +579,35 @@ func buildPaymentSchedule(termMonths int, monthlyPayment string) []repositories.
 	}
 
 	return schedule
+}
+
+func toCreditOperationResponse(operation repositories.CreditOperationHistoryItem) *dto.CreditOperationResponse {
+	response := &dto.CreditOperationResponse{
+		Source:        operation.Source,
+		EventType:     operation.EventType,
+		Amount:        operation.Amount,
+		PenaltyAmount: operation.PenaltyAmount,
+		Status:        operation.Status,
+		Description:   operation.Description,
+	}
+
+	if operation.TransactionID.Valid {
+		response.TransactionID = &operation.TransactionID.Int64
+	}
+
+	if operation.ScheduleID.Valid {
+		response.ScheduleID = &operation.ScheduleID.Int64
+	}
+
+	if operation.PaymentDate.Valid {
+		response.PaymentDate = operation.PaymentDate.Time.Format("2006-01-02")
+	}
+
+	if operation.OccurredAt.Valid {
+		response.OccurredAt = operation.OccurredAt.Time.Format(time.RFC3339)
+	}
+
+	return response
 }
 
 func toCreditResponse(credit *models.Credit) *dto.CreditResponse {

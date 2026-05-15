@@ -115,6 +115,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 	protected.HandleFunc("/credits/{creditId}", deps.CreditHandler.GetCredit).Methods(http.MethodGet)
 	protected.HandleFunc("/credits/{creditId}/prepay", deps.CreditHandler.PrepayCredit).Methods(http.MethodPost)
 	protected.HandleFunc("/credits/{creditId}/schedule", deps.CreditHandler.GetCreditSchedule).Methods(http.MethodGet)
+	protected.HandleFunc("/credits/{creditId}/operations", deps.CreditHandler.GetCreditOperationHistory).Methods(http.MethodGet)
 
 	protected.HandleFunc("/notifications/test", deps.NotificationHandler.SendTestEmail).Methods(http.MethodGet)
 

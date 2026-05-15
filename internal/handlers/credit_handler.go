@@ -105,6 +105,19 @@ func (h *CreditHandler) GetCreditSchedule(w http.ResponseWriter, r *http.Request
 	})
 }
 
+func (h *CreditHandler) GetCreditOperationHistory(w http.ResponseWriter, r *http.Request) {
+	creditID, err := parseCreditID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid credit id")
+		return
+	}
+
+	handleAuthed(w, r, getCreditErrorRules, "get credit operation history failed", func(ctx context.Context, userID int64) (int, any, error) {
+		response, err := h.creditService.GetCreditOperationHistory(ctx, userID, creditID)
+		return http.StatusOK, response, err
+	})
+}
+
 func (h *CreditHandler) PrepayCredit(w http.ResponseWriter, r *http.Request) {
 	creditID, err := parseCreditID(r)
 	if err != nil {

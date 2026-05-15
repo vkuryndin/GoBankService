@@ -72,6 +72,13 @@ export function useCredits(token: string, accountID?: number) {
     },
   })
 
+  const operationsMutation = useMutation({
+    mutationFn: (creditID: number) => creditsApi.operations(token, creditID),
+    onSuccess: (operations, creditID) => {
+      queryClient.setQueryData(queryKeys.credits.operations(creditID), operations)
+    },
+  })
+
   return {
     credits: listQuery.data || [],
     accountCredits: accountCreditsQuery.data || [],
@@ -83,5 +90,6 @@ export function useCredits(token: string, accountID?: number) {
     detailMutation,
     prepayMutation,
     scheduleMutation,
+    operationsMutation,
   }
 }

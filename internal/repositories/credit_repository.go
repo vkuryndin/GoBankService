@@ -57,6 +57,19 @@ type pendingCreditPayment struct {
 	AmountCents int64
 }
 
+type CreditOperationHistoryItem struct {
+	Source        string
+	EventType     string
+	TransactionID sql.NullInt64
+	ScheduleID    sql.NullInt64
+	Amount        string
+	PenaltyAmount string
+	Status        string
+	Description   string
+	PaymentDate   sql.NullTime
+	OccurredAt    sql.NullTime
+}
+
 type CreditRepository struct {
 	db *sql.DB
 }
@@ -134,14 +147,13 @@ func (r *CreditRepository) CreateWithScheduleAndIssue(
 		return nil, fmt.Errorf("issue credit balance update: %w", err)
 	}
 
-	if _, err := createTransaction(
+	if _, err := createCreditTransaction(
 		ctx,
 		tx,
 		userID,
+		credit.ID,
 		nil,
 		&accountID,
-		nil,
-		nil,
 		principalAmount,
 		"credit_issue",
 		"credit issued",
@@ -217,13 +229,12 @@ func (r *CreditRepository) Prepay(
 		return nil, err
 	}
 
-	transactionID, err := createTransaction(
+	transactionID, err := createCreditTransaction(
 		ctx,
 		tx,
 		userID,
+		creditID,
 		&credit.AccountID,
-		nil,
-		nil,
 		nil,
 		amount,
 		"credit_prepayment",
@@ -302,6 +313,121 @@ func (r *CreditRepository) Prepay(
 	}
 
 	return result, nil
+}
+
+func (r *CreditRepository) FindOperationHistoryByCreditIDAndUserID(
+	ctx context.Context,
+	creditID int64,
+	userID int64,
+) ([]CreditOperationHistoryItem, error) {
+	if _, err := r.FindByIDAndUserID(ctx, creditID, userID); err != nil {
+		return nil, err
+	}
+
+	query := `
+		WITH credit_events AS (
+			SELECT
+				'credit'::text AS source,
+				'credit_created'::text AS event_type,
+				NULL::bigint AS transaction_id,
+				NULL::bigint AS schedule_id,
+				c.principal_amount::text AS amount,
+				'0.00'::text AS penalty_amount,
+				c.status::text AS status,
+				'credit created'::text AS description,
+				NULL::timestamptz AS payment_date,
+				c.created_at AS occurred_at
+			FROM credits c
+			WHERE c.id = $1 AND c.user_id = $2
+		),
+		transaction_events AS (
+			SELECT
+				'transaction'::text AS source,
+				t.type::text AS event_type,
+				t.id AS transaction_id,
+				NULL::bigint AS schedule_id,
+				t.amount::text AS amount,
+				'0.00'::text AS penalty_amount,
+				t.status::text AS status,
+				COALESCE(t.description, '')::text AS description,
+				NULL::timestamptz AS payment_date,
+				t.created_at AS occurred_at
+			FROM transactions t
+			WHERE t.credit_id = $1 AND t.user_id = $2
+		),
+		schedule_events AS (
+			SELECT
+				'schedule'::text AS source,
+				CASE
+					WHEN ps.status = 'paid' THEN 'scheduled_payment_paid'
+					WHEN ps.status = 'overdue' THEN 'scheduled_payment_overdue'
+					ELSE 'scheduled_payment_pending'
+				END::text AS event_type,
+				NULL::bigint AS transaction_id,
+				ps.id AS schedule_id,
+				ps.amount::text AS amount,
+				ps.penalty_amount::text AS penalty_amount,
+				ps.status::text AS status,
+				'payment schedule'::text AS description,
+				ps.payment_date::timestamptz AS payment_date,
+				COALESCE(ps.paid_at, ps.payment_date::timestamptz) AS occurred_at
+			FROM payment_schedules ps
+			INNER JOIN credits c ON c.id = ps.credit_id
+			WHERE ps.credit_id = $1 AND c.user_id = $2
+		)
+		SELECT
+			source,
+			event_type,
+			transaction_id,
+			schedule_id,
+			amount,
+			penalty_amount,
+			status,
+			description,
+			payment_date,
+			occurred_at
+		FROM credit_events
+		UNION ALL
+		SELECT * FROM transaction_events
+		UNION ALL
+		SELECT * FROM schedule_events
+		ORDER BY occurred_at, source, event_type
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, creditID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("find credit operation history: %w", err)
+	}
+	defer closeRows(rows)
+
+	operations := make([]CreditOperationHistoryItem, 0)
+
+	for rows.Next() {
+		var operation CreditOperationHistoryItem
+
+		if err := rows.Scan(
+			&operation.Source,
+			&operation.EventType,
+			&operation.TransactionID,
+			&operation.ScheduleID,
+			&operation.Amount,
+			&operation.PenaltyAmount,
+			&operation.Status,
+			&operation.Description,
+			&operation.PaymentDate,
+			&operation.OccurredAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan credit operation history: %w", err)
+		}
+
+		operations = append(operations, operation)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate credit operation history: %w", err)
+	}
+
+	return operations, nil
 }
 
 func (r *CreditRepository) FindByUserID(ctx context.Context, userID int64) ([]models.Credit, error) {
@@ -615,6 +741,51 @@ func createPaymentSchedule(ctx context.Context, tx *sql.Tx, creditID int64, paym
 	}
 
 	return nil
+}
+
+func createCreditTransaction(
+	ctx context.Context,
+	tx *sql.Tx,
+	userID int64,
+	creditID int64,
+	fromAccountID *int64,
+	toAccountID *int64,
+	amount string,
+	transactionType string,
+	description string,
+) (int64, error) {
+	query := `
+		INSERT INTO transactions (
+			user_id,
+			from_account_id,
+			to_account_id,
+			credit_id,
+			amount,
+			type,
+			status,
+			description
+		)
+		VALUES ($1, $2, $3, $4, $5::numeric, $6, 'completed', $7)
+		RETURNING id
+	`
+
+	var transactionID int64
+	err := tx.QueryRowContext(
+		ctx,
+		query,
+		userID,
+		fromAccountID,
+		toAccountID,
+		creditID,
+		amount,
+		transactionType,
+		description,
+	).Scan(&transactionID)
+	if err != nil {
+		return 0, fmt.Errorf("create credit transaction: %w", err)
+	}
+
+	return transactionID, nil
 }
 
 func lockCreditForPrepayment(ctx context.Context, tx *sql.Tx, creditID int64, userID int64) (*models.Credit, error) {
