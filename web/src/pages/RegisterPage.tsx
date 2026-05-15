@@ -6,7 +6,7 @@ import { emptyState, type RequestState } from '../types/common'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { useToast } from '../hooks/useToast'
-import { firstValidationError, validateEmail, validatePassword, validateRequired } from '../utils/validation'
+import { firstValidationError, validateEmail, validatePassword, validatePasswordConfirmation, validateRequired } from '../utils/validation'
 import { useRegistration } from '../hooks/useRegistration'
 import { RegisterForm } from '../features/register/RegisterForm'
 
@@ -21,6 +21,7 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
   const [registerEmail, setRegisterEmail] = useState('')
   const [registerUsername, setRegisterUsername] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
+  const [registerPasswordConfirmation, setRegisterPasswordConfirmation] = useState('')
   const [registerState, setRegisterState] = useState<RequestState>(emptyState)
   const [registeredUser, setRegisteredUser] = useState<RegisterResponse | null>(null)
 
@@ -31,6 +32,7 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
       validateEmail(registerEmail),
       validateRequired(registerUsername, 'Username'),
       validatePassword(registerPassword),
+      validatePasswordConfirmation(registerPassword, registerPasswordConfirmation),
     )
     if (validationError) {
       setRegisterState({ loading: false, error: validationError, success: '' })
@@ -53,6 +55,7 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
 
       setRegisteredUser(data)
       setRegisterPassword('')
+      setRegisterPasswordConfirmation('')
       onRegistered(data.email)
       setRegisterState({
         loading: false,
@@ -87,10 +90,12 @@ export function RegisterPage({ onRegistered, onOpenAuth }: RegisterPageProps) {
         email={registerEmail}
         username={registerUsername}
         password={registerPassword}
+        passwordConfirmation={registerPasswordConfirmation}
         loading={registerState.loading}
         onEmailChange={setRegisterEmail}
         onUsernameChange={setRegisterUsername}
         onPasswordChange={setRegisterPassword}
+        onPasswordConfirmationChange={setRegisterPasswordConfirmation}
         onSubmit={handleRegister}
       />
 

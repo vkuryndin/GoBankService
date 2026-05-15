@@ -23,6 +23,14 @@ export function validatePassword(value: string): string {
   return value.length >= 8 ? '' : 'Password должен быть не короче 8 символов.'
 }
 
+export function validatePasswordConfirmation(password: string, confirmation: string): string {
+  if (!confirmation) {
+    return 'Повторный пароль обязателен.'
+  }
+
+  return password === confirmation ? '' : 'Пароли не совпадают.'
+}
+
 export function validateAmount(value: string): string {
   const amount = value.trim()
   if (!amount) {

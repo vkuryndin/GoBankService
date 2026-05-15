@@ -7,10 +7,12 @@ type RegisterFormProps = {
   email: string
   username: string
   password: string
+  passwordConfirmation: string
   loading: boolean
   onEmailChange: (value: string) => void
   onUsernameChange: (value: string) => void
   onPasswordChange: (value: string) => void
+  onPasswordConfirmationChange: (value: string) => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }
 
@@ -18,10 +20,12 @@ export function RegisterForm({
   email,
   username,
   password,
+  passwordConfirmation,
   loading,
   onEmailChange,
   onUsernameChange,
   onPasswordChange,
+  onPasswordConfirmationChange,
   onSubmit,
 }: RegisterFormProps) {
   return (
@@ -49,6 +53,16 @@ export function RegisterForm({
           value={password}
           onChange={(event) => onPasswordChange(event.target.value)}
           placeholder="минимум 8 символов"
+          type="password"
+          autoComplete="new-password"
+        />
+      </Field>
+
+      <Field label="Repeat password">
+        <Input
+          value={passwordConfirmation}
+          onChange={(event) => onPasswordConfirmationChange(event.target.value)}
+          placeholder="повтори пароль"
           type="password"
           autoComplete="new-password"
         />
