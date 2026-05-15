@@ -26,7 +26,16 @@ var (
 		},
 		accountErrorRules,
 	)
-	getCreditErrorRules = errorRules{{target: services.ErrCreditNotFound, status: http.StatusNotFound, message: "credit not found"}}
+	getCreditErrorRules    = errorRules{{target: services.ErrCreditNotFound, status: http.StatusNotFound, message: "credit not found"}}
+	prepayCreditErrorRules = joinErrorRules(
+		errorRules{
+			{target: services.ErrInvalidCreditPrepayment, status: http.StatusBadRequest, message: "invalid credit prepayment"},
+			{target: services.ErrInvalidAmount, status: http.StatusBadRequest, message: "invalid amount"},
+		},
+		getCreditErrorRules,
+		accountErrorRules,
+		mfaErrorRules,
+	)
 )
 
 type CreditHandler struct {
@@ -93,6 +102,40 @@ func (h *CreditHandler) GetCreditSchedule(w http.ResponseWriter, r *http.Request
 	handleAuthed(w, r, getCreditErrorRules, "get credit schedule failed", func(ctx context.Context, userID int64) (int, any, error) {
 		response, err := h.creditService.GetCreditSchedule(ctx, userID, creditID)
 		return http.StatusOK, response, err
+	})
+}
+
+func (h *CreditHandler) PrepayCredit(w http.ResponseWriter, r *http.Request) {
+	creditID, err := parseCreditID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid credit id")
+		return
+	}
+
+	handleAuthedJSON[dto.CreditPrepaymentRequest](w, r, prepayCreditErrorRules, "credit prepayment failed",
+		func(ctx context.Context, userID int64, request dto.CreditPrepaymentRequest) (int, any, error) {
+			response, err := h.creditService.PrepayCredit(ctx, userID, creditID, request)
+			if err != nil {
+				h.recordCreditPrepayment(r, userID, creditID, "finance.credit_prepayment.failed", audit.StatusFailed, request)
+				return http.StatusOK, nil, err
+			}
+
+			h.recordCreditPrepayment(r, userID, creditID, "finance.credit_prepayment.success", audit.StatusSuccess, request)
+			return http.StatusOK, response, nil
+		})
+}
+
+func (h *CreditHandler) recordCreditPrepayment(
+	r *http.Request,
+	userID int64,
+	creditID int64,
+	action string,
+	status string,
+	request dto.CreditPrepaymentRequest,
+) {
+	recordFinancialAudit(h.auditRecorder, r, userID, action, "credit", creditID, status, map[string]any{
+		"amount": request.Amount,
+		"mode":   request.Mode,
 	})
 }
 

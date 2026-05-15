@@ -20,12 +20,13 @@ import (
 )
 
 const (
-	MFAPurposeTransfer     = "transfer"
-	MFAPurposeCardPayment  = "card_payment"
-	MFAPurposeCardTransfer = "card_transfer"
-	MFAPurposeCardReveal   = "card_reveal"
-	MFAPurposeCreditCreate = "credit_create"
-	MFAPurposeWithdraw     = "withdraw"
+	MFAPurposeTransfer         = "transfer"
+	MFAPurposeCardPayment      = "card_payment"
+	MFAPurposeCardTransfer     = "card_transfer"
+	MFAPurposeCardReveal       = "card_reveal"
+	MFAPurposeCreditCreate     = "credit_create"
+	MFAPurposeCreditPrepayment = "credit_prepayment"
+	MFAPurposeWithdraw         = "withdraw"
 )
 
 var (
@@ -206,8 +207,8 @@ func (s *MFAService) VerifyCardTransferCode(
 	mfaRequest := dto.MFARequest{
 		Purpose:      MFAPurposeCardTransfer,
 		CardID:       fromCardID,
-		ToCardID:          request.RecipientCardID(),
-		ToCardNumber:      request.RecipientCardNumber(),
+		ToCardID:     request.RecipientCardID(),
+		ToCardNumber: request.RecipientCardNumber(),
 		Amount:       request.Amount,
 	}
 
@@ -259,6 +260,31 @@ func (s *MFAService) VerifyCreditCreateCode(
 	}
 
 	return s.verifyCode(ctx, userID, MFAPurposeCreditCreate, mfaRequest, code)
+}
+
+func (s *MFAService) VerifyCreditPrepaymentCode(
+	ctx context.Context,
+	userID int64,
+	creditID int64,
+	request dto.CreditPrepaymentRequest,
+) (*MFAVerification, error) {
+	code := strings.TrimSpace(request.MFACode)
+	if code == "" {
+		return nil, ErrMFACodeRequired
+	}
+
+	if !isValidMFACodeFormat(code) {
+		return nil, ErrInvalidMFACode
+	}
+
+	mfaRequest := dto.MFARequest{
+		Purpose:        MFAPurposeCreditPrepayment,
+		CreditID:       creditID,
+		Amount:         request.Amount,
+		PrepaymentMode: request.Mode,
+	}
+
+	return s.verifyCode(ctx, userID, MFAPurposeCreditPrepayment, mfaRequest, code)
 }
 
 func (s *MFAService) VerifyWithdrawCode(
@@ -389,6 +415,9 @@ func (s *MFAService) buildOperationHash(
 
 	case MFAPurposeCreditCreate:
 		return s.buildCreditCreateOperationHash(ctx, userID, request)
+
+	case MFAPurposeCreditPrepayment:
+		return s.buildCreditPrepaymentOperationHash(ctx, userID, request)
 
 	case MFAPurposeWithdraw:
 		return s.buildWithdrawOperationHash(ctx, userID, request)
@@ -702,6 +731,39 @@ func (s *MFAService) buildCreditCreateOperationHash(
 	return hashOperation(raw), nil
 }
 
+func (s *MFAService) buildCreditPrepaymentOperationHash(
+	ctx context.Context,
+	userID int64,
+	request dto.MFARequest,
+) (string, error) {
+	if request.CreditID <= 0 {
+		return "", ErrInvalidMFAOperation
+	}
+
+	amount, err := canonicalMoneyAmount(request.Amount)
+	if err != nil {
+		return "", err
+	}
+
+	mode := strings.TrimSpace(strings.ToLower(request.CreditPrepaymentMode()))
+	if mode != repositories.CreditPrepaymentModeReducePayment &&
+		mode != repositories.CreditPrepaymentModeReduceTerm &&
+		mode != repositories.CreditPrepaymentModeFullClose {
+		return "", ErrInvalidMFAOperation
+	}
+
+	raw := fmt.Sprintf(
+		"user_id=%d|purpose=%s|credit_id=%d|amount=%s|mode=%s",
+		userID,
+		MFAPurposeCreditPrepayment,
+		request.CreditID,
+		amount,
+		mode,
+	)
+
+	return hashOperation(raw), nil
+}
+
 func (s *MFAService) buildWithdrawOperationHash(
 	ctx context.Context,
 	userID int64,
@@ -773,6 +835,7 @@ func isAllowedPurpose(purpose string) bool {
 		purpose == MFAPurposeCardTransfer ||
 		purpose == MFAPurposeCardReveal ||
 		purpose == MFAPurposeCreditCreate ||
+		purpose == MFAPurposeCreditPrepayment ||
 		purpose == MFAPurposeWithdraw
 }
 

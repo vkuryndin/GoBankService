@@ -47,6 +47,24 @@ export function useCredits(token: string, accountID?: number) {
     },
   })
 
+  const prepayMutation = useMutation({
+    mutationFn: ({
+      creditID,
+      body,
+    }: {
+      creditID: number
+      body: Parameters<typeof creditsApi.prepay>[2]
+    }) => creditsApi.prepay(token, creditID, body),
+    onSuccess: (response) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.credits.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.credits.byAccount(response.credit.account_id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.credits.detail(response.credit.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.credits.schedule(response.credit.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.analytics.all })
+    },
+  })
+
   const scheduleMutation = useMutation({
     mutationFn: (creditID: number) => creditsApi.schedule(token, creditID),
     onSuccess: (schedule, creditID) => {
@@ -63,6 +81,7 @@ export function useCredits(token: string, accountID?: number) {
     checkMutation,
     createMutation,
     detailMutation,
+    prepayMutation,
     scheduleMutation,
   }
 }

@@ -62,8 +62,10 @@ CREATE TABLE IF NOT EXISTS transactions (
             'withdraw',
             'transfer',
             'card_payment',
+            'card_transfer',
             'credit_payment',
             'credit_issue',
+            'credit_prepayment',
             'penalty'
         )
     ),
@@ -83,7 +85,7 @@ CREATE TABLE IF NOT EXISTS credits (
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT credits_principal_positive CHECK (principal_amount > 0),
+    CONSTRAINT credits_principal_non_negative CHECK (principal_amount >= 0),
     CONSTRAINT credits_interest_non_negative CHECK (interest_rate >= 0),
     CONSTRAINT credits_term_positive CHECK (term_months > 0),
     CONSTRAINT credits_monthly_payment_positive CHECK (monthly_payment > 0),
@@ -341,8 +343,8 @@ BEGIN
         ALTER TABLE transactions ADD CONSTRAINT transactions_status_check CHECK (status IN ('pending', 'completed', 'failed'));
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_principal_positive') THEN
-        ALTER TABLE credits ADD CONSTRAINT credits_principal_positive CHECK (principal_amount > 0);
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_principal_non_negative') THEN
+        ALTER TABLE credits ADD CONSTRAINT credits_principal_non_negative CHECK (principal_amount >= 0);
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_interest_non_negative') THEN
@@ -372,4 +374,37 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payment_schedules_status_check') THEN
         ALTER TABLE payment_schedules ADD CONSTRAINT payment_schedules_status_check CHECK (status IN ('pending', 'paid', 'overdue'));
     END IF;
+END $$;
+
+
+-- Credit prepayment support.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_principal_positive') THEN
+        ALTER TABLE credits DROP CONSTRAINT credits_principal_positive;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'credits_principal_non_negative') THEN
+        ALTER TABLE credits
+        ADD CONSTRAINT credits_principal_non_negative CHECK (principal_amount >= 0);
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_type_check') THEN
+        ALTER TABLE transactions DROP CONSTRAINT transactions_type_check;
+    END IF;
+
+    ALTER TABLE transactions
+    ADD CONSTRAINT transactions_type_check CHECK (
+        type IN (
+            'deposit',
+            'withdraw',
+            'transfer',
+            'card_payment',
+            'card_transfer',
+            'credit_payment',
+            'credit_issue',
+            'credit_prepayment',
+            'penalty'
+        )
+    );
 END $$;

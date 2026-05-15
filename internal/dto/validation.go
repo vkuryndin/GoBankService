@@ -89,6 +89,16 @@ func (r CheckCreditRequest) Validate() error {
 	return requireNonBlank(r.PrincipalAmount)
 }
 
+func (r CreditPrepaymentRequest) Validate() error {
+	if err := requireNonBlank(r.Amount); err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.Mode) == "" {
+		return ErrInvalidRequest
+	}
+	return requireNonBlank(r.MFACode)
+}
+
 func (r MFARequest) Validate() error {
 	if strings.TrimSpace(r.Purpose) == "" {
 		return ErrInvalidRequest

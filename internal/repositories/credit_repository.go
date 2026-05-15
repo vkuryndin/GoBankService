@@ -5,12 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"bank-service/internal/models"
 )
 
-var ErrCreditNotFound = errors.New("credit not found")
+var (
+	ErrCreditNotFound          = errors.New("credit not found")
+	ErrInvalidCreditPrepayment = errors.New("invalid credit prepayment")
+)
 
 type PaymentScheduleInput struct {
 	PaymentDate time.Time
@@ -26,6 +31,31 @@ type CreditRiskSummary struct {
 }
 
 type CreditPolicyValidator func(summary *CreditRiskSummary) error
+
+const (
+	CreditPrepaymentModeReducePayment = "reduce_payment"
+	CreditPrepaymentModeReduceTerm    = "reduce_term"
+	CreditPrepaymentModeFullClose     = "full_close"
+)
+
+type CreditPrepaymentResult struct {
+	Credit            *models.Credit
+	TransactionID     int64
+	Amount            string
+	Mode              string
+	OldMonthlyPayment string
+	NewMonthlyPayment string
+	OldTermMonths     int
+	NewTermMonths     int
+	RemainingDebt     string
+	Closed            bool
+}
+
+type pendingCreditPayment struct {
+	ID          int64
+	PaymentDate time.Time
+	AmountCents int64
+}
 
 type CreditRepository struct {
 	db *sql.DB
@@ -124,6 +154,154 @@ func (r *CreditRepository) CreateWithScheduleAndIssue(
 	}
 
 	return credit, nil
+}
+
+func (r *CreditRepository) Prepay(
+	ctx context.Context,
+	userID int64,
+	creditID int64,
+	amount string,
+	mode string,
+	mfaCodeID int64,
+) (*CreditPrepaymentResult, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("begin credit prepayment transaction: %w", err)
+	}
+	defer rollbackTx(tx)
+
+	credit, err := lockCreditForPrepayment(ctx, tx, creditID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if credit.Status != "active" {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	if err := lockAccount(ctx, tx, credit.AccountID, userID); err != nil {
+		return nil, err
+	}
+
+	hasOverdue, err := creditHasOverdueSchedule(ctx, tx, creditID)
+	if err != nil {
+		return nil, err
+	}
+	if hasOverdue {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	payments, err := findPendingCreditPaymentsForUpdate(ctx, tx, creditID)
+	if err != nil {
+		return nil, err
+	}
+	if len(payments) == 0 {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	amountCents, err := moneyStringToCents(amount)
+	if err != nil || amountCents <= 0 {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	outstandingCents := sumPendingPaymentCents(payments)
+	if amountCents > outstandingCents {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	if err := markMFACodeUsedTx(ctx, tx, mfaCodeID); err != nil {
+		return nil, err
+	}
+
+	if _, err := withdrawAccountBalance(ctx, tx, credit.AccountID, amount); err != nil {
+		return nil, err
+	}
+
+	transactionID, err := createTransaction(
+		ctx,
+		tx,
+		userID,
+		&credit.AccountID,
+		nil,
+		nil,
+		nil,
+		amount,
+		"credit_prepayment",
+		"credit prepayment",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &CreditPrepaymentResult{
+		TransactionID:     transactionID,
+		Amount:            amount,
+		Mode:              mode,
+		OldMonthlyPayment: credit.MonthlyPayment,
+		OldTermMonths:     credit.TermMonths,
+	}
+
+	if mode == CreditPrepaymentModeFullClose && amountCents != outstandingCents {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	remainingCents := outstandingCents - amountCents
+	if remainingCents == 0 {
+		if err := markPendingCreditPaymentsPaid(ctx, tx, creditID); err != nil {
+			return nil, err
+		}
+
+		updatedCredit, err := closeCreditAfterPrepayment(ctx, tx, creditID)
+		if err != nil {
+			return nil, err
+		}
+
+		result.Credit = updatedCredit
+		result.NewMonthlyPayment = "0.00"
+		result.NewTermMonths = 0
+		result.RemainingDebt = "0.00"
+		result.Closed = true
+
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit credit prepayment transaction: %w", err)
+		}
+
+		return result, nil
+	}
+
+	var newMonthlyPayment string
+	var newTermMonths int
+
+	switch mode {
+	case CreditPrepaymentModeReduceTerm:
+		newMonthlyPayment, newTermMonths, err = applyReduceTermPrepayment(ctx, tx, payments, amountCents)
+	case CreditPrepaymentModeReducePayment:
+		newMonthlyPayment, newTermMonths, err = applyReducePaymentPrepayment(ctx, tx, payments, remainingCents)
+	case CreditPrepaymentModeFullClose:
+		return nil, ErrInvalidCreditPrepayment
+	default:
+		return nil, ErrInvalidCreditPrepayment
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	updatedCredit, err := updateCreditPaymentPlan(ctx, tx, creditID, newTermMonths, newMonthlyPayment, centsToMoneyString(remainingCents))
+	if err != nil {
+		return nil, err
+	}
+
+	result.Credit = updatedCredit
+	result.NewMonthlyPayment = newMonthlyPayment
+	result.NewTermMonths = newTermMonths
+	result.RemainingDebt = centsToMoneyString(remainingCents)
+	result.Closed = false
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit credit prepayment transaction: %w", err)
+	}
+
+	return result, nil
 }
 
 func (r *CreditRepository) FindByUserID(ctx context.Context, userID int64) ([]models.Credit, error) {
@@ -437,4 +615,368 @@ func createPaymentSchedule(ctx context.Context, tx *sql.Tx, creditID int64, paym
 	}
 
 	return nil
+}
+
+func lockCreditForPrepayment(ctx context.Context, tx *sql.Tx, creditID int64, userID int64) (*models.Credit, error) {
+	query := `
+		SELECT
+			id,
+			user_id,
+			account_id,
+			principal_amount::text,
+			interest_rate::text,
+			term_months,
+			monthly_payment::text,
+			status,
+			created_at
+		FROM credits
+		WHERE id = $1 AND user_id = $2
+		FOR UPDATE
+	`
+
+	credit := &models.Credit{}
+	err := tx.QueryRowContext(ctx, query, creditID, userID).Scan(
+		&credit.ID,
+		&credit.UserID,
+		&credit.AccountID,
+		&credit.PrincipalAmount,
+		&credit.InterestRate,
+		&credit.TermMonths,
+		&credit.MonthlyPayment,
+		&credit.Status,
+		&credit.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCreditNotFound
+		}
+
+		return nil, fmt.Errorf("lock credit for prepayment: %w", err)
+	}
+
+	return credit, nil
+}
+
+func creditHasOverdueSchedule(ctx context.Context, tx *sql.Tx, creditID int64) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM payment_schedules
+			WHERE credit_id = $1
+			  AND status = 'overdue'
+		)
+	`
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, query, creditID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check overdue schedule: %w", err)
+	}
+
+	return exists, nil
+}
+
+func findPendingCreditPaymentsForUpdate(ctx context.Context, tx *sql.Tx, creditID int64) ([]pendingCreditPayment, error) {
+	query := `
+		SELECT id, payment_date, amount::text
+		FROM payment_schedules
+		WHERE credit_id = $1
+		  AND status = 'pending'
+		ORDER BY payment_date, id
+		FOR UPDATE
+	`
+
+	rows, err := tx.QueryContext(ctx, query, creditID)
+	if err != nil {
+		return nil, fmt.Errorf("find pending credit payments for update: %w", err)
+	}
+	defer closeRows(rows)
+
+	payments := make([]pendingCreditPayment, 0)
+
+	for rows.Next() {
+		var payment pendingCreditPayment
+		var amount string
+
+		if err := rows.Scan(&payment.ID, &payment.PaymentDate, &amount); err != nil {
+			return nil, fmt.Errorf("scan pending credit payment: %w", err)
+		}
+
+		amountCents, err := moneyStringToCents(amount)
+		if err != nil {
+			return nil, err
+		}
+		payment.AmountCents = amountCents
+
+		payments = append(payments, payment)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending credit payments: %w", err)
+	}
+
+	return payments, nil
+}
+
+func sumPendingPaymentCents(payments []pendingCreditPayment) int64 {
+	var total int64
+	for _, payment := range payments {
+		total += payment.AmountCents
+	}
+
+	return total
+}
+
+func applyReduceTermPrepayment(
+	ctx context.Context,
+	tx *sql.Tx,
+	payments []pendingCreditPayment,
+	prepaymentCents int64,
+) (string, int, error) {
+	remainingPrepayment := prepaymentCents
+
+	for i := len(payments) - 1; i >= 0 && remainingPrepayment > 0; i-- {
+		payment := payments[i]
+
+		if remainingPrepayment >= payment.AmountCents {
+			if err := markPaymentSchedulePaidByPrepayment(ctx, tx, payment.ID); err != nil {
+				return "", 0, err
+			}
+			remainingPrepayment -= payment.AmountCents
+			payments[i].AmountCents = 0
+			continue
+		}
+
+		newAmountCents := payment.AmountCents - remainingPrepayment
+		if newAmountCents <= 0 {
+			return "", 0, ErrInvalidCreditPrepayment
+		}
+
+		if err := updatePaymentScheduleAmount(ctx, tx, payment.ID, centsToMoneyString(newAmountCents)); err != nil {
+			return "", 0, err
+		}
+		payments[i].AmountCents = newAmountCents
+		remainingPrepayment = 0
+	}
+
+	remainingPayments := filterPositivePendingPayments(payments)
+	if len(remainingPayments) == 0 {
+		return "0.00", 0, nil
+	}
+
+	return centsToMoneyString(remainingPayments[0].AmountCents), len(remainingPayments), nil
+}
+
+func applyReducePaymentPrepayment(
+	ctx context.Context,
+	tx *sql.Tx,
+	payments []pendingCreditPayment,
+	remainingDebtCents int64,
+) (string, int, error) {
+	if len(payments) == 0 || remainingDebtCents <= 0 {
+		return "", 0, ErrInvalidCreditPrepayment
+	}
+
+	if remainingDebtCents < int64(len(payments)) {
+		return "", 0, ErrInvalidCreditPrepayment
+	}
+
+	basePaymentCents := remainingDebtCents / int64(len(payments))
+	extraCents := remainingDebtCents % int64(len(payments))
+	newMonthlyPayment := "0.00"
+
+	for index, payment := range payments {
+		nextAmountCents := basePaymentCents
+		if int64(index) < extraCents {
+			nextAmountCents++
+		}
+		if nextAmountCents <= 0 {
+			return "", 0, ErrInvalidCreditPrepayment
+		}
+
+		if index == 0 {
+			newMonthlyPayment = centsToMoneyString(nextAmountCents)
+		}
+
+		if err := updatePaymentScheduleAmount(ctx, tx, payment.ID, centsToMoneyString(nextAmountCents)); err != nil {
+			return "", 0, err
+		}
+	}
+
+	return newMonthlyPayment, len(payments), nil
+}
+
+func filterPositivePendingPayments(payments []pendingCreditPayment) []pendingCreditPayment {
+	result := make([]pendingCreditPayment, 0, len(payments))
+	for _, payment := range payments {
+		if payment.AmountCents > 0 {
+			result = append(result, payment)
+		}
+	}
+
+	return result
+}
+
+func markPaymentSchedulePaidByPrepayment(ctx context.Context, tx *sql.Tx, scheduleID int64) error {
+	query := `
+		UPDATE payment_schedules
+		SET status = 'paid',
+		    paid_at = NOW()
+		WHERE id = $1
+		  AND status = 'pending'
+	`
+
+	if _, err := tx.ExecContext(ctx, query, scheduleID); err != nil {
+		return fmt.Errorf("mark payment schedule paid by prepayment: %w", err)
+	}
+
+	return nil
+}
+
+func markPendingCreditPaymentsPaid(ctx context.Context, tx *sql.Tx, creditID int64) error {
+	query := `
+		UPDATE payment_schedules
+		SET status = 'paid',
+		    paid_at = NOW()
+		WHERE credit_id = $1
+		  AND status = 'pending'
+	`
+
+	if _, err := tx.ExecContext(ctx, query, creditID); err != nil {
+		return fmt.Errorf("mark pending credit payments paid: %w", err)
+	}
+
+	return nil
+}
+
+func updatePaymentScheduleAmount(ctx context.Context, tx *sql.Tx, scheduleID int64, amount string) error {
+	query := `
+		UPDATE payment_schedules
+		SET amount = $2::numeric
+		WHERE id = $1
+		  AND status = 'pending'
+	`
+
+	if _, err := tx.ExecContext(ctx, query, scheduleID, amount); err != nil {
+		return fmt.Errorf("update payment schedule amount: %w", err)
+	}
+
+	return nil
+}
+
+func updateCreditPaymentPlan(
+	ctx context.Context,
+	tx *sql.Tx,
+	creditID int64,
+	termMonths int,
+	monthlyPayment string,
+	remainingPrincipal string,
+) (*models.Credit, error) {
+	query := `
+		UPDATE credits
+		SET term_months = $2,
+		    monthly_payment = $3::numeric,
+		    principal_amount = $4::numeric,
+		    status = 'active'
+		WHERE id = $1
+		RETURNING
+			id,
+			user_id,
+			account_id,
+			principal_amount::text,
+			interest_rate::text,
+			term_months,
+			monthly_payment::text,
+			status,
+			created_at
+	`
+
+	credit := &models.Credit{}
+	if err := tx.QueryRowContext(ctx, query, creditID, termMonths, monthlyPayment, remainingPrincipal).Scan(
+		&credit.ID,
+		&credit.UserID,
+		&credit.AccountID,
+		&credit.PrincipalAmount,
+		&credit.InterestRate,
+		&credit.TermMonths,
+		&credit.MonthlyPayment,
+		&credit.Status,
+		&credit.CreatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("update credit payment plan: %w", err)
+	}
+
+	return credit, nil
+}
+
+func closeCreditAfterPrepayment(ctx context.Context, tx *sql.Tx, creditID int64) (*models.Credit, error) {
+	query := `
+		UPDATE credits
+		SET principal_amount = 0.00,
+		    status = 'closed'
+		WHERE id = $1
+		RETURNING
+			id,
+			user_id,
+			account_id,
+			principal_amount::text,
+			interest_rate::text,
+			term_months,
+			monthly_payment::text,
+			status,
+			created_at
+	`
+
+	credit := &models.Credit{}
+	if err := tx.QueryRowContext(ctx, query, creditID).Scan(
+		&credit.ID,
+		&credit.UserID,
+		&credit.AccountID,
+		&credit.PrincipalAmount,
+		&credit.InterestRate,
+		&credit.TermMonths,
+		&credit.MonthlyPayment,
+		&credit.Status,
+		&credit.CreatedAt,
+	); err != nil {
+		return nil, fmt.Errorf("close credit after prepayment: %w", err)
+	}
+
+	return credit, nil
+}
+
+func moneyStringToCents(amount string) (int64, error) {
+	normalized := strings.TrimSpace(amount)
+	if normalized == "" {
+		return 0, ErrInvalidCreditPrepayment
+	}
+
+	parts := strings.Split(normalized, ".")
+	if len(parts) > 2 || parts[0] == "" {
+		return 0, ErrInvalidCreditPrepayment
+	}
+
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || whole < 0 {
+		return 0, ErrInvalidCreditPrepayment
+	}
+
+	fraction := "00"
+	if len(parts) == 2 {
+		fraction = parts[1]
+		if len(fraction) > 2 {
+			return 0, ErrInvalidCreditPrepayment
+		}
+		fraction = fraction + strings.Repeat("0", 2-len(fraction))
+	}
+
+	fractionValue, err := strconv.ParseInt(fraction, 10, 64)
+	if err != nil || fractionValue < 0 {
+		return 0, ErrInvalidCreditPrepayment
+	}
+
+	return whole*100 + fractionValue, nil
+}
+
+func centsToMoneyString(cents int64) string {
+	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }

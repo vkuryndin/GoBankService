@@ -742,3 +742,46 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.creditPrepaymentBox {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.creditPrepaymentBox .subPanelHeader {
+  margin-bottom: 0;
+}
+
+.creditPrepaymentBox h4 {
+  margin: 0;
+  color: #111827;
+  font-size: 15px;
+}
+
+.creditPrepaymentForm {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(170px, 1fr) minmax(150px, auto);
+  gap: 12px;
+  align-items: end;
+}
+
+.creditPrepaymentForm label {
+  margin: 0;
+}
+
+.creditPrepaymentForm input,
+.creditPrepaymentForm select {
+  min-height: 40px;
+}
+
+@media (max-width: 900px) {
+  .creditPrepaymentForm {
+    grid-template-columns: 1fr;
+  }
+}

@@ -34,6 +34,21 @@ export type CreditResponse = {
   created_at: string
 }
 
+export type CreditPrepaymentMode = 'reduce_payment' | 'reduce_term' | 'full_close'
+
+export type CreditPrepaymentResponse = {
+  transaction_id: number
+  credit: CreditResponse
+  amount: string
+  mode: CreditPrepaymentMode
+  old_monthly_payment: string
+  new_monthly_payment: string
+  old_term_months: number
+  new_term_months: number
+  remaining_debt: string
+  closed: boolean
+}
+
 export type PaymentScheduleResponse = {
   id: number
   credit_id: number

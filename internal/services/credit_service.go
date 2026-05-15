@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"bank-service/internal/dto"
@@ -22,6 +23,7 @@ var (
 	ErrCreditPrincipalLimitExceeded      = errors.New("credit principal limit exceeded")
 	ErrCreditTotalPrincipalLimitExceeded = errors.New("credit total principal limit exceeded")
 	ErrCreditDebtLoadTooHigh             = errors.New("credit debt load too high")
+	ErrInvalidCreditPrepayment           = errors.New("invalid credit prepayment")
 )
 
 type CreditPolicy struct {
@@ -55,6 +57,7 @@ type creditStore interface {
 	FindByIDAndUserID(ctx context.Context, creditID, userID int64) (*models.Credit, error)
 	FindScheduleByCreditIDAndUserID(ctx context.Context, creditID, userID int64) ([]models.PaymentSchedule, error)
 	GetCreditRiskSummary(ctx context.Context, userID int64) (*repositories.CreditRiskSummary, error)
+	Prepay(ctx context.Context, userID int64, creditID int64, amount string, mode string, mfaCodeID int64) (*repositories.CreditPrepaymentResult, error)
 }
 
 type creditAccountStore interface {
@@ -67,6 +70,7 @@ type bankRateProvider interface {
 
 type creditMFAVerifier interface {
 	VerifyCreditCreateCode(ctx context.Context, userID int64, request dto.CreateCreditRequest) (*MFAVerification, error)
+	VerifyCreditPrepaymentCode(ctx context.Context, userID int64, creditID int64, request dto.CreditPrepaymentRequest) (*MFAVerification, error)
 }
 
 type CreditService struct {
@@ -350,9 +354,10 @@ func (s *CreditService) buildCreditPolicyDecisionFromSummary(
 		}
 	}
 
-	// Debt load is checked only when the user has actual income in the last 30 days.
-	// This keeps local demos usable while still rejecting risky extra borrowing for active customers.
-	if s.policy.MaxDebtLoadPercent > 0 && monthlyIncome.Sign() > 0 {
+	// Debt load limits only additional borrowing for users that already have active monthly credit payments.
+	// Closed credits do not participate in the load; after full repayment the user can apply for a new credit
+	// without being blocked by the previous closed credit's historical schedule.
+	if s.policy.MaxDebtLoadPercent > 0 && monthlyIncome.Sign() > 0 && existingMonthlyPayment.Sign() > 0 {
 		if totalMonthlyPayments.Cmp(maxAllowedMonthlyPayments) > 0 {
 			addCreditDecisionReason(decision, ErrCreditDebtLoadTooHigh)
 		}
@@ -385,6 +390,84 @@ func creditPolicyReasonError(reason string) error {
 	default:
 		return ErrInvalidCreditData
 	}
+}
+
+func (s *CreditService) PrepayCredit(
+	ctx context.Context,
+	userID int64,
+	creditID int64,
+	request dto.CreditPrepaymentRequest,
+) (*dto.CreditPrepaymentResponse, error) {
+	if creditID <= 0 {
+		return nil, ErrInvalidCreditData
+	}
+
+	amount, err := normalizeAmount(request.Amount)
+	if err != nil {
+		return nil, err
+	}
+
+	amountValue, err := strconv.ParseFloat(amount, 64)
+	if err != nil {
+		return nil, ErrInvalidAmount
+	}
+	amount = formatMoney(amountValue)
+
+	mode := normalizeCreditPrepaymentMode(request.Mode)
+	if mode == "" {
+		return nil, ErrInvalidCreditPrepayment
+	}
+
+	verification, err := s.mfaService.VerifyCreditPrepaymentCode(ctx, userID, creditID, dto.CreditPrepaymentRequest{
+		Amount:  amount,
+		Mode:    mode,
+		MFACode: request.MFACode,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := s.creditRepository.Prepay(ctx, userID, creditID, amount, mode, verification.CodeID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCreditNotFound) {
+			return nil, ErrCreditNotFound
+		}
+		if errors.Is(err, repositories.ErrInvalidCreditPrepayment) {
+			return nil, ErrInvalidCreditPrepayment
+		}
+		if errors.Is(err, repositories.ErrAccountNotFound) {
+			return nil, ErrAccountNotFound
+		}
+		if errors.Is(err, repositories.ErrAccountBlocked) {
+			return nil, ErrAccountBlocked
+		}
+		if errors.Is(err, repositories.ErrAccountClosed) {
+			return nil, ErrAccountClosed
+		}
+		if errors.Is(err, repositories.ErrInsufficientFunds) {
+			return nil, ErrInsufficientFunds
+		}
+		if errors.Is(err, repositories.ErrMFACodeNotFound) {
+			return nil, ErrInvalidMFACode
+		}
+
+		return nil, err
+	}
+
+	creditResponse := toCreditResponse(result.Credit)
+
+	return &dto.CreditPrepaymentResponse{
+		TransactionID:     result.TransactionID,
+		Credit:            *creditResponse,
+		Amount:            result.Amount,
+		Mode:              result.Mode,
+		OldMonthlyPayment: result.OldMonthlyPayment,
+		NewMonthlyPayment: result.NewMonthlyPayment,
+		OldTermMonths:     result.OldTermMonths,
+		NewTermMonths:     result.NewTermMonths,
+		RemainingDebt:     result.RemainingDebt,
+		Closed:            result.Closed,
+	}, nil
 }
 
 func (s *CreditService) GetUserCredits(ctx context.Context, userID int64) ([]dto.CreditResponse, error) {
@@ -434,6 +517,19 @@ func (s *CreditService) GetCreditSchedule(
 	}
 
 	return responses, nil
+}
+
+func normalizeCreditPrepaymentMode(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case repositories.CreditPrepaymentModeReducePayment:
+		return repositories.CreditPrepaymentModeReducePayment
+	case repositories.CreditPrepaymentModeReduceTerm:
+		return repositories.CreditPrepaymentModeReduceTerm
+	case repositories.CreditPrepaymentModeFullClose:
+		return repositories.CreditPrepaymentModeFullClose
+	default:
+		return ""
+	}
 }
 
 func calculateAnnuityPayment(principal float64, annualRate float64, termMonths int) float64 {

@@ -12,10 +12,13 @@ import type { AccountResponse } from '../types/account'
 import { emptyState, type RequestState } from '../types/common'
 import type {
   CreditCheckResponse,
+  CreditPrepaymentMode,
+  CreditPrepaymentResponse,
   CreditResponse,
   PaymentScheduleResponse,
 } from '../types/credit'
 import { formatDate } from '../utils/format'
+import { validateAmount } from '../utils/validation'
 
 type CreditsPageProps = {
   token: string
@@ -47,6 +50,28 @@ function getScheduleBadgeClass(payment: PaymentScheduleResponse): string {
   return 'badge mutedBadge'
 }
 
+function moneyToCents(amount: string): number {
+  const normalized = amount.trim()
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return 0
+  }
+
+  const [whole, fraction = ''] = normalized.split('.')
+  return Number(whole) * 100 + Number(fraction.padEnd(2, '0'))
+}
+
+function centsToMoney(cents: number): string {
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`
+}
+
+function calculatePendingScheduleAmount(schedule: PaymentScheduleResponse[]): string {
+  const totalCents = schedule
+    .filter((payment) => payment.status === 'pending')
+    .reduce((sum, payment) => sum + moneyToCents(payment.amount), 0)
+
+  return centsToMoney(totalCents)
+}
+
 export function CreditsPage({
   token,
   sharedAccountId,
@@ -56,6 +81,7 @@ export function CreditsPage({
   const accountsDomain = useAccounts(token)
   const creditsDomain = useCredits(token, Number.isInteger(selectedAccountID) && selectedAccountID > 0 ? selectedAccountID : undefined)
   const creditMfaFlow = useMfaFlow(token)
+  const creditPrepaymentMfaFlow = useMfaFlow(token)
   const [accountsState, setAccountsState] = useState<RequestState>(emptyState)
   const [creditsState, setCreditsState] = useState<RequestState>(emptyState)
   const [checkCreditState, setCheckCreditState] = useState<RequestState>(emptyState)
@@ -63,6 +89,8 @@ export function CreditsPage({
   const [createCreditState, setCreateCreditState] = useState<RequestState>(emptyState)
   const [creditDetailsState, setCreditDetailsState] = useState<RequestState>(emptyState)
   const [scheduleState, setScheduleState] = useState<RequestState>(emptyState)
+  const [prepaymentMfaState, setPrepaymentMfaState] = useState<RequestState>(emptyState)
+  const [prepaymentState, setPrepaymentState] = useState<RequestState>(emptyState)
 
   const [accounts, setAccounts] = useState<AccountResponse[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState(sharedAccountId)
@@ -71,9 +99,14 @@ export function CreditsPage({
   const [principalAmount, setPrincipalAmount] = useState('100000.00')
   const [termMonths, setTermMonths] = useState('12')
   const [creditMfaCode, setCreditMfaCode] = useState('')
+  const [prepaymentAmount, setPrepaymentAmount] = useState('10000.00')
+  const [prepaymentMode, setPrepaymentMode] = useState<CreditPrepaymentMode>('reduce_term')
+  const [prepaymentMfaCode, setPrepaymentMfaCode] = useState('')
+  const [prepaymentAutofillState, setPrepaymentAutofillState] = useState<RequestState>(emptyState)
 
   const [creditCheck, setCreditCheck] = useState<CreditCheckResponse | null>(null)
   const [createdCredit, setCreatedCredit] = useState<CreditResponse | null>(null)
+  const [prepaymentResult, setPrepaymentResult] = useState<CreditPrepaymentResponse | null>(null)
   const [credits, setCredits] = useState<CreditResponse[]>([])
   const [selectedCreditId, setSelectedCreditId] = useState('')
   const [selectedCredit, setSelectedCredit] = useState<CreditResponse | null>(null)
@@ -105,6 +138,7 @@ export function CreditsPage({
     setSchedule([])
     setCreditCheck(null)
     setCreatedCredit(null)
+    setPrepaymentResult(null)
   }
 
   const getCreditRequest = (setState: (state: RequestState) => void) => {
@@ -142,6 +176,11 @@ export function CreditsPage({
     setSchedule([])
     setCreditDetailsState(emptyState)
     setScheduleState(emptyState)
+    setPrepaymentMfaState(emptyState)
+    setPrepaymentState(emptyState)
+    setPrepaymentAutofillState(emptyState)
+    setPrepaymentResult(null)
+    setPrepaymentMfaCode('')
   }
 
   const loadCreditsForAccount = async (accountID: number) => {
@@ -187,8 +226,11 @@ export function CreditsPage({
     setCheckCreditState(emptyState)
     setCreditMfaState(emptyState)
     setCreateCreditState(emptyState)
+    setPrepaymentMfaState(emptyState)
+    setPrepaymentState(emptyState)
     setCreditCheck(null)
     setCreatedCredit(null)
+    setPrepaymentResult(null)
     void loadCreditsForAccount(account.id)
   }
 
@@ -235,6 +277,29 @@ export function CreditsPage({
         error: error instanceof Error ? error.message : 'Failed to load accounts',
         success: '',
       })
+    }
+  }
+
+  const refreshAccountsAfterCreditBalanceChange = async (accountID: number) => {
+    try {
+      const result = await accountsDomain.listQuery.refetch()
+      const list = Array.isArray(result.data) ? result.data : []
+
+      if (list.length === 0) {
+        return
+      }
+
+      setAccounts(list)
+
+      const updatedAccount = list.find((account) => account.id === accountID)
+      if (updatedAccount) {
+        setSelectedAccount(updatedAccount)
+        setSelectedAccountId(String(updatedAccount.id))
+        onSharedAccountIdChange(String(updatedAccount.id))
+      }
+    } catch {
+      // Credit operation has already completed successfully. Balance refresh can be retried
+      // by pressing "Загрузить счета", so we do not replace the operation success message here.
     }
   }
 
@@ -319,6 +384,7 @@ export function CreditsPage({
 
     setCreateCreditState({ loading: true, error: '', success: '' })
     setCreatedCredit(null)
+    setPrepaymentResult(null)
 
     try {
       const data = await creditsDomain.createMutation.mutateAsync({
@@ -328,6 +394,7 @@ export function CreditsPage({
 
       setCreatedCredit(data)
       upsertCredit(data)
+      await refreshAccountsAfterCreditBalanceChange(data.account_id)
       setCreditMfaCode('')
       setCreateCreditState({ loading: false, error: '', success: 'Кредит оформлен.' })
     } catch (error) {
@@ -388,6 +455,159 @@ export function CreditsPage({
       setScheduleState({
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to load schedule',
+        success: '',
+      })
+    }
+  }
+
+
+  const getSelectedCreditID = (setState: (state: RequestState) => void): number | null => {
+    const creditID = Number(selectedCreditId)
+    if (!Number.isInteger(creditID) || creditID <= 0) {
+      setState({ loading: false, error: 'Выбери кредит.', success: '' })
+      return null
+    }
+
+    return creditID
+  }
+
+
+  const loadFullCloseAmount = async () => {
+    const creditID = getSelectedCreditID(setPrepaymentAutofillState)
+    if (!creditID) {
+      return
+    }
+
+    setPrepaymentAutofillState({ loading: true, error: '', success: '' })
+
+    try {
+      const data = await creditsDomain.scheduleMutation.mutateAsync(creditID)
+      const nextSchedule = Array.isArray(data) ? data : []
+      setSchedule(nextSchedule)
+
+      const amount = calculatePendingScheduleAmount(nextSchedule)
+      if (moneyToCents(amount) <= 0) {
+        setPrepaymentAutofillState({
+          loading: false,
+          error: 'Не удалось рассчитать остаток по будущим платежам.',
+          success: '',
+        })
+        return
+      }
+
+      setPrepaymentAmount(amount)
+      setPrepaymentAutofillState({
+        loading: false,
+        error: '',
+        success: 'Сумма полного погашения подставлена из актуального графика.',
+      })
+    } catch (error) {
+      setPrepaymentAutofillState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to load credit schedule',
+        success: '',
+      })
+    }
+  }
+
+  const changePrepaymentMode = (mode: CreditPrepaymentMode) => {
+    setPrepaymentMode(mode)
+    setPrepaymentMfaCode('')
+    setPrepaymentMfaState(emptyState)
+    setPrepaymentState(emptyState)
+    setPrepaymentResult(null)
+
+    if (mode === 'full_close') {
+      void loadFullCloseAmount()
+    }
+  }
+  const getPrepaymentRequest = (setState: (state: RequestState) => void) => {
+    const creditID = getSelectedCreditID(setState)
+    if (!creditID) {
+      return null
+    }
+
+    const amountError = validateAmount(prepaymentAmount)
+    if (amountError) {
+      setState({ loading: false, error: amountError, success: '' })
+      return null
+    }
+
+    return {
+      creditID,
+      amount: prepaymentAmount,
+      mode: prepaymentMode,
+    }
+  }
+
+  const requestPrepaymentMFA = async () => {
+    if (!requireToken(setPrepaymentMfaState)) {
+      return
+    }
+
+    const request = getPrepaymentRequest(setPrepaymentMfaState)
+    if (!request) {
+      return
+    }
+
+    setPrepaymentMfaState({ loading: true, error: '', success: '' })
+
+    try {
+      await creditPrepaymentMfaFlow.requestMutation.mutateAsync({
+        purpose: 'credit_prepayment',
+        credit_id: request.creditID,
+        amount: request.amount,
+        prepayment_mode: request.mode,
+        mode: request.mode,
+      })
+
+      setPrepaymentMfaState({
+        loading: false,
+        error: '',
+        success: 'MFA-код для досрочного погашения отправлен.',
+      })
+    } catch (error) {
+      setPrepaymentMfaState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Failed to request MFA code',
+        success: '',
+      })
+    }
+  }
+
+  const prepayCredit = async () => {
+    if (!requireToken(setPrepaymentState)) {
+      return
+    }
+
+    const request = getPrepaymentRequest(setPrepaymentState)
+    if (!request) {
+      return
+    }
+
+    setPrepaymentState({ loading: true, error: '', success: '' })
+    setPrepaymentResult(null)
+
+    try {
+      const data = await creditsDomain.prepayMutation.mutateAsync({
+        creditID: request.creditID,
+        body: {
+          amount: request.amount,
+          mode: request.mode,
+          mfa_code: prepaymentMfaCode,
+        },
+      })
+
+      setPrepaymentResult(data)
+      upsertCredit(data.credit)
+      await refreshAccountsAfterCreditBalanceChange(data.credit.account_id)
+      setSchedule([])
+      setPrepaymentMfaCode('')
+      setPrepaymentState({ loading: false, error: '', success: 'Досрочное погашение выполнено.' })
+    } catch (error) {
+      setPrepaymentState({
+        loading: false,
+        error: error instanceof Error ? error.message : 'Credit prepayment failed',
         success: '',
       })
     }
@@ -586,6 +806,80 @@ export function CreditsPage({
 
               <RequestStatus state={creditDetailsState} />
               <RequestStatus state={scheduleState} />
+
+              <section className="creditPrepaymentBox">
+                <div className="subPanelHeader">
+                  <div>
+                    <h4>Досрочное погашение</h4>
+                    <p className="mutedText">
+                      Уменьшить срок, уменьшить будущий платеж или полностью закрыть кредит.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="creditPrepaymentForm">
+                  <label>
+                    <span>Amount</span>
+                    <input
+                      value={prepaymentAmount}
+                      onChange={(event) => setPrepaymentAmount(event.target.value)}
+                      placeholder="10000.00"
+                      disabled={selectedCredit.status !== 'active' || prepaymentAutofillState.loading}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Mode</span>
+                    <select
+                      value={prepaymentMode}
+                      onChange={(event) => changePrepaymentMode(event.target.value as CreditPrepaymentMode)}
+                      disabled={selectedCredit.status !== 'active'}
+                    >
+                      <option value="reduce_term">Уменьшить срок</option>
+                      <option value="reduce_payment">Уменьшить платеж</option>
+                      <option value="full_close">Погасить полностью</option>
+                    </select>
+                  </label>
+
+                  <Button
+                    className="secondary"
+                    type="button"
+                    onClick={requestPrepaymentMFA}
+                    disabled={prepaymentMfaState.loading || selectedCredit.status !== 'active'}
+                  >
+                    {prepaymentMfaState.loading ? 'Отправляю...' : 'Запросить MFA'}
+                  </Button>
+
+                  <label>
+                    <span>MFA code</span>
+                    <input
+                      value={prepaymentMfaCode}
+                      onChange={(event) => setPrepaymentMfaCode(event.target.value)}
+                      placeholder="6 цифр"
+                      disabled={selectedCredit.status !== 'active'}
+                    />
+                  </label>
+
+                  <Button
+                    type="button"
+                    onClick={prepayCredit}
+                    disabled={prepaymentState.loading || selectedCredit.status !== 'active'}
+                  >
+                    {prepaymentState.loading ? 'Погашаю...' : 'Погасить досрочно'}
+                  </Button>
+                </div>
+
+                <RequestStatus state={prepaymentAutofillState} />
+                <RequestStatus state={prepaymentMfaState} />
+                <RequestStatus state={prepaymentState} />
+
+                {prepaymentResult && (
+                  <div className="result success compactResult">
+                    <strong>Досрочное погашение выполнено</strong>
+                    <pre>{JSON.stringify(prepaymentResult, null, 2)}</pre>
+                  </div>
+                )}
+              </section>
 
               {schedule.length === 0 && !scheduleState.error && (
                 <div className="empty compactEmpty">Нажми “Показать график”, чтобы загрузить платежи выбранного кредита.</div>

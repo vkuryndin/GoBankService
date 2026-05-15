@@ -13,6 +13,9 @@ type MFARequest struct {
 	Amount            string `json:"amount,omitempty"`
 	PrincipalAmount   string `json:"principal_amount,omitempty"`
 	TermMonths        int    `json:"term_months,omitempty"`
+	CreditID          int64  `json:"credit_id,omitempty"`
+	PrepaymentMode    string `json:"prepayment_mode,omitempty"`
+	Mode              string `json:"mode,omitempty"`
 }
 
 func (r MFARequest) RecipientCardID() int64 {
@@ -29,4 +32,12 @@ func (r MFARequest) RecipientCardNumber() string {
 	}
 
 	return r.ToCardNumberCamel
+}
+
+func (r MFARequest) CreditPrepaymentMode() string {
+	if r.PrepaymentMode != "" {
+		return r.PrepaymentMode
+	}
+
+	return r.Mode
 }

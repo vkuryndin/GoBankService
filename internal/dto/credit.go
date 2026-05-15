@@ -13,6 +13,25 @@ type CheckCreditRequest struct {
 	TermMonths      int    `json:"term_months"`
 }
 
+type CreditPrepaymentRequest struct {
+	Amount  string `json:"amount"`
+	Mode    string `json:"mode"`
+	MFACode string `json:"mfa_code"`
+}
+
+type CreditPrepaymentResponse struct {
+	TransactionID     int64          `json:"transaction_id"`
+	Credit            CreditResponse `json:"credit"`
+	Amount            string         `json:"amount"`
+	Mode              string         `json:"mode"`
+	OldMonthlyPayment string         `json:"old_monthly_payment"`
+	NewMonthlyPayment string         `json:"new_monthly_payment"`
+	OldTermMonths     int            `json:"old_term_months"`
+	NewTermMonths     int            `json:"new_term_months"`
+	RemainingDebt     string         `json:"remaining_debt"`
+	Closed            bool           `json:"closed"`
+}
+
 type CreditCheckResponse struct {
 	Eligible                  bool     `json:"eligible"`
 	Reason                    string   `json:"reason,omitempty"`

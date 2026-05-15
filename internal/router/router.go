@@ -113,6 +113,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 	protected.HandleFunc("/credits", deps.CreditHandler.CreateCredit).Methods(http.MethodPost)
 	protected.HandleFunc("/credits", deps.CreditHandler.GetUserCredits).Methods(http.MethodGet)
 	protected.HandleFunc("/credits/{creditId}", deps.CreditHandler.GetCredit).Methods(http.MethodGet)
+	protected.HandleFunc("/credits/{creditId}/prepay", deps.CreditHandler.PrepayCredit).Methods(http.MethodPost)
 	protected.HandleFunc("/credits/{creditId}/schedule", deps.CreditHandler.GetCreditSchedule).Methods(http.MethodGet)
 
 	protected.HandleFunc("/notifications/test", deps.NotificationHandler.SendTestEmail).Methods(http.MethodGet)
@@ -199,6 +200,10 @@ func isFinancialEndpoint(r *http.Request) bool {
 
 	if r.Method == http.MethodPost && (path == "/transfer" || path == "/credits") {
 		return true
+	}
+
+	if r.Method == http.MethodPost && strings.HasPrefix(path, "/credits/") {
+		return strings.HasSuffix(path, "/prepay")
 	}
 
 	if r.Method == http.MethodPost && strings.HasPrefix(path, "/accounts/") {
