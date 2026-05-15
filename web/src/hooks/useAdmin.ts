@@ -17,6 +17,13 @@ export function useAdmin(token: string, enabled: boolean) {
     enabled,
   })
 
+
+  const statisticsQuery = useQuery({
+    queryKey: queryKeys.admin.statistics,
+    queryFn: () => adminApi.getStatistics(token),
+    enabled,
+  })
+
   const blockMutation = useMutation({
     mutationFn: (accountID: number) => adminApi.blockAccount(token, accountID),
     onSuccess: () => {
@@ -36,8 +43,10 @@ export function useAdmin(token: string, enabled: boolean) {
   return {
     users: usersQuery.data || [],
     sessions: sessionsQuery.data || [],
+    statistics: statisticsQuery.data || null,
     usersQuery,
     sessionsQuery,
+    statisticsQuery,
     blockMutation,
     unblockMutation,
   }

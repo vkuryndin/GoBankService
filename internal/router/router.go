@@ -124,6 +124,7 @@ func NewRouter(deps Dependencies) *mux.Router {
 
 	admin.HandleFunc("/users", deps.AdminHandler.GetUsers).Methods(http.MethodGet)
 	admin.HandleFunc("/logged-in-users", deps.AdminHandler.GetLoggedInUsers).Methods(http.MethodGet)
+	admin.HandleFunc("/statistics", deps.AdminHandler.GetSystemStatistics).Methods(http.MethodGet)
 	admin.HandleFunc("/accounts/{accountId}/block", deps.AdminHandler.BlockAccount).Methods(http.MethodPost)
 	admin.HandleFunc("/accounts/{accountId}/unblock", deps.AdminHandler.UnblockAccount).Methods(http.MethodPost)
 

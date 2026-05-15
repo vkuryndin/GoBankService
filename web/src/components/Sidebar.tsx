@@ -23,9 +23,19 @@ export function Sidebar({
   onCollapsedChange,
   onWidthChange,
 }: SidebarProps) {
-  const { isAuthenticated } = useAuth()
+  const { currentUser, isAuthenticated } = useAuth()
   const visibleMenuItems = isAuthenticated
-    ? menuItems.filter((item) => item.key !== 'auth' && item.key !== 'register')
+    ? menuItems.filter((item) => {
+        if (item.key === 'auth' || item.key === 'register') {
+          return false
+        }
+
+        if (item.key === 'admin') {
+          return Boolean(currentUser?.is_admin)
+        }
+
+        return true
+      })
     : menuItems
 
   const startSidebarResize = (event: ReactMouseEvent<HTMLDivElement>) => {

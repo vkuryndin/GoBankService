@@ -1,6 +1,7 @@
 import { Button } from '../../components/ui/Button'
 import type { AccountResponse } from '../../types/account'
 import type { CreditResponse } from '../../types/credit'
+import { formatDate } from '../../utils/format'
 
 type CreditListPanelProps = {
   selectedAccount: AccountResponse | null
@@ -48,12 +49,35 @@ export function CreditListPanel({
               aria-pressed={selectedCreditId === String(credit.id)}
             >
               <span className="creditLoanMain">
-                <span className="creditLoanTitle">credit_id {credit.id}</span>
+                <span className="creditLabel">Кредит</span>
                 <span className={getCreditBadgeClass(credit)}>{credit.status}</span>
               </span>
-              <span className="creditLoanMeta">
-                <span>{credit.principal_amount}</span>
-                <span>{credit.monthly_payment} / мес.</span>
+              <span className="creditLoanTitle">credit_id {credit.id}</span>
+              <span className="creditLoanMetaGrid">
+                <span>
+                  <small>Account ID</small>
+                  <strong>{credit.account_id}</strong>
+                </span>
+                <span>
+                  <small>Principal</small>
+                  <strong>{credit.principal_amount}</strong>
+                </span>
+                <span>
+                  <small>Rate</small>
+                  <strong>{credit.interest_rate}</strong>
+                </span>
+                <span>
+                  <small>Term</small>
+                  <strong>{credit.term_months}</strong>
+                </span>
+                <span>
+                  <small>Monthly</small>
+                  <strong>{credit.monthly_payment}</strong>
+                </span>
+                <span>
+                  <small>Created</small>
+                  <strong>{formatDate(credit.created_at)}</strong>
+                </span>
               </span>
             </Button>
           ))}

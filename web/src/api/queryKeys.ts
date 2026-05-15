@@ -33,6 +33,7 @@ export const queryKeys = {
     all: ['admin'] as const,
     users: ['admin', 'users'] as const,
     sessions: ['admin', 'sessions'] as const,
+    statistics: ['admin', 'statistics'] as const,
   },
   analytics: {
     all: ['analytics'] as const,

@@ -42,6 +42,13 @@ func (h *AdminHandler) GetLoggedInUsers(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (h *AdminHandler) GetSystemStatistics(w http.ResponseWriter, r *http.Request) {
+	handleAuthed(w, r, nil, "get admin system statistics failed", func(ctx context.Context, userID int64) (int, any, error) {
+		response, err := h.adminService.GetSystemStatistics(ctx)
+		return http.StatusOK, response, err
+	})
+}
+
 func (h *AdminHandler) BlockAccount(w http.ResponseWriter, r *http.Request) {
 	h.changeAccountBlockStatus(w, r, true)
 }

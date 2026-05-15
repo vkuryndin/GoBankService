@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card'
 import { EmptyState } from '../components/ui/EmptyState'
 import { AdminAccountStatusPanel } from '../features/admin/AdminAccountStatusPanel'
 import { AdminSessionsTable } from '../features/admin/AdminSessionsTable'
+import { AdminStatisticsPanel } from '../features/admin/AdminStatisticsPanel'
 import { AdminUsersTable } from '../features/admin/AdminUsersTable'
 import { useAdmin } from '../hooks/useAdmin'
 import { useToast } from '../hooks/useToast'
@@ -33,7 +34,16 @@ function queryState(
 
 export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProps) {
   const isAdmin = Boolean(currentUser?.is_admin)
-  const { users, sessions, usersQuery, sessionsQuery, blockMutation, unblockMutation } = useAdmin(
+  const {
+    users,
+    sessions,
+    statistics,
+    usersQuery,
+    sessionsQuery,
+    statisticsQuery,
+    blockMutation,
+    unblockMutation,
+  } = useAdmin(
     token,
     isAdmin && token.trim() !== '',
   )
@@ -61,6 +71,15 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
 
     setAdminAccountState({ loading: false, error: 'Доступ разрешен только администратору.', success: '' })
     return false
+  }
+
+
+  const loadAdminStatistics = async () => {
+    if (!isAdmin || !token) {
+      return
+    }
+
+    await statisticsQuery.refetch()
   }
 
   const loadAdminUsers = async () => {
@@ -116,6 +135,11 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
     sessionsQuery.error,
     sessions.length > 0 ? 'Список активных сессий загружен.' : '',
   )
+  const statisticsState = queryState(
+    statisticsQuery.isFetching,
+    statisticsQuery.error,
+    statistics ? 'Системная статистика загружена.' : '',
+  )
 
   return (
     <Card variant="plain" className="panel">
@@ -123,7 +147,7 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
         <div>
           <h2>Администрирование</h2>
           <p>
-            Все admin-действия API: пользователи, активные сессии, блокировка и разблокировка счетов.
+            Admin-действия и системная статистика: пользователи, сессии, счета, карты, кредиты, операции и audit events.
           </p>
         </div>
 
@@ -133,6 +157,9 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
           </Button>
           <Button className="secondary" type="button" onClick={() => void loadAdminSessions()} disabled={sessionsQuery.isFetching || !token || !isAdmin}>
             {sessionsQuery.isFetching ? 'Загружаю...' : 'Активные сессии'}
+          </Button>
+          <Button className="secondary" type="button" onClick={() => void loadAdminStatistics()} disabled={statisticsQuery.isFetching || !token || !isAdmin}>
+            {statisticsQuery.isFetching ? 'Загружаю...' : 'Системная статистика'}
           </Button>
         </div>
       </div>
@@ -160,6 +187,17 @@ export function AdminPage({ token, currentUser, sharedAccountId }: AdminPageProp
           </div>
           <RequestStatus state={sessionsState} />
           <AdminSessionsTable sessions={sessions} />
+        </section>
+
+        <section className="subPanel adminStatisticsPanel">
+          <div className="subPanelHeader">
+            <div>
+              <h3>Системная статистика</h3>
+              <p className="mutedText">Агрегаты по пользователям, счетам, картам, кредитам, операциям и audit events.</p>
+            </div>
+          </div>
+          <RequestStatus state={statisticsState} />
+          <AdminStatisticsPanel statistics={statistics} />
         </section>
 
         <AdminAccountStatusPanel

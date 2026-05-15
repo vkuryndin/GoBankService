@@ -552,8 +552,12 @@ export function CreditsPage({
         <section className="subPanel creditDetailsPanelV3">
           <div className="subPanelHeader">
             <div>
-              <h3>Выбранный кредит</h3>
-              <p className="mutedText">Детали кредита и график платежей.</p>
+              <h3>График платежей</h3>
+              {selectedCredit ? (
+                <p className="mutedText">Выбран credit_id <code>{selectedCredit.id}</code>. Детали кредита показаны в карточке выше.</p>
+              ) : (
+                <p className="mutedText">Выбери кредит из списка выше.</p>
+              )}
             </div>
             {selectedCredit && (
               <span className={getCreditBadgeClass(selectedCredit)}>{selectedCredit.status}</span>
@@ -566,18 +570,7 @@ export function CreditsPage({
 
           {selectedCredit && (
             <>
-              <div className="creditSummaryGridV3">
-                <div><span>ID</span><strong>{selectedCredit.id}</strong></div>
-                <div><span>Account ID</span><strong>{selectedCredit.account_id}</strong></div>
-                <div><span>Principal</span><strong>{selectedCredit.principal_amount}</strong></div>
-                <div><span>Rate</span><strong>{selectedCredit.interest_rate}</strong></div>
-                <div><span>Term</span><strong>{selectedCredit.term_months}</strong></div>
-                <div><span>Monthly payment</span><strong>{selectedCredit.monthly_payment}</strong></div>
-                <div><span>Status</span><strong>{selectedCredit.status}</strong></div>
-                <div><span>Created</span><strong>{formatDate(selectedCredit.created_at)}</strong></div>
-              </div>
-
-              <div className="actions topGap">
+              <div className="actions creditScheduleActions">
                 <Button
                   className="secondary"
                   type="button"
@@ -587,12 +580,16 @@ export function CreditsPage({
                   {creditDetailsState.loading ? 'Обновляю...' : 'Обновить кредит'}
                 </Button>
                 <Button type="button" onClick={loadSchedule} disabled={scheduleState.loading}>
-                  {scheduleState.loading ? 'Загружаю...' : 'График платежей'}
+                  {scheduleState.loading ? 'Загружаю...' : 'Показать график'}
                 </Button>
               </div>
 
               <RequestStatus state={creditDetailsState} />
               <RequestStatus state={scheduleState} />
+
+              {schedule.length === 0 && !scheduleState.error && (
+                <div className="empty compactEmpty">Нажми “Показать график”, чтобы загрузить платежи выбранного кредита.</div>
+              )}
 
               {schedule.length > 0 && (
                 <div className="tableWrap scheduleTable topGap">

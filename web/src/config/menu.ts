@@ -26,14 +26,6 @@ export const menuItems: MenuItem[] = [
     path: '/auth',
   },
   {
-    key: 'admin',
-    title: 'Admin',
-    description: 'Пользователи, сессии, блокировка счетов',
-    icon: '★',
-    implemented: true,
-    path: '/admin',
-  },
-  {
     key: 'accounts',
     title: 'Accounts',
     description: 'Счета, deposit, withdraw, close',
@@ -88,6 +80,14 @@ export const menuItems: MenuItem[] = [
     icon: '✉',
     implemented: true,
     path: '/notifications',
+  },
+  {
+    key: 'admin',
+    title: 'Admin',
+    description: 'Пользователи, сессии, блокировка счетов',
+    icon: '★',
+    implemented: true,
+    path: '/admin',
   },
 ]
 

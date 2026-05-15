@@ -1,4 +1,4 @@
-import type { AdminAccountStatusResponse, AdminSession, AdminUser } from '../types/admin'
+import type { AdminAccountStatusResponse, AdminSession, AdminSystemStatistics, AdminUser } from '../types/admin'
 import { apiRequest } from './client'
 
 export const adminApi = {
@@ -8,6 +8,11 @@ export const adminApi = {
 
   listSessions(_token = ''): Promise<AdminSession[]> {
     return apiRequest<AdminSession[]>('/api/admin/logged-in-users')
+  },
+
+
+  getStatistics(_token = ''): Promise<AdminSystemStatistics> {
+    return apiRequest<AdminSystemStatistics>('/api/admin/statistics')
   },
 
   blockAccount(_token: string, accountID: number): Promise<AdminAccountStatusResponse> {
