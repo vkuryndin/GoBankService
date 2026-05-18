@@ -682,7 +682,7 @@ td {
 
 .accountsLayout {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(420px, 1fr) minmax(280px, 360px);
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr) minmax(280px, 360px);
   gap: 20px;
   align-items: start;
 }
@@ -824,10 +824,20 @@ td {
 
 .accountOperationsHeader {
   align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.accountOperationsHeader > div {
+  min-width: 0;
+}
+
+.accountOperationsHeader .mutedText {
+  overflow-wrap: anywhere;
 }
 
 .accountOperationsHeaderActions {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
@@ -835,8 +845,7 @@ td {
 }
 
 .accountsSideColumn {
-  position: sticky;
-  top: 16px;
+  position: static;
   display: grid;
   gap: 16px;
   min-width: 0;
@@ -845,6 +854,10 @@ td {
 .accountClosePanel {
   display: grid;
   gap: 12px;
+}
+
+.accountClosePanel .mutedText {
+  line-height: 1.45;
 }
 
 .accountClosePanel .subPanelHeader {
@@ -918,14 +931,19 @@ td {
 
 .accountActionsGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
   gap: 16px;
   margin-top: 18px;
+}
+
+.accountActionsGrid > * {
+  min-width: 0;
 }
 
 .actionBox {
   display: grid;
   gap: 12px;
+  min-width: 0;
   padding: 16px;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
@@ -934,6 +952,13 @@ td {
 
 .actionBox p {
   font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.actionBox code {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .dangerZone {
@@ -941,14 +966,13 @@ td {
   background: #fffafa;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1180px) {
   .accountsLayout {
-    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
   }
 
   .accountsSideColumn {
     grid-column: 1 / -1;
-    position: static;
   }
 }
 
@@ -959,7 +983,11 @@ td {
   }
 
   .accountsSideColumn {
-    position: static;
+    grid-column: auto;
+  }
+
+  .accountOperationsHeaderActions {
+    justify-content: flex-start;
   }
 }
 
